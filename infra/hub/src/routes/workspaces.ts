@@ -21,6 +21,7 @@ import {
   projectMemories,
   projectRepos,
   projects,
+  users,
   workspaceMemberships,
   workspaces,
 } from "../db/schema.ts";
@@ -65,6 +66,32 @@ export function createWorkspaceRoutes(deps: {
     });
 
     return c.json({ workspace: inserted[0] }, 201);
+  });
+
+  app.get("/workspaces/:workspaceId/members", async (c) => {
+    const actor = getAuthUser(c);
+    const workspaceId = c.req.param("workspaceId");
+    const actorRoles = await getUserWorkspaceRoles(deps.db, workspaceId, actor.id);
+    if (actorRoles.length === 0) {
+      return c.json({ error: "Not a member of this workspace." }, 403);
+    }
+
+    const rows = await deps.db
+      .select({
+        userId: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        primaryVcsLogin: users.primaryVcsLogin,
+        notificationHandles: users.notificationHandles,
+        roles: workspaceMemberships.roles,
+        joinedAt: workspaceMemberships.joinedAt,
+      })
+      .from(workspaceMemberships)
+      .innerJoin(users, eq(workspaceMemberships.userId, users.id))
+      .where(eq(workspaceMemberships.workspaceId, workspaceId));
+
+    return c.json({ members: rows });
   });
 
   app.put("/workspaces/:workspaceId/members/:userId", async (c) => {

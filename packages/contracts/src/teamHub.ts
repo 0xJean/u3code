@@ -9,8 +9,11 @@ import {
   GateApproval,
   GateApprovalStatus,
   HubAuthMe,
+  HubUser,
+  HubWsEvent,
   NotificationChannelSummary,
   NotificationEventKind,
+  NotificationHandles,
   NotifierDriverKind,
   Project,
   ProjectDirective,
@@ -19,11 +22,14 @@ import {
   Pulse,
   PulseCreateInput,
   PulseDraft,
+  ReleaseCard,
+  ReleaseStatus,
   RepoPolicy,
   WorkHealth,
   WorkItem,
   WorkItemPriority,
   WorkItemType,
+  WorkspaceMember,
 } from "@u3code/hub-contracts";
 import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -244,4 +250,79 @@ export const TeamHubCreateNotificationChannelResult = Schema.Struct({
 export type TeamHubCreateNotificationChannelResult =
   typeof TeamHubCreateNotificationChannelResult.Type;
 
-export { CockpitOverview, PulseDraft };
+export const TeamHubUpdateProfileInput = Schema.Struct({
+  displayName: Schema.optional(TrimmedNonEmptyString),
+  primaryVcsLogin: Schema.optional(Schema.NullOr(Schema.String)),
+  notificationHandles: Schema.optional(NotificationHandles),
+});
+export type TeamHubUpdateProfileInput = typeof TeamHubUpdateProfileInput.Type;
+
+export const TeamHubUpdateProfileResult = Schema.Struct({
+  user: HubUser,
+});
+export type TeamHubUpdateProfileResult = typeof TeamHubUpdateProfileResult.Type;
+
+export const TeamHubListMembersInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+});
+export type TeamHubListMembersInput = typeof TeamHubListMembersInput.Type;
+
+export const TeamHubListMembersResult = Schema.Struct({
+  members: Schema.Array(WorkspaceMember),
+});
+export type TeamHubListMembersResult = typeof TeamHubListMembersResult.Type;
+
+export const TeamHubUpdateMemberRolesInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  userId: TrimmedNonEmptyString,
+  roles: Schema.Array(TrimmedNonEmptyString),
+});
+export type TeamHubUpdateMemberRolesInput = typeof TeamHubUpdateMemberRolesInput.Type;
+
+export const TeamHubUpdateMemberRolesResult = Schema.Struct({
+  workspaceId: Schema.String,
+  userId: Schema.String,
+  roles: Schema.Array(Schema.String),
+});
+export type TeamHubUpdateMemberRolesResult = typeof TeamHubUpdateMemberRolesResult.Type;
+
+export const TeamHubListReleasesInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+});
+export type TeamHubListReleasesInput = typeof TeamHubListReleasesInput.Type;
+
+export const TeamHubListReleasesResult = Schema.Struct({
+  releases: Schema.Array(ReleaseCard),
+});
+export type TeamHubListReleasesResult = typeof TeamHubListReleasesResult.Type;
+
+export const TeamHubCreateReleaseInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  versionLabel: TrimmedNonEmptyString,
+  repoSnapshots: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  rollbackPlan: Schema.optional(Schema.String),
+  releaseNotesMd: Schema.optional(Schema.String),
+  workItemIds: Schema.optional(Schema.Array(Schema.String)),
+});
+export type TeamHubCreateReleaseInput = typeof TeamHubCreateReleaseInput.Type;
+
+export const TeamHubUpdateReleaseInput = Schema.Struct({
+  releaseId: TrimmedNonEmptyString,
+  status: Schema.optional(ReleaseStatus),
+  repoSnapshots: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  rollbackPlan: Schema.optional(Schema.String),
+  releaseNotesMd: Schema.optional(Schema.String),
+});
+export type TeamHubUpdateReleaseInput = typeof TeamHubUpdateReleaseInput.Type;
+
+export const TeamHubReleaseResult = Schema.Struct({
+  release: ReleaseCard,
+});
+export type TeamHubReleaseResult = typeof TeamHubReleaseResult.Type;
+
+export const TeamHubSubscribeEventsInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+});
+export type TeamHubSubscribeEventsInput = typeof TeamHubSubscribeEventsInput.Type;
+
+export { CockpitOverview, HubWsEvent, PulseDraft };

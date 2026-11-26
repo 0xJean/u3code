@@ -88,6 +88,7 @@ import {
 } from "./acpRegistry.ts";
 import {
   CockpitOverview,
+  HubWsEvent,
   PulseDraft,
   TeamHubAddProjectRepoInput,
   TeamHubAddProjectRepoResult,
@@ -99,6 +100,7 @@ import {
   TeamHubCreateNotificationChannelResult,
   TeamHubCreateProjectInput,
   TeamHubCreateProjectResult,
+  TeamHubCreateReleaseInput,
   TeamHubCreateWorkItemInput,
   TeamHubCreateWorkspaceInput,
   TeamHubCreateWorkspaceResult,
@@ -108,17 +110,28 @@ import {
   TeamHubExtractPulseDraftInput,
   TeamHubGenerateDigestInput,
   TeamHubGenerateDigestResult,
+  TeamHubListMembersInput,
+  TeamHubListMembersResult,
   TeamHubListNotificationChannelsInput,
   TeamHubListNotificationChannelsResult,
+  TeamHubListReleasesInput,
+  TeamHubListReleasesResult,
   TeamHubMemoryInput,
   TeamHubMemoryResult,
   TeamHubOverviewInput,
   TeamHubPublishPulseInput,
   TeamHubPublishPulseResult,
+  TeamHubReleaseResult,
   TeamHubReviewQueueInput,
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
+  TeamHubSubscribeEventsInput,
   TeamHubUpdateDirectivesInput,
+  TeamHubUpdateMemberRolesInput,
+  TeamHubUpdateMemberRolesResult,
+  TeamHubUpdateProfileInput,
+  TeamHubUpdateProfileResult,
+  TeamHubUpdateReleaseInput,
   TeamHubUpdateWorkItemInput,
   TeamHubWorkItemResult,
 } from "./teamHub.ts";
@@ -778,6 +791,13 @@ export const WS_METHODS = {
   teamHubAddProjectRepo: "teamHub.addProjectRepo",
   teamHubListNotificationChannels: "teamHub.listNotificationChannels",
   teamHubCreateNotificationChannel: "teamHub.createNotificationChannel",
+  teamHubUpdateProfile: "teamHub.updateProfile",
+  teamHubListMembers: "teamHub.listMembers",
+  teamHubUpdateMemberRoles: "teamHub.updateMemberRoles",
+  teamHubListReleases: "teamHub.listReleases",
+  teamHubCreateRelease: "teamHub.createRelease",
+  teamHubUpdateRelease: "teamHub.updateRelease",
+  teamHubSubscribeEvents: "teamHub.subscribeEvents",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1720,6 +1740,49 @@ const WsTeamHubCreateNotificationChannelRpc = Rpc.make(
     error: TeamHubRpcError,
   },
 );
+
+const WsTeamHubUpdateProfileRpc = Rpc.make(WS_METHODS.teamHubUpdateProfile, {
+  payload: TeamHubUpdateProfileInput,
+  success: TeamHubUpdateProfileResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubListMembersRpc = Rpc.make(WS_METHODS.teamHubListMembers, {
+  payload: TeamHubListMembersInput,
+  success: TeamHubListMembersResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubUpdateMemberRolesRpc = Rpc.make(WS_METHODS.teamHubUpdateMemberRoles, {
+  payload: TeamHubUpdateMemberRolesInput,
+  success: TeamHubUpdateMemberRolesResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubListReleasesRpc = Rpc.make(WS_METHODS.teamHubListReleases, {
+  payload: TeamHubListReleasesInput,
+  success: TeamHubListReleasesResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubCreateReleaseRpc = Rpc.make(WS_METHODS.teamHubCreateRelease, {
+  payload: TeamHubCreateReleaseInput,
+  success: TeamHubReleaseResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubUpdateReleaseRpc = Rpc.make(WS_METHODS.teamHubUpdateRelease, {
+  payload: TeamHubUpdateReleaseInput,
+  success: TeamHubReleaseResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubSubscribeEventsRpc = Rpc.make(WS_METHODS.teamHubSubscribeEvents, {
+  payload: TeamHubSubscribeEventsInput,
+  success: HubWsEvent,
+  error: TeamHubRpcError,
+  stream: true,
+});
 
 /**
  * Verifies the credential against the tracker before storing it; the result is the new status.
@@ -2840,6 +2903,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubAddProjectRepoRpc,
   WsTeamHubListNotificationChannelsRpc,
   WsTeamHubCreateNotificationChannelRpc,
+  WsTeamHubUpdateProfileRpc,
+  WsTeamHubListMembersRpc,
+  WsTeamHubUpdateMemberRolesRpc,
+  WsTeamHubListReleasesRpc,
+  WsTeamHubCreateReleaseRpc,
+  WsTeamHubUpdateReleaseRpc,
+  WsTeamHubSubscribeEventsRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

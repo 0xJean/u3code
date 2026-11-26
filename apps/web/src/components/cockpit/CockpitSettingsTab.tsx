@@ -5,9 +5,17 @@ import type {
   NotificationEventKind,
   NotifierDriverKind,
   RepoPolicy,
+  WorkspaceMember,
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
-import { BellIcon, FolderPlusIcon, GitBranchIcon, LayersIcon } from "lucide-react";
+import {
+  BellIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  LayersIcon,
+  UserCogIcon,
+  UsersIcon,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
@@ -34,6 +42,8 @@ const DEFAULT_EVENTS: ReadonlyArray<NotificationEventKind> = [
   "blocker.needs_attention",
   "release.ready",
 ];
+
+const WORKSPACE_ROLES = ["owner", "pm", "qa", "ops", "security", "dev"] as const;
 
 export function CockpitSettingsTab({
   environmentId,
@@ -75,6 +85,17 @@ export function CockpitSettingsTab({
   const [channelSecret, setChannelSecret] = useState("");
   const [creatingChannel, setCreatingChannel] = useState(false);
 
+  // Personal profile & @mention handles
+  const [profileDisplayName, setProfileDisplayName] = useState(status.me?.user.displayName ?? "");
+  const [profileVcsLogin, setProfileVcsLogin] = useState(status.me?.user.primaryVcsLogin ?? "");
+  const [larkHandle, setLarkHandle] = useState(status.me?.user.notificationHandles.lark ?? "");
+  const [slackHandle, setSlackHandle] = useState(status.me?.user.notificationHandles.slack ?? "");
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Workspace members & multi-role assignments
+  const [members, setMembers] = useState<ReadonlyArray<WorkspaceMember>>([]);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+
   const createWorkspace = useAtomCommand(teamHubEnvironment.createWorkspace, {
     reportFailure: false,
   });
@@ -88,29 +109,41 @@ export function CockpitSettingsTab({
   const createChannel = useAtomCommand(teamHubEnvironment.createNotificationChannel, {
     reportFailure: false,
   });
+  const updateProfile = useAtomCommand(teamHubEnvironment.updateProfile, { reportFailure: false });
+  const listMembers = useAtomCommand(teamHubEnvironment.listMembers, { reportFailure: false });
+  const updateMemberRoles = useAtomCommand(teamHubEnvironment.updateMemberRoles, {
+    reportFailure: false,
+  });
 
-  const loadChannels = useEffectEvent(
+  const loadWorkspaceMeta = useEffectEvent(
     (envId: EnvironmentId, wsId: string, cancelled: () => boolean) => {
-      void listChannels({ environmentId: envId, input: { workspaceId: wsId } }).then((res) => {
+      void Promise.all([
+        listChannels({ environmentId: envId, input: { workspaceId: wsId } }),
+        listMembers({ environmentId: envId, input: { workspaceId: wsId } }),
+      ]).then(([chRes, memRes]) => {
         if (cancelled()) return;
-        if (res._tag === "Success") {
-          setChannels(res.value.channels);
+        if (chRes._tag === "Success") {
+          setChannels(chRes.value.channels);
+        }
+        if (memRes._tag === "Success") {
+          setMembers(memRes.value.members);
         }
       });
     },
   );
 
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize workspace notification channels from external Team Hub API when workspace changes.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize workspace notification channels and members from external Team Hub API when workspace changes.
   useEffect(() => {
     if (!selectedWorkspaceId) return;
     let cancelled = false;
-    loadChannels(environmentId, selectedWorkspaceId, () => cancelled);
+    loadWorkspaceMeta(environmentId, selectedWorkspaceId, () => cancelled);
     return () => {
       cancelled = true;
     };
   }, [environmentId, selectedWorkspaceId]);
 
   const visibleChannels = selectedWorkspaceId ? channels : [];
+  const visibleMembers = selectedWorkspaceId ? members : [];
 
   const handleCreateWorkspace = async () => {
     const slug = wsSlug.trim().toLowerCase() || wsName.trim().toLowerCase().replace(/\s+/g, "-");
@@ -262,308 +295,480 @@ export function CockpitSettingsTab({
     }
   };
 
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    const handles: Record<string, string> = {};
+    if (larkHandle.trim()) handles.lark = larkHandle.trim();
+    if (slackHandle.trim()) handles.slack = slackHandle.trim();
+    const res = await updateProfile({
+      environmentId,
+      input: {
+        ...(profileDisplayName.trim() ? { displayName: profileDisplayName.trim() } : {}),
+        primaryVcsLogin: profileVcsLogin.trim() || null,
+        notificationHandles: handles,
+      },
+    });
+    setSavingProfile(false);
+    if (res._tag === "Success") {
+      toastManager.add({ title: gt("Profile and @mention handles saved"), type: "success" });
+      onRefreshAll(selectedWorkspaceId, selectedProjectId);
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to update profile.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleToggleMemberRole = async (member: WorkspaceMember, role: string) => {
+    if (!selectedWorkspaceId) return;
+    const hasRole = member.roles.includes(role);
+    const nextRoles = hasRole ? member.roles.filter((r) => r !== role) : [...member.roles, role];
+    if (nextRoles.length === 0) {
+      toastManager.add({ title: gt("A member must keep at least one role."), type: "error" });
+      return;
+    }
+    setUpdatingMemberId(member.userId);
+    const res = await updateMemberRoles({
+      environmentId,
+      input: {
+        workspaceId: selectedWorkspaceId,
+        userId: member.userId,
+        roles: nextRoles,
+      },
+    });
+    setUpdatingMemberId(null);
+    if (res._tag === "Success") {
+      setMembers((prev) =>
+        prev.map((m) => (m.userId === member.userId ? { ...m, roles: res.value.roles } : m)),
+      );
+      toastManager.add({ title: gt("Member roles updated"), type: "success" });
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to update member roles.")),
+        type: "error",
+      });
+    }
+  };
+
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* 1. Workspace & Project Setup */}
-      <div className="space-y-6">
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-3 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2">
-            <LayersIcon className="size-4 text-muted-foreground" />
+            <UserCogIcon className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">
-              <T>Create Workspace</T>
+              <T>My Profile & Notification Handles</T>
             </h3>
           </div>
           <p className="text-xs text-muted-foreground">
             <T>
-              Signed in as <Var>{status.me?.user.displayName ?? "user"}</Var>. Create a workspace to
-              organize projects, repositories, and team roles.
+              Bind your GitHub login and Lark or Slack user ID so Hub cards can @mention you when
+              PRs or blockers need attention.
             </T>
           </p>
           <div className="grid gap-2.5 sm:grid-cols-2">
             <Input
-              placeholder={gt("Workspace name (e.g. Engineering)")}
+              placeholder={gt("Display name")}
               size="sm"
-              value={wsName}
-              onChange={(event) => setWsName(event.target.value)}
+              value={profileDisplayName}
+              onChange={(event) => setProfileDisplayName(event.target.value)}
             />
             <Input
-              placeholder={gt("Slug (e.g. eng)")}
+              placeholder={gt("GitHub / VCS login")}
               size="sm"
-              value={wsSlug}
-              onChange={(event) => setWsSlug(event.target.value)}
+              value={profileVcsLogin}
+              onChange={(event) => setProfileVcsLogin(event.target.value)}
+            />
+            <Input
+              placeholder={gt("Lark open_id (for @mentions)")}
+              size="sm"
+              value={larkHandle}
+              onChange={(event) => setLarkHandle(event.target.value)}
+            />
+            <Input
+              placeholder={gt("Slack member ID (optional)")}
+              size="sm"
+              value={slackHandle}
+              onChange={(event) => setSlackHandle(event.target.value)}
             />
           </div>
           <div className="flex justify-end">
-            <Button
-              disabled={creatingWs || !wsName.trim()}
-              size="sm"
-              onClick={() => void handleCreateWorkspace()}
-            >
-              {creatingWs ? <T>Creating...</T> : <T>Create Workspace</T>}
+            <Button disabled={savingProfile} size="sm" onClick={() => void handleSaveProfile()}>
+              {savingProfile ? <T>Saving...</T> : <T>Save Profile</T>}
             </Button>
           </div>
         </section>
 
         <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-2">
-            <FolderPlusIcon className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">
-              <T>Create Project</T>
-            </h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UsersIcon className="size-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold text-foreground">
+                <T>Team Members & Roles</T>
+              </h3>
+            </div>
+            <Badge size="sm" variant="secondary">
+              {visibleMembers.length}
+            </Badge>
           </div>
           {!selectedWorkspaceId ? (
             <p className="text-xs text-muted-foreground">
-              <T>Create or select a workspace first.</T>
+              <T>Select or create a workspace to manage member roles.</T>
+            </p>
+          ) : visibleMembers.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              <T>No members loaded yet.</T>
             </p>
           ) : (
-            <div className="space-y-2.5">
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Input
-                  placeholder={gt("Key (e.g. CORE)")}
-                  size="sm"
-                  value={projKey}
-                  onChange={(event) => setProjKey(event.target.value)}
-                />
-                <div className="sm:col-span-2">
-                  <Input
-                    placeholder={gt("Project name")}
-                    size="sm"
-                    value={projName}
-                    onChange={(event) => setProjName(event.target.value)}
-                  />
+            <div className="space-y-2">
+              {visibleMembers.map((member) => (
+                <div
+                  key={member.userId}
+                  className="space-y-2 rounded-lg border border-border bg-muted/25 p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="font-medium text-foreground">
+                      {member.displayName}
+                      {member.primaryVcsLogin ? ` (@${member.primaryVcsLogin})` : ""}
+                    </span>
+                    {member.notificationHandles.lark ? (
+                      <Badge size="sm" variant="outline">
+                        <T>
+                          Lark: <Var>{member.notificationHandles.lark}</Var>
+                        </T>
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {WORKSPACE_ROLES.map((role) => {
+                      const active = member.roles.includes(role);
+                      return (
+                        <Button
+                          key={role}
+                          disabled={updatingMemberId === member.userId}
+                          size="micro"
+                          variant={active ? "default" : "outline"}
+                          onClick={() => void handleToggleMemberRole(member, role)}
+                        >
+                          {role}
+                        </Button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <Input
-                placeholder={gt("Short description (optional)")}
-                size="sm"
-                value={projDesc}
-                onChange={(event) => setProjDesc(event.target.value)}
-              />
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <select
-                  aria-label={gt("Workflow Preset")}
-                  className="h-8 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground"
-                  value={projPreset}
-                  onChange={(event) =>
-                    setProjPreset(event.target.value as "lean" | "full-delivery")
-                  }
-                >
-                  <option value="full-delivery">
-                    {gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)")}
-                  </option>
-                  <option value="lean">{gt("Lean (Backlog → In Progress → Review → Done)")}</option>
-                </select>
-                <Button
-                  disabled={creatingProj || !projKey.trim() || !projName.trim()}
-                  size="sm"
-                  onClick={() => void handleCreateProject()}
-                >
-                  {creatingProj ? <T>Creating...</T> : <T>Create Project</T>}
-                </Button>
-              </div>
+              ))}
             </div>
           )}
         </section>
       </div>
 
-      {/* 2. Repository Policies & Notification Channels */}
-      <div className="space-y-6">
-        <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* 1. Workspace & Project Setup */}
+        <div className="space-y-6">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2">
-              <GitBranchIcon className="size-4 text-muted-foreground" />
+              <LayersIcon className="size-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">
-                <T>Linked Repositories & Policy</T>
+                <T>Create Workspace</T>
               </h3>
             </div>
-            <Badge size="sm" variant="secondary">
-              {overview?.repos.length ?? 0}
-            </Badge>
-          </div>
-
-          {(overview?.repos ?? []).length > 0 ? (
-            <ul className="space-y-1.5 text-xs">
-              {(overview?.repos ?? []).map((repo) => (
-                <li
-                  key={repo.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-                >
-                  <span className="font-mono font-medium text-foreground">{repo.repoFullName}</span>
-                  <div className="flex items-center gap-1.5">
-                    {repo.repoPolicy.branches.map((branch) => (
-                      <Badge key={branch.name} size="sm" variant="outline">
-                        {branch.name}:{branch.role}
-                      </Badge>
-                    ))}
-                    {repo.repoPolicy.automatedReviewers.map((bot) => (
-                      <Badge key={bot.name} size="sm" variant="info">
-                        bot:{bot.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {!selectedProjectId ? (
             <p className="text-xs text-muted-foreground">
-              <T>Select or create a project to link repositories.</T>
+              <T>
+                Signed in as <Var>{status.me?.user.displayName ?? "user"}</Var>. Create a workspace
+                to organize projects, repositories, and team roles.
+              </T>
             </p>
-          ) : (
-            <div className="space-y-2.5 pt-1">
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <select
-                  aria-label={gt("Forge")}
-                  className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
-                  value={forgeKind}
-                  onChange={(event) => setForgeKind(event.target.value as ForgeKind)}
-                >
-                  <option value="github">github</option>
-                  <option value="gitlab">gitlab</option>
-                </select>
-                <div className="sm:col-span-2">
-                  <Input
-                    placeholder={gt("org/repository")}
-                    size="sm"
-                    value={repoFullName}
-                    onChange={(event) => setRepoFullName(event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <Input
-                  placeholder={gt("Integration branch (dev)")}
-                  size="sm"
-                  value={integrationBranch}
-                  onChange={(event) => setIntegrationBranch(event.target.value)}
-                />
-                <Input
-                  placeholder={gt("Release branch (main)")}
-                  size="sm"
-                  value={releaseBranch}
-                  onChange={(event) => setReleaseBranch(event.target.value)}
-                />
-                <Input
-                  placeholder={gt("Max PR lines (500)")}
-                  size="sm"
-                  value={maxPrLines}
-                  onChange={(event) => setMaxPrLines(event.target.value)}
-                />
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Input
-                  placeholder={gt("Automated reviewer name (optional)")}
-                  size="sm"
-                  value={botName}
-                  onChange={(event) => setBotName(event.target.value)}
-                />
-                <Input
-                  placeholder={gt("Bot logins comma-separated (optional)")}
-                  size="sm"
-                  value={botLogins}
-                  onChange={(event) => setBotLogins(event.target.value)}
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button
-                  disabled={addingRepo || !repoFullName.trim()}
-                  size="sm"
-                  onClick={() => void handleAddRepo()}
-                >
-                  {addingRepo ? <T>Linking...</T> : <T>Link Repository</T>}
-                </Button>
-              </div>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <Input
+                placeholder={gt("Workspace name (e.g. Engineering)")}
+                size="sm"
+                value={wsName}
+                onChange={(event) => setWsName(event.target.value)}
+              />
+              <Input
+                placeholder={gt("Slug (e.g. eng)")}
+                size="sm"
+                value={wsSlug}
+                onChange={(event) => setWsSlug(event.target.value)}
+              />
             </div>
-          )}
-        </section>
+            <div className="flex justify-end">
+              <Button
+                disabled={creatingWs || !wsName.trim()}
+                size="sm"
+                onClick={() => void handleCreateWorkspace()}
+              >
+                {creatingWs ? <T>Creating...</T> : <T>Create Workspace</T>}
+              </Button>
+            </div>
+          </section>
 
-        <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2">
-              <BellIcon className="size-4 text-muted-foreground" />
+              <FolderPlusIcon className="size-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">
-                <T>Notification Channels</T>
+                <T>Create Project</T>
               </h3>
             </div>
-            <Badge size="sm" variant="secondary">
-              {visibleChannels.length}
-            </Badge>
-          </div>
-
-          {visibleChannels.length > 0 ? (
-            <ul className="space-y-1.5 text-xs">
-              {visibleChannels.map((ch) => (
-                <li
-                  key={ch.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-                >
-                  <span className="font-medium text-foreground">{ch.name}</span>
-                  <div className="flex items-center gap-1.5">
-                    <Badge size="sm" variant="outline">
-                      {ch.driver}
-                    </Badge>
-                    <Badge size="sm" variant={ch.isEnabled ? "success" : "secondary"}>
-                      {ch.events.length} events
-                    </Badge>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {!selectedWorkspaceId ? (
-            <p className="text-xs text-muted-foreground">
-              <T>Select or create a workspace to add notification channels.</T>
-            </p>
-          ) : (
-            <div className="space-y-2.5 pt-1">
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <select
-                  aria-label={gt("Notification Driver")}
-                  className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
-                  value={channelDriver}
-                  onChange={(event) => setChannelDriver(event.target.value as NotifierDriverKind)}
-                >
-                  <option value="lark">{gt("Lark / Feishu")}</option>
-                  <option value="webhook">{gt("Generic Webhook")}</option>
-                  <option value="slack">{gt("Slack")}</option>
-                  <option value="discord">{gt("Discord")}</option>
-                </select>
-                <div className="sm:col-span-2">
+            {!selectedWorkspaceId ? (
+              <p className="text-xs text-muted-foreground">
+                <T>Create or select a workspace first.</T>
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                <div className="grid gap-2.5 sm:grid-cols-3">
                   <Input
-                    placeholder={gt("Channel name (e.g. Engineering Alerts)")}
+                    placeholder={gt("Key (e.g. CORE)")}
                     size="sm"
-                    value={channelName}
-                    onChange={(event) => setChannelName(event.target.value)}
+                    value={projKey}
+                    onChange={(event) => setProjKey(event.target.value)}
                   />
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={gt("Project name")}
+                      size="sm"
+                      value={projName}
+                      onChange={(event) => setProjName(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <Input
+                  placeholder={gt("Short description (optional)")}
+                  size="sm"
+                  value={projDesc}
+                  onChange={(event) => setProjDesc(event.target.value)}
+                />
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <select
+                    aria-label={gt("Workflow Preset")}
+                    className="h-8 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground"
+                    value={projPreset}
+                    onChange={(event) =>
+                      setProjPreset(event.target.value as "lean" | "full-delivery")
+                    }
+                  >
+                    <option value="full-delivery">
+                      {gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)")}
+                    </option>
+                    <option value="lean">
+                      {gt("Lean (Backlog → In Progress → Review → Done)")}
+                    </option>
+                  </select>
+                  <Button
+                    disabled={creatingProj || !projKey.trim() || !projName.trim()}
+                    size="sm"
+                    onClick={() => void handleCreateProject()}
+                  >
+                    {creatingProj ? <T>Creating...</T> : <T>Create Project</T>}
+                  </Button>
                 </div>
               </div>
-              <Input
-                placeholder={gt("Webhook URL")}
-                size="sm"
-                value={channelWebhookUrl}
-                onChange={(event) => setChannelWebhookUrl(event.target.value)}
-              />
-              <Input
-                placeholder={gt("Signing secret (optional, stored AES-256-GCM encrypted)")}
-                size="sm"
-                type="password"
-                value={channelSecret}
-                onChange={(event) => setChannelSecret(event.target.value)}
-              />
-              <div className="flex justify-end">
-                <Button
-                  disabled={creatingChannel || !channelName.trim() || !channelWebhookUrl.trim()}
-                  size="sm"
-                  onClick={() => void handleCreateChannel()}
-                >
-                  {creatingChannel ? <T>Saving...</T> : <T>Add Channel</T>}
-                </Button>
+            )}
+          </section>
+        </div>
+
+        {/* 2. Repository Policies & Notification Channels */}
+        <div className="space-y-6">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GitBranchIcon className="size-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold text-foreground">
+                  <T>Linked Repositories & Policy</T>
+                </h3>
               </div>
+              <Badge size="sm" variant="secondary">
+                {overview?.repos.length ?? 0}
+              </Badge>
             </div>
-          )}
-        </section>
+
+            {(overview?.repos ?? []).length > 0 ? (
+              <ul className="space-y-1.5 text-xs">
+                {(overview?.repos ?? []).map((repo) => (
+                  <li
+                    key={repo.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                  >
+                    <span className="font-mono font-medium text-foreground">
+                      {repo.repoFullName}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {repo.repoPolicy.branches.map((branch) => (
+                        <Badge key={branch.name} size="sm" variant="outline">
+                          {branch.name}:{branch.role}
+                        </Badge>
+                      ))}
+                      {repo.repoPolicy.automatedReviewers.map((bot) => (
+                        <Badge key={bot.name} size="sm" variant="info">
+                          bot:{bot.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {!selectedProjectId ? (
+              <p className="text-xs text-muted-foreground">
+                <T>Select or create a project to link repositories.</T>
+              </p>
+            ) : (
+              <div className="space-y-2.5 pt-1">
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <select
+                    aria-label={gt("Forge")}
+                    className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                    value={forgeKind}
+                    onChange={(event) => setForgeKind(event.target.value as ForgeKind)}
+                  >
+                    <option value="github">github</option>
+                    <option value="gitlab">gitlab</option>
+                  </select>
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={gt("org/repository")}
+                      size="sm"
+                      value={repoFullName}
+                      onChange={(event) => setRepoFullName(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <Input
+                    placeholder={gt("Integration branch (dev)")}
+                    size="sm"
+                    value={integrationBranch}
+                    onChange={(event) => setIntegrationBranch(event.target.value)}
+                  />
+                  <Input
+                    placeholder={gt("Release branch (main)")}
+                    size="sm"
+                    value={releaseBranch}
+                    onChange={(event) => setReleaseBranch(event.target.value)}
+                  />
+                  <Input
+                    placeholder={gt("Max PR lines (500)")}
+                    size="sm"
+                    value={maxPrLines}
+                    onChange={(event) => setMaxPrLines(event.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <Input
+                    placeholder={gt("Automated reviewer name (optional)")}
+                    size="sm"
+                    value={botName}
+                    onChange={(event) => setBotName(event.target.value)}
+                  />
+                  <Input
+                    placeholder={gt("Bot logins comma-separated (optional)")}
+                    size="sm"
+                    value={botLogins}
+                    onChange={(event) => setBotLogins(event.target.value)}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    disabled={addingRepo || !repoFullName.trim()}
+                    size="sm"
+                    onClick={() => void handleAddRepo()}
+                  >
+                    {addingRepo ? <T>Linking...</T> : <T>Link Repository</T>}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BellIcon className="size-4 text-muted-foreground" />
+                <h3 className="text-sm font-semibold text-foreground">
+                  <T>Notification Channels</T>
+                </h3>
+              </div>
+              <Badge size="sm" variant="secondary">
+                {visibleChannels.length}
+              </Badge>
+            </div>
+
+            {visibleChannels.length > 0 ? (
+              <ul className="space-y-1.5 text-xs">
+                {visibleChannels.map((ch) => (
+                  <li
+                    key={ch.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                  >
+                    <span className="font-medium text-foreground">{ch.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Badge size="sm" variant="outline">
+                        {ch.driver}
+                      </Badge>
+                      <Badge size="sm" variant={ch.isEnabled ? "success" : "secondary"}>
+                        {ch.events.length} events
+                      </Badge>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {!selectedWorkspaceId ? (
+              <p className="text-xs text-muted-foreground">
+                <T>Select or create a workspace to add notification channels.</T>
+              </p>
+            ) : (
+              <div className="space-y-2.5 pt-1">
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <select
+                    aria-label={gt("Notification Driver")}
+                    className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                    value={channelDriver}
+                    onChange={(event) => setChannelDriver(event.target.value as NotifierDriverKind)}
+                  >
+                    <option value="lark">{gt("Lark / Feishu")}</option>
+                    <option value="webhook">{gt("Generic Webhook")}</option>
+                    <option value="slack">{gt("Slack")}</option>
+                    <option value="discord">{gt("Discord")}</option>
+                  </select>
+                  <div className="sm:col-span-2">
+                    <Input
+                      placeholder={gt("Channel name (e.g. Engineering Alerts)")}
+                      size="sm"
+                      value={channelName}
+                      onChange={(event) => setChannelName(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <Input
+                  placeholder={gt("Webhook URL")}
+                  size="sm"
+                  value={channelWebhookUrl}
+                  onChange={(event) => setChannelWebhookUrl(event.target.value)}
+                />
+                <Input
+                  placeholder={gt("Signing secret (optional, stored AES-256-GCM encrypted)")}
+                  size="sm"
+                  type="password"
+                  value={channelSecret}
+                  onChange={(event) => setChannelSecret(event.target.value)}
+                />
+                <div className="flex justify-end">
+                  <Button
+                    disabled={creatingChannel || !channelName.trim() || !channelWebhookUrl.trim()}
+                    size="sm"
+                    onClick={() => void handleCreateChannel()}
+                  >
+                    {creatingChannel ? <T>Saving...</T> : <T>Add Channel</T>}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );

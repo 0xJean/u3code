@@ -6,6 +6,7 @@ import type { HubDatabase } from "./db/client.ts";
 import { NotificationDispatcher } from "./notifiers/index.ts";
 import { createAuthRoutes } from "./routes/auth.ts";
 import { createCockpitRoutes } from "./routes/cockpit.ts";
+import { createReleaseRoutes } from "./routes/releases.ts";
 import { createWorkItemRoutes } from "./routes/workItems.ts";
 import { createWorkspaceRoutes } from "./routes/workspaces.ts";
 import { verifyHmacSha256 } from "./utils/crypto.ts";
@@ -81,6 +82,10 @@ export function createHubApp(options: CreateHubAppOptions): {
   app.route(
     "/api/v1",
     createWorkItemRoutes({ db: options.db, config: options.config, broker, notifier }),
+  );
+  app.route(
+    "/api/v1",
+    createReleaseRoutes({ db: options.db, config: options.config, broker, notifier }),
   );
   app.route(
     "/api/v1/cockpit",

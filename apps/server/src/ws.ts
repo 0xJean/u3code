@@ -2079,6 +2079,13 @@ export const layerWsRpc = (
           teamHub.listNotificationChannels(input),
         [WS_METHODS.teamHubCreateNotificationChannel]: (input) =>
           teamHub.createNotificationChannel(input),
+        [WS_METHODS.teamHubUpdateProfile]: (input) => teamHub.updateProfile(input),
+        [WS_METHODS.teamHubListMembers]: (input) => teamHub.listMembers(input),
+        [WS_METHODS.teamHubUpdateMemberRoles]: (input) => teamHub.updateMemberRoles(input),
+        [WS_METHODS.teamHubListReleases]: (input) => teamHub.listReleases(input),
+        [WS_METHODS.teamHubCreateRelease]: (input) => teamHub.createRelease(input),
+        [WS_METHODS.teamHubUpdateRelease]: (input) => teamHub.updateRelease(input),
+        [WS_METHODS.teamHubSubscribeEvents]: (input) => teamHub.subscribeEvents(input),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

@@ -417,5 +417,80 @@ describe("u3code-hub integration (PGlite)", () => {
       "Standardize RS256 rotation across Go services",
     );
     expect(updatedMemory.directives).toHaveLength(1);
+
+    // 9. Members list & profile notification handle update
+    const profileRes = await app.request("/api/v1/auth/me", {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        notificationHandles: { lark: "ou_owner_123" },
+      }),
+    });
+    expect(profileRes.status).toBe(200);
+
+    const membersRes = await app.request(`/api/v1/workspaces/${workspace.id}/members`, {
+      headers: ownerHeaders,
+    });
+    expect(membersRes.status).toBe(200);
+    const { members } = (await membersRes.json()) as {
+      members: Array<{
+        userId: string;
+        roles: string[];
+        notificationHandles: Record<string, string>;
+      }>;
+    };
+    const ownerMember = members.find((m) => m.userId === ownerAuth.user.id);
+    expect(ownerMember?.notificationHandles.lark).toBe("ou_owner_123");
+
+    // 10. Cross-repo release lifecycle & prod_go gate enforcement
+    const createRelRes = await app.request(`/api/v1/projects/${project.id}/releases`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        versionLabel: "v2.4.0",
+        repoSnapshots: { "acme/nexus-core": "main@abc1234", "acme/admin-web": "main@def5678" },
+        rollbackPlan: "Revert Helm chart to v2.3.9 and re-enable legacy gateway flag.",
+        releaseNotesMd: "Auth outbox + Admin RBAC panel.",
+      }),
+    });
+    expect(createRelRes.status).toBe(201);
+    const { release: createdRel } = (await createRelRes.json()) as {
+      release: { release: { id: string; status: string } };
+    };
+
+    // Trying to mark released before prod_go approval must be blocked with 409
+    const blockedReleaseRes = await app.request(`/api/v1/releases/${createdRel.release.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({ status: "released" }),
+    });
+    expect(blockedReleaseRes.status).toBe(409);
+
+    // Approve prod_go gate on release
+    const approveProdGoRes = await app.request("/api/v1/gates/approve", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        targetType: "release",
+        targetId: createdRel.release.id,
+        gateKey: "prod_go",
+        status: "approved",
+        note: "Staging canary green.",
+      }),
+    });
+    expect(approveProdGoRes.status).toBe(201);
+
+    const releasedRes = await app.request(`/api/v1/releases/${createdRel.release.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({ status: "released" }),
+    });
+    expect(releasedRes.status).toBe(200);
+    const { release: finalRel } = (await releasedRes.json()) as {
+      release: { release: { status: string; releasedAt: string | null }; gateApprovals: unknown[] };
+    };
+    expect(finalRel.release.status).toBe("released");
+    expect(finalRel.release.releasedAt).not.toBeNull();
+    expect(finalRel.gateApprovals).toHaveLength(1);
   });
 });

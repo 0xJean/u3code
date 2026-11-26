@@ -15,6 +15,10 @@ export interface HubConfig {
   readonly llmBaseUrl: string;
   readonly llmApiKey: string | null;
   readonly llmModel: string;
+  /** Daily HH:MM times in configured timezone (e.g. ["09:30", "19:00"]). Empty disables scheduler. */
+  readonly digestScheduleTimes: readonly string[];
+  /** Timezone offset from UTC in minutes (e.g. 480 for UTC+8). */
+  readonly digestTimezoneOffsetMinutes: number;
 }
 
 function parseList(raw: string | undefined): string[] {
@@ -46,5 +50,7 @@ export function loadHubConfig(env: NodeJS.ProcessEnv = process.env): HubConfig {
     llmBaseUrl: (env.HUB_LLM_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, ""),
     llmApiKey: env.HUB_LLM_API_KEY?.trim() || null,
     llmModel: env.HUB_LLM_MODEL?.trim() || "gpt-4.1-mini",
+    digestScheduleTimes: parseList(env.HUB_DIGEST_SCHEDULE_TIMES),
+    digestTimezoneOffsetMinutes: Number.parseInt(env.HUB_DIGEST_TZ_OFFSET_MINUTES ?? "0", 10) || 0,
   };
 }

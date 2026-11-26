@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type {
   CockpitOverview,
   EnvironmentId,
+  HubWsEvent,
   TeamHubDigestsResult,
   TeamHubMemoryResult,
   TeamHubReviewQueueResult,
@@ -14,6 +15,7 @@ import type {
   WorkItemPriority,
   WorkItemType,
 } from "@u3code/hub-contracts";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { T, useGT, Var } from "gt-react";
 import {
   AlertTriangleIcon,
@@ -24,7 +26,9 @@ import {
   FileTextIcon,
   KanbanIcon,
   LogOutIcon,
+  PackageCheckIcon,
   PlusIcon,
+  RadioIcon,
   RefreshCwIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
@@ -57,10 +61,11 @@ import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CockpitConnectCard } from "./CockpitConnectCard";
+import { CockpitReleasesTab } from "./CockpitReleasesTab";
 import { CockpitSettingsTab } from "./CockpitSettingsTab";
 import { formatCockpitCommandError } from "./cockpitError";
 
-type CockpitTab = "board" | "triage" | "memory" | "setup";
+type CockpitTab = "board" | "triage" | "releases" | "memory" | "setup";
 
 function healthBadgeVariant(health: string): "success" | "warning" | "error" {
   if (health === "blocked") return "error";
@@ -131,6 +136,7 @@ export function CockpitPage() {
   const [generatingDigest, setGeneratingDigest] = useState(false);
   const [newDirectiveText, setNewDirectiveText] = useState("");
   const [savingDirectives, setSavingDirectives] = useState(false);
+  const [liveRefreshCount, setLiveRefreshCount] = useState(0);
 
   const fetchStatus = useAtomCommand(teamHubEnvironment.status, { reportFailure: false });
   const connectTokens = useAtomCommand(teamHubEnvironment.connectTokens, { reportFailure: false });
@@ -418,8 +424,22 @@ export function CockpitPage() {
   const stages = activeProject?.workflowConfig.stages ?? [];
   const gates = activeProject?.workflowConfig.gates ?? [];
 
+  const handleLiveHubEvent = (_event: HubWsEvent) => {
+    setLiveRefreshCount((count) => count + 1);
+    if (primaryEnvironmentId && selectedWorkspaceId) {
+      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+    }
+  };
+
   return (
     <SidebarInset className="flex h-dvh flex-col overflow-hidden">
+      {primaryEnvironmentId && status?.connected && selectedWorkspaceId ? (
+        <CockpitLiveEventsBridge
+          environmentId={primaryEnvironmentId}
+          workspaceId={selectedWorkspaceId}
+          onEvent={handleLiveHubEvent}
+        />
+      ) : null}
       <WorkspacePageHeader electron={isElectron}>
         <WorkspaceBreadcrumb ariaLabel={gt("Team Cockpit")}>
           <WorkspaceBreadcrumbItem>
@@ -431,6 +451,10 @@ export function CockpitPage() {
 
         {status?.connected && status.me ? (
           <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
+            <Badge size="sm" variant="success">
+              <RadioIcon />
+              <T>Live</T>
+            </Badge>
             {status.me.workspaces.length > 0 ? (
               <select
                 aria-label={gt("Workspace")}
@@ -591,6 +615,14 @@ export function CockpitPage() {
                   </Button>
                   <Button
                     size="sm"
+                    variant={activeTab === "releases" ? "default" : "ghost"}
+                    onClick={() => setActiveTab("releases")}
+                  >
+                    <PackageCheckIcon />
+                    <T>Releases</T>
+                  </Button>
+                  <Button
+                    size="sm"
                     variant={activeTab === "memory" ? "default" : "ghost"}
                     onClick={() => setActiveTab("memory")}
                   >
@@ -676,6 +708,14 @@ export function CockpitPage() {
               ) : null}
 
               {activeTab === "triage" ? <TriageQueueView reviewQueue={reviewQueue} /> : null}
+
+              {activeTab === "releases" ? (
+                <CockpitReleasesTab
+                  environmentId={primaryEnvironmentId}
+                  refreshSignal={liveRefreshCount}
+                  selectedProjectId={selectedProjectId}
+                />
+              ) : null}
 
               {activeTab === "memory" ? (
                 <div className="grid gap-6 lg:grid-cols-2">
@@ -980,6 +1020,32 @@ export function CockpitPage() {
       </Dialog>
     </SidebarInset>
   );
+}
+
+function CockpitLiveEventsBridge({
+  environmentId,
+  workspaceId,
+  onEvent,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly workspaceId: string;
+  readonly onEvent: (event: HubWsEvent) => void;
+}) {
+  const result = useAtomValue(
+    teamHubEnvironment.subscribeEvents({ environmentId, input: { workspaceId } }),
+  );
+  const latestEvent = AsyncResult.isSuccess(result) ? result.value : null;
+  const handleEvent = useEffectEvent((event: HubWsEvent) => {
+    onEvent(event);
+  });
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Forward live Team Hub WebSocket events to refresh the cockpit view.
+  useEffect(() => {
+    if (!latestEvent) return;
+    handleEvent(latestEvent);
+  }, [latestEvent]);
+
+  return null;
 }
 
 function MetricTile({

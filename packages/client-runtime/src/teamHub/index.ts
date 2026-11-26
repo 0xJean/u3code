@@ -2,7 +2,10 @@ import { WS_METHODS } from "@t3tools/contracts";
 import type { Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { createEnvironmentRpcCommand } from "../state/runtime.ts";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcSubscriptionAtomFamily,
+} from "../state/runtime.ts";
 
 export function createTeamHubEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -87,6 +90,34 @@ export function createTeamHubEnvironmentAtoms<R, E>(
     createNotificationChannel: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:team-hub:create-notification-channel",
       tag: WS_METHODS.teamHubCreateNotificationChannel,
+    }),
+    updateProfile: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:update-profile",
+      tag: WS_METHODS.teamHubUpdateProfile,
+    }),
+    listMembers: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:list-members",
+      tag: WS_METHODS.teamHubListMembers,
+    }),
+    updateMemberRoles: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:update-member-roles",
+      tag: WS_METHODS.teamHubUpdateMemberRoles,
+    }),
+    listReleases: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:list-releases",
+      tag: WS_METHODS.teamHubListReleases,
+    }),
+    createRelease: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:create-release",
+      tag: WS_METHODS.teamHubCreateRelease,
+    }),
+    updateRelease: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:update-release",
+      tag: WS_METHODS.teamHubUpdateRelease,
+    }),
+    subscribeEvents: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:team-hub:events",
+      tag: WS_METHODS.teamHubSubscribeEvents,
     }),
   };
 }

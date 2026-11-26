@@ -1,5 +1,6 @@
 import {
   CockpitOverview,
+  HubWsEvent,
   PulseDraft,
   TeamHubAddProjectRepoResult,
   TeamHubApproveGateResult,
@@ -9,11 +10,16 @@ import {
   TeamHubDigestsResult,
   TeamHubError,
   TeamHubGenerateDigestResult,
+  TeamHubListMembersResult,
   TeamHubListNotificationChannelsResult,
+  TeamHubListReleasesResult,
   TeamHubMemoryResult,
   TeamHubPublishPulseResult,
+  TeamHubReleaseResult,
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
+  TeamHubUpdateMemberRolesResult,
+  TeamHubUpdateProfileResult,
   TeamHubWorkItemResult,
   type TeamHubAddProjectRepoInput,
   type TeamHubApproveGateInput,
@@ -21,17 +27,24 @@ import {
   type TeamHubConnectTokensInput,
   type TeamHubCreateNotificationChannelInput,
   type TeamHubCreateProjectInput,
+  type TeamHubCreateReleaseInput,
   type TeamHubCreateWorkItemInput,
   type TeamHubCreateWorkspaceInput,
   type TeamHubDigestsInput,
   type TeamHubExtractPulseDraftInput,
   type TeamHubGenerateDigestInput,
+  type TeamHubListMembersInput,
   type TeamHubListNotificationChannelsInput,
+  type TeamHubListReleasesInput,
   type TeamHubMemoryInput,
   type TeamHubOverviewInput,
   type TeamHubPublishPulseInput,
   type TeamHubReviewQueueInput,
+  type TeamHubSubscribeEventsInput,
   type TeamHubUpdateDirectivesInput,
+  type TeamHubUpdateMemberRolesInput,
+  type TeamHubUpdateProfileInput,
+  type TeamHubUpdateReleaseInput,
   type TeamHubUpdateWorkItemInput,
 } from "@t3tools/contracts";
 import { HubAuthMe, HubTokenPair } from "@u3code/hub-contracts";
@@ -40,7 +53,9 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
@@ -91,6 +106,12 @@ const decodeCreateProject = Schema.decodeUnknownEffect(TeamHubCreateProjectResul
 const decodeAddProjectRepo = Schema.decodeUnknownEffect(TeamHubAddProjectRepoResult);
 const decodeListChannels = Schema.decodeUnknownEffect(TeamHubListNotificationChannelsResult);
 const decodeCreateChannel = Schema.decodeUnknownEffect(TeamHubCreateNotificationChannelResult);
+const decodeUpdateProfile = Schema.decodeUnknownEffect(TeamHubUpdateProfileResult);
+const decodeListMembers = Schema.decodeUnknownEffect(TeamHubListMembersResult);
+const decodeUpdateMemberRoles = Schema.decodeUnknownEffect(TeamHubUpdateMemberRolesResult);
+const decodeListReleases = Schema.decodeUnknownEffect(TeamHubListReleasesResult);
+const decodeRelease = Schema.decodeUnknownEffect(TeamHubReleaseResult);
+const decodeHubWsEventJson = Schema.decodeUnknownSync(Schema.fromJsonString(HubWsEvent));
 
 function normalizeHubUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
@@ -161,6 +182,27 @@ export class TeamHubService extends Context.Service<
     readonly createNotificationChannel: (
       input: TeamHubCreateNotificationChannelInput,
     ) => Effect.Effect<TeamHubCreateNotificationChannelResult, TeamHubError>;
+    readonly updateProfile: (
+      input: TeamHubUpdateProfileInput,
+    ) => Effect.Effect<TeamHubUpdateProfileResult, TeamHubError>;
+    readonly listMembers: (
+      input: TeamHubListMembersInput,
+    ) => Effect.Effect<TeamHubListMembersResult, TeamHubError>;
+    readonly updateMemberRoles: (
+      input: TeamHubUpdateMemberRolesInput,
+    ) => Effect.Effect<TeamHubUpdateMemberRolesResult, TeamHubError>;
+    readonly listReleases: (
+      input: TeamHubListReleasesInput,
+    ) => Effect.Effect<TeamHubListReleasesResult, TeamHubError>;
+    readonly createRelease: (
+      input: TeamHubCreateReleaseInput,
+    ) => Effect.Effect<TeamHubReleaseResult, TeamHubError>;
+    readonly updateRelease: (
+      input: TeamHubUpdateReleaseInput,
+    ) => Effect.Effect<TeamHubReleaseResult, TeamHubError>;
+    readonly subscribeEvents: (
+      input: TeamHubSubscribeEventsInput,
+    ) => Stream.Stream<HubWsEvent, TeamHubError>;
   }
 >()("t3/teamHub/TeamHubService") {}
 
@@ -560,6 +602,123 @@ const make = Effect.gen(function* () {
     },
   );
 
+  const updateProfile = Effect.fn("TeamHubService.updateProfile")(function* (
+    input: TeamHubUpdateProfileInput,
+  ) {
+    return yield* authedRequest({
+      method: "PATCH",
+      pathAndQuery: "/api/v1/auth/me",
+      body: input,
+      decode: decodeUpdateProfile,
+    });
+  });
+
+  const listMembers = Effect.fn("TeamHubService.listMembers")(function* (
+    input: TeamHubListMembersInput,
+  ) {
+    return yield* authedRequest({
+      method: "GET",
+      pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/members`,
+      decode: decodeListMembers,
+    });
+  });
+
+  const updateMemberRoles = Effect.fn("TeamHubService.updateMemberRoles")(function* (
+    input: TeamHubUpdateMemberRolesInput,
+  ) {
+    return yield* authedRequest({
+      method: "PUT",
+      pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/members/${encodeURIComponent(input.userId)}`,
+      body: { roles: input.roles },
+      decode: decodeUpdateMemberRoles,
+    });
+  });
+
+  const listReleases = Effect.fn("TeamHubService.listReleases")(function* (
+    input: TeamHubListReleasesInput,
+  ) {
+    return yield* authedRequest({
+      method: "GET",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/releases`,
+      decode: decodeListReleases,
+    });
+  });
+
+  const createRelease = Effect.fn("TeamHubService.createRelease")(function* (
+    input: TeamHubCreateReleaseInput,
+  ) {
+    const { projectId, ...body } = input;
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(projectId)}/releases`,
+      body,
+      decode: decodeRelease,
+    });
+  });
+
+  const updateRelease = Effect.fn("TeamHubService.updateRelease")(function* (
+    input: TeamHubUpdateReleaseInput,
+  ) {
+    const { releaseId, ...patch } = input;
+    return yield* authedRequest({
+      method: "PATCH",
+      pathAndQuery: `/api/v1/releases/${encodeURIComponent(releaseId)}`,
+      body: patch,
+      decode: decodeRelease,
+    });
+  });
+
+  const subscribeEvents = (
+    input: TeamHubSubscribeEventsInput,
+  ): Stream.Stream<HubWsEvent, TeamHubError> =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const creds = yield* readCredentials();
+        if (!creds || typeof WebSocket === "undefined") {
+          return Stream.empty;
+        }
+        const wsOrigin = creds.hubUrl.replace(/^http/i, "ws");
+        const params = new URLSearchParams({
+          workspaceId: input.workspaceId,
+          token: creds.accessToken,
+        });
+        const wsUrl = `${wsOrigin}/ws?${params.toString()}`;
+
+        return Stream.callback<HubWsEvent, TeamHubError>((queue) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              const socket = new WebSocket(wsUrl);
+              socket.addEventListener("message", (event) => {
+                if (typeof event.data !== "string") return;
+                try {
+                  const decoded = decodeHubWsEventJson(event.data);
+                  Queue.offerUnsafe(queue, decoded);
+                } catch {
+                  // Ignore unknown or non-event frames cleanly.
+                }
+              });
+              socket.addEventListener("close", () => {
+                Queue.endUnsafe(queue);
+              });
+              socket.addEventListener("error", () => {
+                Queue.endUnsafe(queue);
+              });
+              return socket;
+            }),
+            (socket) =>
+              Effect.sync(() => {
+                if (
+                  socket.readyState === WebSocket.OPEN ||
+                  socket.readyState === WebSocket.CONNECTING
+                ) {
+                  socket.close();
+                }
+              }),
+          ),
+        );
+      }),
+    );
+
   return TeamHubService.of({
     status,
     connectLocal,
@@ -581,6 +740,13 @@ const make = Effect.gen(function* () {
     addProjectRepo,
     listNotificationChannels,
     createNotificationChannel,
+    updateProfile,
+    listMembers,
+    updateMemberRoles,
+    listReleases,
+    createRelease,
+    updateRelease,
+    subscribeEvents,
   });
 });
 

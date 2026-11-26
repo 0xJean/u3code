@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { IsoTimestamp } from "./auth.ts";
+import { IsoTimestamp, NotificationHandles } from "./auth.ts";
 import { Pulse, WorkHealth } from "./pulse.ts";
 import { BranchRole, RepoPolicy, WorkflowConfig } from "./workflow.ts";
 
@@ -201,6 +201,25 @@ export const Release = Schema.Struct({
   updatedAt: IsoTimestamp,
 });
 export type Release = typeof Release.Type;
+
+export const ReleaseCard = Schema.Struct({
+  release: Release,
+  workItemIds: Schema.Array(Schema.String),
+  gateApprovals: Schema.Array(GateApproval),
+});
+export type ReleaseCard = typeof ReleaseCard.Type;
+
+export const WorkspaceMember = Schema.Struct({
+  userId: Schema.String,
+  displayName: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  avatarUrl: Schema.NullOr(Schema.String),
+  primaryVcsLogin: Schema.NullOr(Schema.String),
+  notificationHandles: NotificationHandles,
+  roles: Schema.Array(Schema.String),
+  joinedAt: IsoTimestamp,
+});
+export type WorkspaceMember = typeof WorkspaceMember.Type;
 
 export const CockpitWorkItemCard = Schema.Struct({
   workItem: WorkItem,

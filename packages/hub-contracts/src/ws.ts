@@ -42,5 +42,13 @@ export const HubWsEvent = Schema.Union([
     projectId: Schema.NullOr(Schema.String),
     digestId: Schema.String,
   }),
+  Schema.Struct({
+    type: Schema.Literal("release.updated"),
+    workspaceId: Schema.String,
+    projectId: Schema.String,
+    releaseId: Schema.String,
+    versionLabel: Schema.String,
+    status: Schema.Literals(["planning", "staging", "ready", "released", "rolled_back"]),
+  }),
 ]);
 export type HubWsEvent = typeof HubWsEvent.Type;

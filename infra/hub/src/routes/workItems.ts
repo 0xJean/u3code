@@ -15,7 +15,6 @@ import {
   projectMemories,
   projects,
   pulses,
-  releaseItems,
   releases,
   workItems,
 } from "../db/schema.ts";
@@ -365,51 +364,6 @@ export function createWorkItemRoutes(deps: {
     });
 
     return c.json({ approval: inserted[0] }, 201);
-  });
-
-  app.post("/projects/:projectId/releases", async (c) => {
-    const user = getAuthUser(c);
-    const projectId = c.req.param("projectId");
-    const projectRows = await deps.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    const project = projectRows[0];
-    if (!project) return c.json({ error: "Project not found." }, 404);
-
-    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
-    if (!hasAnyRole(roles, ["owner", "ops", "pm"])) {
-      return c.json({ error: "Requires owner, ops, or pm role." }, 403);
-    }
-
-    const body = (await c.req.json()) as {
-      readonly versionLabel?: string;
-      readonly workItemIds?: string[];
-      readonly rollbackPlan?: string;
-      readonly releaseNotesMd?: string;
-    };
-    const versionLabel = body.versionLabel?.trim();
-    if (!versionLabel) return c.json({ error: "versionLabel is required." }, 400);
-
-    const releaseId = newId("rel");
-    const inserted = await deps.db
-      .insert(releases)
-      .values({
-        id: releaseId,
-        projectId,
-        versionLabel,
-        rollbackPlan: body.rollbackPlan ?? "",
-        releaseNotesMd: body.releaseNotesMd ?? "",
-        createdBy: user.id,
-      })
-      .returning();
-
-    for (const workItemId of body.workItemIds ?? []) {
-      await deps.db.insert(releaseItems).values({ releaseId, workItemId }).onConflictDoNothing();
-    }
-
-    return c.json({ release: inserted[0] }, 201);
   });
 
   app.get("/projects/:projectId/memory", async (c) => {
