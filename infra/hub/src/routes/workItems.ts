@@ -1,0 +1,490 @@
+import { and, desc, eq, max } from "drizzle-orm";
+import { Hono } from "hono";
+import type { ChecklistItem, ProjectDirective, PulseCreateInput } from "@u3code/hub-contracts";
+import {
+  createAuthMiddleware,
+  getAuthUser,
+  getUserWorkspaceRoles,
+  hasAnyRole,
+  type HubAuthVariables,
+} from "../auth/middleware.ts";
+import type { HubConfig } from "../config.ts";
+import type { HubDatabase } from "../db/client.ts";
+import {
+  gateApprovals,
+  projectMemories,
+  projects,
+  pulses,
+  releaseItems,
+  releases,
+  workItems,
+} from "../db/schema.ts";
+import type { NotificationDispatcher } from "../notifiers/index.ts";
+import { newId } from "../utils/crypto.ts";
+import type { HubSocketBroker } from "../ws/hubSocket.ts";
+
+export function createWorkItemRoutes(deps: {
+  readonly db: HubDatabase;
+  readonly config: HubConfig;
+  readonly broker: HubSocketBroker;
+  readonly notifier: NotificationDispatcher;
+}): Hono<{ Variables: HubAuthVariables }> {
+  const app = new Hono<{ Variables: HubAuthVariables }>();
+  app.use("*", createAuthMiddleware(deps.db, deps.config));
+
+  app.post("/projects/:projectId/work-items", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const body = (await c.req.json()) as {
+      readonly title?: string;
+      readonly itemType?: string;
+      readonly priority?: string;
+      readonly stage?: string;
+      readonly specMarkdown?: string;
+      readonly specUrl?: string | null;
+      readonly previewUrls?: string[];
+      readonly checklistItems?: ChecklistItem[];
+      readonly attributes?: Record<string, unknown>;
+    };
+
+    const title = body.title?.trim();
+    if (!title) return c.json({ error: "title is required." }, 400);
+
+    const maxSeqRows = await deps.db
+      .select({ maxSeq: max(workItems.seqNo) })
+      .from(workItems)
+      .where(eq(workItems.projectId, projectId));
+    const seqNo = (maxSeqRows[0]?.maxSeq ?? 0) + 1;
+    const code = `${project.key}-${seqNo}`;
+    const defaultStage = project.workflowConfig.stages[0]?.id ?? "backlog";
+    const stage = body.stage?.trim() || defaultStage;
+
+    const inserted = await deps.db
+      .insert(workItems)
+      .values({
+        id: newId("wi"),
+        projectId,
+        seqNo,
+        code,
+        title,
+        itemType: body.itemType ?? "feature",
+        priority: body.priority ?? "p1",
+        stage,
+        specMarkdown: body.specMarkdown ?? "",
+        specUrl: body.specUrl ?? null,
+        previewUrls: body.previewUrls ?? [],
+        checklistItems: body.checklistItems ?? [],
+        attributes: body.attributes ?? {},
+        createdBy: user.id,
+      })
+      .returning();
+
+    const item = inserted[0]!;
+    deps.broker.broadcast({
+      type: "work_item.changed",
+      workspaceId: project.workspaceId,
+      projectId,
+      workItemId: item.id,
+      stage: item.stage,
+      health: item.health as "on_track" | "at_risk" | "blocked",
+    });
+
+    return c.json({ workItem: item }, 201);
+  });
+
+  app.patch("/work-items/:workItemId", async (c) => {
+    const user = getAuthUser(c);
+    const workItemId = c.req.param("workItemId");
+    const rows = await deps.db
+      .select({ item: workItems, project: projects })
+      .from(workItems)
+      .innerJoin(projects, eq(workItems.projectId, projects.id))
+      .where(eq(workItems.id, workItemId))
+      .limit(1);
+    const found = rows[0];
+    if (!found) return c.json({ error: "Work item not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, found.project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const body = (await c.req.json()) as {
+      readonly title?: string;
+      readonly stage?: string;
+      readonly health?: "on_track" | "at_risk" | "blocked";
+      readonly specMarkdown?: string;
+      readonly specUrl?: string | null;
+      readonly previewUrls?: string[];
+      readonly checklistItems?: ChecklistItem[];
+      readonly attributes?: Record<string, unknown>;
+      readonly assigneeType?: "unassigned" | "human" | "runner";
+      readonly assigneeUserId?: string | null;
+      readonly assigneeRunnerId?: string | null;
+    };
+
+    // Enforce required gates configured before entering the target stage.
+    if (body.stage && body.stage !== found.item.stage) {
+      const requiredGates = found.project.workflowConfig.gates.filter(
+        (g) => g.beforeStage === body.stage && !g.optional,
+      );
+      if (requiredGates.length > 0) {
+        const approvals = await deps.db
+          .select()
+          .from(gateApprovals)
+          .where(
+            and(
+              eq(gateApprovals.targetType, "work_item"),
+              eq(gateApprovals.targetId, workItemId),
+              eq(gateApprovals.status, "approved"),
+            ),
+          );
+        const approvedKeys = new Set(approvals.map((a) => a.gateKey));
+        const missing = requiredGates.filter((g) => !approvedKeys.has(g.key));
+        if (missing.length > 0) {
+          return c.json(
+            {
+              error: `Cannot move to '${body.stage}': missing required gate approval(s).`,
+              missingGates: missing.map((g) => ({ key: g.key, label: g.label })),
+            },
+            409,
+          );
+        }
+      }
+    }
+
+    const updated = await deps.db
+      .update(workItems)
+      .set({
+        ...(body.title !== undefined ? { title: body.title.trim() } : {}),
+        ...(body.stage !== undefined ? { stage: body.stage } : {}),
+        ...(body.health !== undefined ? { health: body.health } : {}),
+        ...(body.specMarkdown !== undefined ? { specMarkdown: body.specMarkdown } : {}),
+        ...(body.specUrl !== undefined ? { specUrl: body.specUrl } : {}),
+        ...(body.previewUrls !== undefined ? { previewUrls: body.previewUrls } : {}),
+        ...(body.checklistItems !== undefined ? { checklistItems: body.checklistItems } : {}),
+        ...(body.attributes !== undefined
+          ? { attributes: { ...found.item.attributes, ...body.attributes } }
+          : {}),
+        ...(body.assigneeType !== undefined ? { assigneeType: body.assigneeType } : {}),
+        ...(body.assigneeUserId !== undefined ? { assigneeUserId: body.assigneeUserId } : {}),
+        ...(body.assigneeRunnerId !== undefined ? { assigneeRunnerId: body.assigneeRunnerId } : {}),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(workItems.id, workItemId))
+      .returning();
+
+    const next = updated[0]!;
+    deps.broker.broadcast({
+      type: "work_item.changed",
+      workspaceId: found.project.workspaceId,
+      projectId: found.project.id,
+      workItemId: next.id,
+      stage: next.stage,
+      health: next.health as "on_track" | "at_risk" | "blocked",
+    });
+
+    return c.json({ workItem: next });
+  });
+
+  app.post("/work-items/:workItemId/pulses", async (c) => {
+    const user = getAuthUser(c);
+    const workItemId = c.req.param("workItemId");
+    const rows = await deps.db
+      .select({ item: workItems, project: projects })
+      .from(workItems)
+      .innerJoin(projects, eq(workItems.projectId, projects.id))
+      .where(eq(workItems.id, workItemId))
+      .limit(1);
+    const found = rows[0];
+    if (!found) return c.json({ error: "Work item not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, found.project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const body = (await c.req.json()) as PulseCreateInput;
+    if (!body.doneSummary?.trim()) {
+      return c.json({ error: "doneSummary is required." }, 400);
+    }
+
+    const blockers = body.blockers ?? [];
+    const health =
+      body.health ??
+      (blockers.length > 0 ? "blocked" : (found.item.health as "on_track" | "at_risk" | "blocked"));
+    const pulseId = newId("pls");
+
+    const inserted = await deps.db
+      .insert(pulses)
+      .values({
+        id: pulseId,
+        workItemId,
+        sourceType: body.sourceType ?? "human_thread",
+        authorUserId: user.id,
+        sourceThreadId: body.sourceThreadId ?? null,
+        repoFullName: body.repoFullName ?? null,
+        stageAtTime: body.stageAtTime ?? found.item.stage,
+        health,
+        doneSummary: body.doneSummary.trim(),
+        decisions: [...(body.decisions ?? [])],
+        blockers: blockers.map((b) => ({
+          text: b.text,
+          ...(b.needsAttentionRoles ? { needsAttentionRoles: [...b.needsAttentionRoles] } : {}),
+        })),
+        nextStep: body.nextStep?.trim() ?? "",
+        progressedAcIds: [...(body.progressedAcIds ?? [])],
+      })
+      .returning();
+
+    await deps.db
+      .update(workItems)
+      .set({ health, updatedAt: new Date().toISOString() })
+      .where(eq(workItems.id, workItemId));
+
+    deps.broker.broadcast({
+      type: "pulse.created",
+      workspaceId: found.project.workspaceId,
+      projectId: found.project.id,
+      workItemId,
+      pulseId,
+      hasBlocker: blockers.length > 0,
+    });
+
+    if (blockers.length > 0) {
+      await deps.notifier.dispatch(found.project.workspaceId, found.project.id, {
+        event: "blocker.needs_attention",
+        title: `[${found.item.code}] Blocker Reported: ${found.item.title}`,
+        severity: "warning",
+        summary: `${user.displayName} synced a pulse with ${blockers.length} blocker(s).`,
+        bullets: blockers.map((b) => b.text),
+      });
+    }
+
+    return c.json({ pulse: inserted[0] }, 201);
+  });
+
+  app.get("/work-items/:workItemId/pulses", async (c) => {
+    const user = getAuthUser(c);
+    const workItemId = c.req.param("workItemId");
+    const rows = await deps.db
+      .select({ project: projects })
+      .from(workItems)
+      .innerJoin(projects, eq(workItems.projectId, projects.id))
+      .where(eq(workItems.id, workItemId))
+      .limit(1);
+    const found = rows[0];
+    if (!found) return c.json({ error: "Work item not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, found.project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const list = await deps.db
+      .select()
+      .from(pulses)
+      .where(eq(pulses.workItemId, workItemId))
+      .orderBy(desc(pulses.createdAt));
+    return c.json({ pulses: list });
+  });
+
+  app.post("/gates/approve", async (c) => {
+    const user = getAuthUser(c);
+    const body = (await c.req.json()) as {
+      readonly targetType?: "work_item" | "release";
+      readonly targetId?: string;
+      readonly gateKey?: string;
+      readonly status?: "approved" | "rejected" | "revoked";
+      readonly note?: string;
+      readonly evidenceUrls?: string[];
+    };
+
+    if (!body.targetType || !body.targetId || !body.gateKey || !body.status) {
+      return c.json({ error: "targetType, targetId, gateKey, and status are required." }, 400);
+    }
+
+    let project: typeof projects.$inferSelect | undefined;
+    if (body.targetType === "work_item") {
+      const r = await deps.db
+        .select({ project: projects })
+        .from(workItems)
+        .innerJoin(projects, eq(workItems.projectId, projects.id))
+        .where(eq(workItems.id, body.targetId))
+        .limit(1);
+      project = r[0]?.project;
+    } else {
+      const r = await deps.db
+        .select({ project: projects })
+        .from(releases)
+        .innerJoin(projects, eq(releases.projectId, projects.id))
+        .where(eq(releases.id, body.targetId))
+        .limit(1);
+      project = r[0]?.project;
+    }
+
+    if (!project) return c.json({ error: "Gate target not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    const gateRule = project.workflowConfig.gates.find((g) => g.key === body.gateKey);
+    const requiredRoles = gateRule?.requiredRoles ?? ["owner"];
+
+    if (!hasAnyRole(roles, requiredRoles)) {
+      return c.json(
+        { error: `Gate '${body.gateKey}' requires one of roles: ${requiredRoles.join(", ")}.` },
+        403,
+      );
+    }
+
+    const inserted = await deps.db
+      .insert(gateApprovals)
+      .values({
+        id: newId("gat"),
+        targetType: body.targetType,
+        targetId: body.targetId,
+        gateKey: body.gateKey,
+        status: body.status,
+        approvedBy: user.id,
+        note: body.note?.trim() ?? "",
+        evidenceUrls: body.evidenceUrls ?? [],
+      })
+      .returning();
+
+    deps.broker.broadcast({
+      type: "gate.updated",
+      workspaceId: project.workspaceId,
+      targetType: body.targetType,
+      targetId: body.targetId,
+      gateKey: body.gateKey,
+      status: body.status,
+    });
+
+    return c.json({ approval: inserted[0] }, 201);
+  });
+
+  app.post("/projects/:projectId/releases", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (!hasAnyRole(roles, ["owner", "ops", "pm"])) {
+      return c.json({ error: "Requires owner, ops, or pm role." }, 403);
+    }
+
+    const body = (await c.req.json()) as {
+      readonly versionLabel?: string;
+      readonly workItemIds?: string[];
+      readonly rollbackPlan?: string;
+      readonly releaseNotesMd?: string;
+    };
+    const versionLabel = body.versionLabel?.trim();
+    if (!versionLabel) return c.json({ error: "versionLabel is required." }, 400);
+
+    const releaseId = newId("rel");
+    const inserted = await deps.db
+      .insert(releases)
+      .values({
+        id: releaseId,
+        projectId,
+        versionLabel,
+        rollbackPlan: body.rollbackPlan ?? "",
+        releaseNotesMd: body.releaseNotesMd ?? "",
+        createdBy: user.id,
+      })
+      .returning();
+
+    for (const workItemId of body.workItemIds ?? []) {
+      await deps.db.insert(releaseItems).values({ releaseId, workItemId }).onConflictDoNothing();
+    }
+
+    return c.json({ release: inserted[0] }, 201);
+  });
+
+  app.get("/projects/:projectId/memory", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const memRows = await deps.db
+      .select()
+      .from(projectMemories)
+      .where(eq(projectMemories.projectId, projectId))
+      .limit(1);
+    return c.json({ memory: memRows[0] ?? null });
+  });
+
+  app.put("/projects/:projectId/memory/directives", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (!hasAnyRole(roles, ["owner", "pm", "security"])) {
+      return c.json({ error: "Requires owner, pm, or security role to update directives." }, 403);
+    }
+
+    const body = (await c.req.json()) as { readonly directives?: ProjectDirective[] };
+    const existing = await deps.db
+      .select()
+      .from(projectMemories)
+      .where(eq(projectMemories.projectId, projectId))
+      .limit(1);
+
+    const nowIso = new Date().toISOString();
+    const nextDirectives = body.directives ?? [];
+    if (existing[0]) {
+      const updated = await deps.db
+        .update(projectMemories)
+        .set({
+          directives: nextDirectives,
+          version: existing[0].version + 1,
+          updatedBy: user.id,
+          updatedAt: nowIso,
+        })
+        .where(eq(projectMemories.id, existing[0].id))
+        .returning();
+      return c.json({ memory: updated[0] });
+    }
+
+    const created = await deps.db
+      .insert(projectMemories)
+      .values({
+        id: newId("mem"),
+        projectId,
+        directives: nextDirectives,
+        updatedBy: user.id,
+        updatedAt: nowIso,
+      })
+      .returning();
+    return c.json({ memory: created[0] }, 201);
+  });
+
+  return app;
+}

@@ -670,6 +670,10 @@
     "./pull-request-references": {
       "types": "./src/pullRequestReferences.ts",
       "default": "./src/pullRequestReferences.ts"
+    },
+    "./team-hub": {
+      "types": "./src/teamHub/index.ts",
+      "default": "./src/teamHub/index.ts"
     }
   },
   "scripts": {

@@ -290,6 +290,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
           gt("Source control & issues"),
         ),
         serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
+        serverPage("SettingsTeamCockpit", "line.3.horizontal", gt("Team Cockpit")),
       ],
     },
     {

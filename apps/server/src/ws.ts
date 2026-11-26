@@ -270,6 +270,7 @@ import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as TriageService from "./triage/TriageService.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as IssueService from "./issue/IssueService.ts";
+import * as TeamHubService from "./teamHub/TeamHubService.ts";
 import * as ThreadIssueService from "./orchestration-v2/ThreadIssueService.ts";
 import * as IssueTrackerConnections from "./issue/IssueTrackerConnections.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
@@ -1520,6 +1521,7 @@ export const layerWsRpc = (
       const guestShares = yield* GuestShareService.GuestShareService;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const issues = yield* IssueService.IssueService;
+      const teamHub = yield* TeamHubService.TeamHubService;
       const threadIssues = yield* ThreadIssueService.ThreadIssueService;
       const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
@@ -2055,6 +2057,28 @@ export const layerWsRpc = (
         [WS_METHODS.issueTrackersList]: () => issueTrackers.list,
         [WS_METHODS.issueTrackersConnect]: (input) => issueTrackers.connect(input),
         [WS_METHODS.issueTrackersBindProject]: (input) => issueTrackers.bindProject(input),
+        [WS_METHODS.teamHubStatus]: () => teamHub.status(),
+        [WS_METHODS.teamHubConnectLocal]: (input) => teamHub.connectLocal(input),
+        [WS_METHODS.teamHubConnectTokens]: (input) => teamHub.connectTokens(input),
+        [WS_METHODS.teamHubDisconnect]: () => teamHub.disconnect(),
+        [WS_METHODS.teamHubGetOverview]: (input) => teamHub.getOverview(input),
+        [WS_METHODS.teamHubGetReviewQueue]: (input) => teamHub.getReviewQueue(input),
+        [WS_METHODS.teamHubGetDigests]: (input) => teamHub.getDigests(input),
+        [WS_METHODS.teamHubGenerateDigest]: (input) => teamHub.generateDigest(input),
+        [WS_METHODS.teamHubGetMemory]: (input) => teamHub.getMemory(input),
+        [WS_METHODS.teamHubUpdateDirectives]: (input) => teamHub.updateDirectives(input),
+        [WS_METHODS.teamHubCreateWorkItem]: (input) => teamHub.createWorkItem(input),
+        [WS_METHODS.teamHubUpdateWorkItem]: (input) => teamHub.updateWorkItem(input),
+        [WS_METHODS.teamHubApproveGate]: (input) => teamHub.approveGate(input),
+        [WS_METHODS.teamHubPublishPulse]: (input) => teamHub.publishPulse(input),
+        [WS_METHODS.teamHubExtractPulseDraft]: (input) => teamHub.extractPulseDraft(input),
+        [WS_METHODS.teamHubCreateWorkspace]: (input) => teamHub.createWorkspace(input),
+        [WS_METHODS.teamHubCreateProject]: (input) => teamHub.createProject(input),
+        [WS_METHODS.teamHubAddProjectRepo]: (input) => teamHub.addProjectRepo(input),
+        [WS_METHODS.teamHubListNotificationChannels]: (input) =>
+          teamHub.listNotificationChannels(input),
+        [WS_METHODS.teamHubCreateNotificationChannel]: (input) =>
+          teamHub.createNotificationChannel(input),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -3817,6 +3841,7 @@ export const layer = Layer.unwrap(
     const npmRelease = yield* NpmRelease.NpmRelease;
     const pullRequests = yield* PullRequestService.PullRequestService;
     const issues = yield* IssueService.IssueService;
+    const teamHub = yield* TeamHubService.TeamHubService;
     const threadIssues = yield* ThreadIssueService.ThreadIssueService;
     const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
@@ -3917,6 +3942,7 @@ export const layer = Layer.unwrap(
               // Share server-lifetime PR caches so WS mutations invalidate every client's HTTP diffs.
               Layer.provide(Layer.succeed(PullRequestService.PullRequestService, pullRequests)),
               Layer.provide(Layer.succeed(IssueService.IssueService, issues)),
+              Layer.provide(Layer.succeed(TeamHubService.TeamHubService, teamHub)),
               Layer.provide(Layer.succeed(ThreadIssueService.ThreadIssueService, threadIssues)),
               Layer.provide(
                 Layer.succeed(IssueTrackerConnections.IssueTrackerConnections, issueTrackers),

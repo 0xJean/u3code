@@ -139,6 +139,7 @@ import { SettingsProjectGroupingRouteScreen } from "./features/settings/Settings
 import { SettingsProjectOverviewRouteScreen } from "./features/settings/SettingsProjectOverviewRouteScreen";
 import { UsageLimitAccountScreen } from "./features/usage/UsageLimitsPooled";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
+import { TeamCockpitRouteScreen } from "./features/cockpit/TeamCockpitRouteScreen";
 import { WorkflowRunRouteScreen } from "./features/workflows/WorkflowRunRouteScreen";
 import { WorkflowStepSheet } from "./features/workflows/WorkflowStepSheet";
 import { SettingsAboutRouteScreen } from "./features/settings/SettingsAboutRouteScreen";
@@ -205,6 +206,7 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsOpenSourceLicenses: msg("Open source licenses"),
   SettingsOpenSourceLicense: msg("License notice"),
   SettingsUsage: msg("Usage"),
+  SettingsTeamCockpit: msg("Team Cockpit"),
   ComponentCatalog: msg("UI components"),
   NewTaskProject: msg("Choose project"),
   NewTaskEnvironment: msg("Environment"),
@@ -427,6 +429,11 @@ const SETTINGS_SCREENS = {
   SettingsUsage: createNativeStackScreen({
     screen: UsageRouteScreen,
     linking: "settings/usage",
+    options: settingsPage(),
+  }),
+  SettingsTeamCockpit: createNativeStackScreen({
+    screen: TeamCockpitRouteScreen,
+    linking: "settings/team-cockpit",
     options: settingsPage(),
   }),
   SettingsAuth: createNativeStackScreen({

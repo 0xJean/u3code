@@ -25,6 +25,7 @@
     "test": "vp test run --config ../../vite.config.ts --dir ."
   },
   "dependencies": {
+    "@u3code/hub-contracts": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

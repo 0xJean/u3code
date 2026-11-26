@@ -1,0 +1,31 @@
+{
+  "name": "@u3code/hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/db/migrate.ts",
+    "test": "vp test run --config ./vite.config.ts",
+    "typecheck": "effect-tsgo tsrs --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.4",
+    "@u3code/hub-contracts": "workspace:*",
+    "drizzle-orm": "1.0.0-rc.5",
+    "effect": "catalog:",
+    "hono": "^4.7.10",
+    "jose": "catalog:",
+    "postgres": "^3.4.5",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.15",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:",
+    "drizzle-kit": "1.0.0-rc.5",
+    "vite-plus": "catalog:"
+  }
+}

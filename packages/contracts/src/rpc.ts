@@ -86,6 +86,42 @@ import {
   AcpRegistrySetProviderInput,
   AcpRegistrySetProviderResult,
 } from "./acpRegistry.ts";
+import {
+  CockpitOverview,
+  PulseDraft,
+  TeamHubAddProjectRepoInput,
+  TeamHubAddProjectRepoResult,
+  TeamHubApproveGateInput,
+  TeamHubApproveGateResult,
+  TeamHubConnectLocalInput,
+  TeamHubConnectTokensInput,
+  TeamHubCreateNotificationChannelInput,
+  TeamHubCreateNotificationChannelResult,
+  TeamHubCreateProjectInput,
+  TeamHubCreateProjectResult,
+  TeamHubCreateWorkItemInput,
+  TeamHubCreateWorkspaceInput,
+  TeamHubCreateWorkspaceResult,
+  TeamHubDigestsInput,
+  TeamHubDigestsResult,
+  TeamHubError,
+  TeamHubExtractPulseDraftInput,
+  TeamHubGenerateDigestInput,
+  TeamHubGenerateDigestResult,
+  TeamHubListNotificationChannelsInput,
+  TeamHubListNotificationChannelsResult,
+  TeamHubMemoryInput,
+  TeamHubMemoryResult,
+  TeamHubOverviewInput,
+  TeamHubPublishPulseInput,
+  TeamHubPublishPulseResult,
+  TeamHubReviewQueueInput,
+  TeamHubReviewQueueResult,
+  TeamHubStatusResult,
+  TeamHubUpdateDirectivesInput,
+  TeamHubUpdateWorkItemInput,
+  TeamHubWorkItemResult,
+} from "./teamHub.ts";
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   AuthAccessStreamError,
@@ -720,6 +756,28 @@ export const WS_METHODS = {
   issueTrackersList: "issueTrackers.list",
   issueTrackersConnect: "issueTrackers.connect",
   issueTrackersBindProject: "issueTrackers.bindProject",
+
+  // Team Hub (Cockpit) methods
+  teamHubStatus: "teamHub.status",
+  teamHubConnectLocal: "teamHub.connectLocal",
+  teamHubConnectTokens: "teamHub.connectTokens",
+  teamHubDisconnect: "teamHub.disconnect",
+  teamHubGetOverview: "teamHub.getOverview",
+  teamHubGetReviewQueue: "teamHub.getReviewQueue",
+  teamHubGetDigests: "teamHub.getDigests",
+  teamHubGenerateDigest: "teamHub.generateDigest",
+  teamHubGetMemory: "teamHub.getMemory",
+  teamHubUpdateDirectives: "teamHub.updateDirectives",
+  teamHubCreateWorkItem: "teamHub.createWorkItem",
+  teamHubUpdateWorkItem: "teamHub.updateWorkItem",
+  teamHubApproveGate: "teamHub.approveGate",
+  teamHubPublishPulse: "teamHub.publishPulse",
+  teamHubExtractPulseDraft: "teamHub.extractPulseDraft",
+  teamHubCreateWorkspace: "teamHub.createWorkspace",
+  teamHubCreateProject: "teamHub.createProject",
+  teamHubAddProjectRepo: "teamHub.addProjectRepo",
+  teamHubListNotificationChannels: "teamHub.listNotificationChannels",
+  teamHubCreateNotificationChannel: "teamHub.createNotificationChannel",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1537,6 +1595,131 @@ const WsIssueTrackersListRpc = Rpc.make(WS_METHODS.issueTrackersList, {
   success: IssueTrackerConnectionList,
   error: IssueTrackerRpcError,
 });
+
+const TeamHubRpcError = Schema.Union([TeamHubError, EnvironmentAuthorizationError]);
+
+const WsTeamHubStatusRpc = Rpc.make(WS_METHODS.teamHubStatus, {
+  payload: Schema.Struct({}),
+  success: TeamHubStatusResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubConnectLocalRpc = Rpc.make(WS_METHODS.teamHubConnectLocal, {
+  payload: TeamHubConnectLocalInput,
+  success: TeamHubStatusResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubConnectTokensRpc = Rpc.make(WS_METHODS.teamHubConnectTokens, {
+  payload: TeamHubConnectTokensInput,
+  success: TeamHubStatusResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubDisconnectRpc = Rpc.make(WS_METHODS.teamHubDisconnect, {
+  payload: Schema.Struct({}),
+  success: Schema.Void,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubGetOverviewRpc = Rpc.make(WS_METHODS.teamHubGetOverview, {
+  payload: TeamHubOverviewInput,
+  success: CockpitOverview,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubGetReviewQueueRpc = Rpc.make(WS_METHODS.teamHubGetReviewQueue, {
+  payload: TeamHubReviewQueueInput,
+  success: TeamHubReviewQueueResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubGetDigestsRpc = Rpc.make(WS_METHODS.teamHubGetDigests, {
+  payload: TeamHubDigestsInput,
+  success: TeamHubDigestsResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubGenerateDigestRpc = Rpc.make(WS_METHODS.teamHubGenerateDigest, {
+  payload: TeamHubGenerateDigestInput,
+  success: TeamHubGenerateDigestResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubGetMemoryRpc = Rpc.make(WS_METHODS.teamHubGetMemory, {
+  payload: TeamHubMemoryInput,
+  success: TeamHubMemoryResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubUpdateDirectivesRpc = Rpc.make(WS_METHODS.teamHubUpdateDirectives, {
+  payload: TeamHubUpdateDirectivesInput,
+  success: TeamHubMemoryResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubCreateWorkItemRpc = Rpc.make(WS_METHODS.teamHubCreateWorkItem, {
+  payload: TeamHubCreateWorkItemInput,
+  success: TeamHubWorkItemResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubUpdateWorkItemRpc = Rpc.make(WS_METHODS.teamHubUpdateWorkItem, {
+  payload: TeamHubUpdateWorkItemInput,
+  success: TeamHubWorkItemResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubApproveGateRpc = Rpc.make(WS_METHODS.teamHubApproveGate, {
+  payload: TeamHubApproveGateInput,
+  success: TeamHubApproveGateResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubPublishPulseRpc = Rpc.make(WS_METHODS.teamHubPublishPulse, {
+  payload: TeamHubPublishPulseInput,
+  success: TeamHubPublishPulseResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubExtractPulseDraftRpc = Rpc.make(WS_METHODS.teamHubExtractPulseDraft, {
+  payload: TeamHubExtractPulseDraftInput,
+  success: PulseDraft,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubCreateWorkspaceRpc = Rpc.make(WS_METHODS.teamHubCreateWorkspace, {
+  payload: TeamHubCreateWorkspaceInput,
+  success: TeamHubCreateWorkspaceResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubCreateProjectRpc = Rpc.make(WS_METHODS.teamHubCreateProject, {
+  payload: TeamHubCreateProjectInput,
+  success: TeamHubCreateProjectResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubAddProjectRepoRpc = Rpc.make(WS_METHODS.teamHubAddProjectRepo, {
+  payload: TeamHubAddProjectRepoInput,
+  success: TeamHubAddProjectRepoResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubListNotificationChannelsRpc = Rpc.make(WS_METHODS.teamHubListNotificationChannels, {
+  payload: TeamHubListNotificationChannelsInput,
+  success: TeamHubListNotificationChannelsResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubCreateNotificationChannelRpc = Rpc.make(
+  WS_METHODS.teamHubCreateNotificationChannel,
+  {
+    payload: TeamHubCreateNotificationChannelInput,
+    success: TeamHubCreateNotificationChannelResult,
+    error: TeamHubRpcError,
+  },
+);
 
 /**
  * Verifies the credential against the tracker before storing it; the result is the new status.
@@ -2637,6 +2820,26 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsRequestReviewersRpc,
   WsPullRequestsLabelCandidatesRpc,
   WsPullRequestsSetLabelsRpc,
+  WsTeamHubStatusRpc,
+  WsTeamHubConnectLocalRpc,
+  WsTeamHubConnectTokensRpc,
+  WsTeamHubDisconnectRpc,
+  WsTeamHubGetOverviewRpc,
+  WsTeamHubGetReviewQueueRpc,
+  WsTeamHubGetDigestsRpc,
+  WsTeamHubGenerateDigestRpc,
+  WsTeamHubGetMemoryRpc,
+  WsTeamHubUpdateDirectivesRpc,
+  WsTeamHubCreateWorkItemRpc,
+  WsTeamHubUpdateWorkItemRpc,
+  WsTeamHubApproveGateRpc,
+  WsTeamHubPublishPulseRpc,
+  WsTeamHubExtractPulseDraftRpc,
+  WsTeamHubCreateWorkspaceRpc,
+  WsTeamHubCreateProjectRpc,
+  WsTeamHubAddProjectRepoRpc,
+  WsTeamHubListNotificationChannelsRpc,
+  WsTeamHubCreateNotificationChannelRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,
