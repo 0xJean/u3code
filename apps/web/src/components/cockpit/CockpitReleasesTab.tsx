@@ -10,6 +10,8 @@ import { T, useGT, Var } from "gt-react";
 import {
   ArrowRightIcon,
   CheckCircle2Icon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   FileTextIcon,
   GitCommitHorizontalIcon,
   ListChecksIcon,
@@ -19,7 +21,7 @@ import {
   ShieldAlertIcon,
   ShieldCheckIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { Badge } from "~/components/ui/badge";
@@ -44,7 +46,6 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
-import { Separator } from "~/components/ui/separator";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
@@ -80,6 +81,182 @@ const RELEASE_GATES = [
 ] as const;
 
 const PIPELINE_STEPS: ReadonlyArray<ReleaseStatus> = ["planning", "staging", "ready", "released"];
+
+interface InlineToken {
+  readonly id: string;
+  readonly kind: "bold" | "code" | "text";
+  readonly value: string;
+}
+
+function tokenizeInlineMarkdown(text: string): ReadonlyArray<InlineToken> {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const tokens: InlineToken[] = [];
+  let offset = 0;
+  for (const part of parts) {
+    if (!part) continue;
+    const id = `${offset}:${part.length}`;
+    offset += part.length;
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      tokens.push({ id, kind: "bold", value: part.slice(2, -2) });
+    } else if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      tokens.push({ id, kind: "code", value: part.slice(1, -1) });
+    } else {
+      tokens.push({ id, kind: "text", value: part });
+    }
+  }
+  return tokens;
+}
+
+function renderInlineMarkdown(text: string): ReadonlyArray<ReactNode> {
+  return tokenizeInlineMarkdown(text).map((token) => {
+    if (token.kind === "bold") {
+      return (
+        <strong key={token.id} className="font-medium text-foreground">
+          {token.value}
+        </strong>
+      );
+    }
+    if (token.kind === "code") {
+      return (
+        <code
+          key={token.id}
+          className="rounded bg-muted/70 px-1 py-0.5 font-mono text-2xs text-foreground"
+        >
+          {token.value}
+        </code>
+      );
+    }
+    return <Fragment key={token.id}>{token.value}</Fragment>;
+  });
+}
+
+interface MarkdownListItem {
+  readonly id: string;
+  readonly text: string;
+}
+
+type MarkdownBlock =
+  | {
+      readonly id: string;
+      readonly kind: "heading";
+      readonly level: 1 | 2 | 3;
+      readonly text: string;
+    }
+  | { readonly id: string; readonly kind: "list"; readonly items: ReadonlyArray<MarkdownListItem> }
+  | { readonly id: string; readonly kind: "paragraph"; readonly text: string };
+
+function parseReleaseMarkdown(markdown: string): ReadonlyArray<MarkdownBlock> {
+  const lines = markdown.replaceAll("\r\n", "\n").split("\n");
+  const blocks: MarkdownBlock[] = [];
+  let listItems: MarkdownListItem[] = [];
+  let paragraphLines: string[] = [];
+  let blockStartLine = 0;
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      blocks.push({ id: `list:${blockStartLine}`, kind: "list", items: listItems });
+      listItems = [];
+    }
+  };
+
+  const flushParagraph = () => {
+    if (paragraphLines.length > 0) {
+      blocks.push({
+        id: `p:${blockStartLine}`,
+        kind: "paragraph",
+        text: paragraphLines.join(" "),
+      });
+      paragraphLines = [];
+    }
+  };
+
+  for (let lineNo = 0; lineNo < lines.length; lineNo += 1) {
+    const trimmed = (lines[lineNo] ?? "").trim();
+    if (!trimmed) {
+      flushList();
+      flushParagraph();
+      continue;
+    }
+
+    const headingMatch = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (headingMatch) {
+      flushList();
+      flushParagraph();
+      const level = Math.min(3, headingMatch[1]?.length ?? 2) as 1 | 2 | 3;
+      blocks.push({
+        id: `h:${lineNo}`,
+        kind: "heading",
+        level,
+        text: headingMatch[2] ?? "",
+      });
+      continue;
+    }
+
+    const bulletMatch = /^(?:[-*]|\d+\.)\s+(.+)$/.exec(trimmed);
+    if (bulletMatch) {
+      flushParagraph();
+      if (listItems.length === 0) blockStartLine = lineNo;
+      listItems.push({ id: `li:${lineNo}`, text: bulletMatch[1] ?? "" });
+      continue;
+    }
+
+    flushList();
+    if (paragraphLines.length === 0) blockStartLine = lineNo;
+    paragraphLines.push(trimmed);
+  }
+
+  flushList();
+  flushParagraph();
+  return blocks;
+}
+
+function ReleaseNotesProse({ markdown }: { readonly markdown: string }) {
+  const blocks = parseReleaseMarkdown(markdown);
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2.5 text-xs leading-6 text-foreground/90">
+      {blocks.map((block) => {
+        if (block.kind === "heading") {
+          const headingClass =
+            block.level === 1
+              ? "pt-1 text-sm font-semibold tracking-tight text-foreground"
+              : block.level === 2
+                ? "pt-1 text-xs font-semibold tracking-tight text-foreground"
+                : "pt-0.5 text-xs font-medium text-foreground";
+          return (
+            <h4 key={block.id} className={headingClass}>
+              {renderInlineMarkdown(block.text)}
+            </h4>
+          );
+        }
+        if (block.kind === "list") {
+          return (
+            <ul key={block.id} className="space-y-1.5 pl-4 text-xs leading-6 text-foreground/90">
+              {block.items.map((item) => (
+                <li key={item.id} className="list-disc marker:text-muted-foreground/65">
+                  {renderInlineMarkdown(item.text)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p key={block.id} className="text-xs leading-6 text-foreground/90">
+            {renderInlineMarkdown(block.text)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function isActiveReleaseStatus(status: ReleaseStatus): boolean {
+  return status === "planning" || status === "staging" || status === "ready";
+}
 
 function releaseStatusVariant(
   status: ReleaseStatus,
@@ -137,6 +314,9 @@ export function CockpitReleasesTab({
     readonly gateKey: string;
   } | null>(null);
   const [rejectNote, setRejectNote] = useState("");
+  const [expandedDetailsOverrides, setExpandedDetailsOverrides] = useState<
+    Readonly<Record<string, boolean>>
+  >({});
 
   const listReleases = useAtomCommand(teamHubEnvironment.listReleases, { reportFailure: false });
   const createRelease = useAtomCommand(teamHubEnvironment.createRelease, { reportFailure: false });
@@ -165,11 +345,8 @@ export function CockpitReleasesTab({
   }, [environmentId, selectedProjectId, refreshSignal]);
 
   const allReleases = selectedProjectId ? releases : [];
-  const activeCount = allReleases.filter(
-    (item) =>
-      item.release.status === "planning" ||
-      item.release.status === "staging" ||
-      item.release.status === "ready",
+  const activeCount = allReleases.filter((item) =>
+    isActiveReleaseStatus(item.release.status),
   ).length;
   const shippedCount = allReleases.filter(
     (item) => item.release.status === "released" || item.release.status === "rolled_back",
@@ -177,11 +354,7 @@ export function CockpitReleasesTab({
 
   const visibleReleases = allReleases.filter((item) => {
     if (filter === "active") {
-      return (
-        item.release.status === "planning" ||
-        item.release.status === "staging" ||
-        item.release.status === "ready"
-      );
+      return isActiveReleaseStatus(item.release.status);
     }
     if (filter === "released") {
       return item.release.status === "released" || item.release.status === "rolled_back";
@@ -219,6 +392,13 @@ export function CockpitReleasesTab({
       default:
         return key;
     }
+  };
+
+  const handleToggleReleaseDetails = (releaseId: string, currentlyExpanded: boolean) => {
+    setExpandedDetailsOverrides((prev) => ({
+      ...prev,
+      [releaseId]: !currentlyExpanded,
+    }));
   };
 
   const handleToggleWorkItem = (workItemId: string) => {
@@ -378,7 +558,7 @@ export function CockpitReleasesTab({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ToggleGroup
           size="segmented"
@@ -432,7 +612,7 @@ export function CockpitReleasesTab({
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button size="sm" variant="default" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
               <PlusIcon />
               <T>Plan First Release</T>
             </Button>
@@ -458,7 +638,7 @@ export function CockpitReleasesTab({
           </EmptyContent>
         </Empty>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {visibleReleases.map((card) => {
             const latestGates = resolveLatestGateApprovals(card.gateApprovals);
             const snapshots = Object.entries(card.release.repoSnapshots);
@@ -475,10 +655,19 @@ export function CockpitReleasesTab({
               : approvedCount === RELEASE_GATES.length
                 ? "success"
                 : "neutral";
+            const hasDetails = Boolean(card.release.releaseNotesMd || card.release.rollbackPlan);
+            const defaultDetailsExpanded =
+              visibleReleases.length === 1 && isActiveReleaseStatus(card.release.status);
+            const detailsExpanded =
+              expandedDetailsOverrides[card.release.id] ?? defaultDetailsExpanded;
 
             return (
-              <CockpitSurface key={card.release.id} className="overflow-hidden" variant="grouped">
-                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+              <CockpitSurface
+                key={card.release.id}
+                className="overflow-hidden border-border/60 bg-card/35"
+                variant="grouped"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <span className="font-mono text-base font-semibold tracking-tight text-foreground">
                       {card.release.versionLabel}
@@ -503,7 +692,7 @@ export function CockpitReleasesTab({
                     {nextStatus ? (
                       <Button
                         size="xs"
-                        variant={nextStatus === "released" ? "default" : "outline"}
+                        variant="outline"
                         onClick={() => void handleUpdateStatus(card.release.id, nextStatus)}
                       >
                         <T>
@@ -526,7 +715,7 @@ export function CockpitReleasesTab({
                 </div>
 
                 {card.release.status !== "rolled_back" ? (
-                  <div className="grid grid-cols-4 gap-2 border-y border-border/50 bg-muted/15 px-5 py-2.5">
+                  <div className="grid grid-cols-4 gap-3 border-y border-border/50 bg-muted/15 px-6 py-3">
                     {PIPELINE_STEPS.map((step, idx) => {
                       const reached = currentStepIdx >= idx;
                       const current = currentStepIdx === idx;
@@ -561,14 +750,18 @@ export function CockpitReleasesTab({
                   </div>
                 ) : null}
 
-                <div className="space-y-4 px-5 py-4">
-                  <div className="space-y-2">
+                <div className="space-y-5 px-6 py-5">
+                  <div className="space-y-2.5">
                     <CockpitSectionHeader
-                      count={approvedCount}
+                      action={
+                        <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                          {`${approvedCount}/${RELEASE_GATES.length}`}
+                        </span>
+                      }
                       icon={<ShieldCheckIcon />}
                       title={<T>Release Sign-off Gates</T>}
                     />
-                    <div className="grid gap-2.5 md:grid-cols-3">
+                    <div className="divide-y divide-border/50 rounded-lg border border-border/50 bg-background/40">
                       {RELEASE_GATES.map((gate) => {
                         const latest = latestGates.get(gate.key);
                         const status = latest?.status ?? null;
@@ -578,66 +771,100 @@ export function CockpitReleasesTab({
                           rejectingGateTarget.gateKey === gate.key;
 
                         return (
-                          <CockpitSurface
-                            key={gate.key}
-                            className="flex flex-col justify-between gap-2.5"
-                            padding="sm"
-                            variant="card"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-xs font-medium text-foreground">
-                                {gateLabel(gate.key)}
-                              </span>
-                              {status === "approved" ? (
-                                <Badge size="sm" variant="success">
-                                  <CheckCircle2Icon />
-                                  <T>Approved</T>
-                                </Badge>
-                              ) : status === "rejected" ? (
-                                <Badge size="sm" variant="error">
-                                  <ShieldAlertIcon />
-                                  <T>Rejected</T>
-                                </Badge>
-                              ) : (
-                                <Badge size="sm" variant="secondary">
-                                  <T>Pending</T>
-                                </Badge>
-                              )}
+                          <div key={gate.key} className="px-4 py-3">
+                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+                                <span className="shrink-0 text-xs font-medium text-foreground sm:min-w-36">
+                                  {gateLabel(gate.key)}
+                                </span>
+                                {status === "approved" ? (
+                                  <Badge size="sm" variant="success">
+                                    <CheckCircle2Icon />
+                                    <T>Approved</T>
+                                  </Badge>
+                                ) : status === "rejected" ? (
+                                  <Badge size="sm" variant="error">
+                                    <ShieldAlertIcon />
+                                    <T>Rejected</T>
+                                  </Badge>
+                                ) : (
+                                  <Badge size="sm" variant="secondary">
+                                    {gt("Awaiting sign-off")}
+                                  </Badge>
+                                )}
+                                {latest?.note ? (
+                                  <span
+                                    className={cn(
+                                      "min-w-0 flex-1 text-xs leading-snug",
+                                      status === "rejected"
+                                        ? "text-destructive"
+                                        : "text-muted-foreground",
+                                    )}
+                                  >
+                                    {latest.note}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {!isRejectingThis ? (
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  {status !== "approved" ? (
+                                    <Button
+                                      disabled={busyGateTarget === busyKey}
+                                      size="micro"
+                                      variant="outline"
+                                      onClick={() =>
+                                        void handleReleaseGateDecision(
+                                          card.release.id,
+                                          gate.key,
+                                          "approved",
+                                        )
+                                      }
+                                    >
+                                      <ShieldCheckIcon />
+                                      <T>Approve</T>
+                                    </Button>
+                                  ) : null}
+                                  <Button
+                                    disabled={busyGateTarget === busyKey}
+                                    size="micro"
+                                    variant="ghost-muted"
+                                    onClick={() => {
+                                      setRejectingGateTarget({
+                                        releaseId: card.release.id,
+                                        gateKey: gate.key,
+                                      });
+                                      setRejectNote("");
+                                    }}
+                                  >
+                                    <T>Reject</T>
+                                  </Button>
+                                </div>
+                              ) : null}
                             </div>
 
-                            {latest?.note ? (
-                              <p
-                                className={cn(
-                                  "text-xs leading-relaxed",
-                                  status === "rejected"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                {latest.note}
-                              </p>
-                            ) : null}
-
                             {isRejectingThis ? (
-                              <div className="space-y-2 pt-0.5">
-                                <Input
-                                  placeholder={gt("Rejection reason (notifies owners)...")}
-                                  size="compact"
-                                  value={rejectNote}
-                                  onChange={(event) => setRejectNote(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter" && busyGateTarget !== busyKey) {
-                                      event.preventDefault();
-                                      void handleReleaseGateDecision(
-                                        card.release.id,
-                                        gate.key,
-                                        "rejected",
-                                        rejectNote,
-                                      );
-                                    }
-                                  }}
-                                />
-                                <div className="flex items-center justify-end gap-1.5">
+                              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <Input
+                                    placeholder={gt("Rejection reason (notifies owners)...")}
+                                    size="compact"
+                                    value={rejectNote}
+                                    onChange={(event) => setRejectNote(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" && busyGateTarget !== busyKey) {
+                                        event.preventDefault();
+                                        void handleReleaseGateDecision(
+                                          card.release.id,
+                                          gate.key,
+                                          "rejected",
+                                          rejectNote,
+                                        );
+                                      }
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1.5">
                                   <Button
                                     size="micro"
                                     variant="ghost"
@@ -665,61 +892,27 @@ export function CockpitReleasesTab({
                                   </Button>
                                 </div>
                               </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5 pt-0.5">
-                                {status !== "approved" ? (
-                                  <Button
-                                    disabled={busyGateTarget === busyKey}
-                                    size="micro"
-                                    variant="outline"
-                                    onClick={() =>
-                                      void handleReleaseGateDecision(
-                                        card.release.id,
-                                        gate.key,
-                                        "approved",
-                                      )
-                                    }
-                                  >
-                                    <ShieldCheckIcon />
-                                    <T>Approve</T>
-                                  </Button>
-                                ) : null}
-                                <Button
-                                  disabled={busyGateTarget === busyKey}
-                                  size="micro"
-                                  variant="ghost-muted"
-                                  onClick={() => {
-                                    setRejectingGateTarget({
-                                      releaseId: card.release.id,
-                                      gateKey: gate.key,
-                                    });
-                                    setRejectNote("");
-                                  }}
-                                >
-                                  <T>Reject</T>
-                                </Button>
-                              </div>
-                            )}
-                          </CockpitSurface>
+                            ) : null}
+                          </div>
                         );
                       })}
                     </div>
                   </div>
 
                   {card.workItemIds.length > 0 || snapshots.length > 0 ? (
-                    <div className="grid gap-4 pt-1 md:grid-cols-2">
+                    <div className="space-y-4">
                       {card.workItemIds.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <div className="text-2xs font-medium text-muted-foreground">
+                        <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground">
                             <T>Included Work Items</T>
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-wrap gap-2">
                             {card.workItemIds.map((wiId) => {
                               const matched = cardById.get(wiId);
                               return onOpenWorkItem ? (
                                 <Button
                                   key={wiId}
-                                  size="micro"
+                                  size="xs"
                                   variant="outline"
                                   onClick={() => onOpenWorkItem(wiId)}
                                 >
@@ -733,7 +926,7 @@ export function CockpitReleasesTab({
                                     {matched?.workItem.code ?? wiId}
                                   </span>
                                   {matched ? (
-                                    <span className="max-w-52 truncate">
+                                    <span className="max-w-64 truncate">
                                       {matched.workItem.title}
                                     </span>
                                   ) : null}
@@ -751,18 +944,18 @@ export function CockpitReleasesTab({
                       ) : null}
 
                       {snapshots.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <div className="text-2xs font-medium text-muted-foreground">
+                        <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground">
                             <T>Repository Snapshots</T>
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
+                          <div className="flex flex-wrap gap-2">
                             {snapshots.map(([repo, ref]) => (
                               <span
                                 key={repo}
-                                className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 font-mono text-2xs text-foreground"
+                                className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/25 px-2.5 py-1 font-mono text-2xs text-foreground"
                               >
                                 <GitCommitHorizontalIcon className="size-3 shrink-0 text-muted-foreground" />
-                                {repo}@{String(ref)}
+                                {`${repo}@${String(ref)}`}
                               </span>
                             ))}
                           </div>
@@ -771,35 +964,61 @@ export function CockpitReleasesTab({
                     </div>
                   ) : null}
 
-                  {card.release.releaseNotesMd || card.release.rollbackPlan ? (
-                    <>
-                      <Separator />
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {card.release.releaseNotesMd ? (
-                          <div className="space-y-1">
-                            <div className="text-2xs font-medium text-muted-foreground">
-                              <T>Release Notes</T>
-                            </div>
-                            <p className="text-xs leading-relaxed whitespace-pre-wrap text-foreground/90">
-                              {card.release.releaseNotesMd}
-                            </p>
-                          </div>
-                        ) : null}
+                  {hasDetails ? (
+                    <div className="border-t border-border/50 pt-4">
+                      <button
+                        aria-expanded={detailsExpanded}
+                        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        type="button"
+                        onClick={() => handleToggleReleaseDetails(card.release.id, detailsExpanded)}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          {detailsExpanded ? (
+                            <ChevronDownIcon className="size-3.5 shrink-0 opacity-75" />
+                          ) : (
+                            <ChevronRightIcon className="size-3.5 shrink-0 opacity-75" />
+                          )}
+                          {card.release.releaseNotesMd && card.release.rollbackPlan ? (
+                            <T>Release Notes & Rollback Plan</T>
+                          ) : card.release.releaseNotesMd ? (
+                            <T>Release Notes</T>
+                          ) : (
+                            <T>Rollback Plan</T>
+                          )}
+                        </span>
+                        <span className="text-2xs font-normal text-muted-foreground/70">
+                          {detailsExpanded ? <T>Hide</T> : <T>Show</T>}
+                        </span>
+                      </button>
 
-                        {card.release.rollbackPlan ? (
-                          <div className="space-y-1">
-                            <div className="text-2xs font-medium text-muted-foreground">
-                              <T>Rollback Plan</T>
+                      {detailsExpanded ? (
+                        <div className="mt-3.5 space-y-4 px-1">
+                          {card.release.releaseNotesMd ? (
+                            <div className="space-y-1.5">
+                              {card.release.rollbackPlan ? (
+                                <div className="text-2xs font-medium text-muted-foreground">
+                                  <T>Release Notes</T>
+                                </div>
+                              ) : null}
+                              <ReleaseNotesProse markdown={card.release.releaseNotesMd} />
                             </div>
-                            <CockpitSurface padding="sm" variant="subtle">
-                              <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                                {card.release.rollbackPlan}
-                              </p>
-                            </CockpitSurface>
-                          </div>
-                        ) : null}
-                      </div>
-                    </>
+                          ) : null}
+
+                          {card.release.rollbackPlan ? (
+                            <div className="space-y-1.5">
+                              <div className="text-2xs font-medium text-muted-foreground">
+                                <T>Rollback Plan</T>
+                              </div>
+                              <div className="rounded-lg border border-border/50 bg-muted/20 px-3.5 py-2.5">
+                                <p className="text-xs leading-6 whitespace-pre-wrap text-muted-foreground">
+                                  {card.release.rollbackPlan}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               </CockpitSurface>

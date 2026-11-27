@@ -7,7 +7,6 @@ import {
   LayersIcon,
   LockIcon,
   PlusIcon,
-  ShieldCheckIcon,
 } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 
@@ -22,7 +21,15 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import {
   CockpitSectionHeader,
   CockpitStatusDot,
@@ -40,6 +47,8 @@ interface CockpitMemoryTabProps {
   readonly onToggleDirective: (directiveId: string) => void;
   readonly onGenerateDigest: () => void;
 }
+
+type MemorySubTab = "digests" | "memory";
 
 interface InlineToken {
   readonly id: string;
@@ -137,7 +146,7 @@ function parseDigestBlocks(markdown: string): ReadonlyArray<DigestBlock> {
       continue;
     }
 
-    const headingMatch = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    const headingMatch = /^(#{1,4})\s+(.+)$/.exec(trimmed);
     if (headingMatch) {
       flushList();
       flushParagraph();
@@ -177,15 +186,15 @@ function DigestProse({ markdown }: { readonly markdown: string }) {
   }
 
   return (
-    <div className="max-h-80 space-y-2.5 overflow-y-auto px-4 py-3.5 text-xs leading-relaxed text-foreground/90">
+    <div className="space-y-3 px-6 py-5 text-sm leading-6 text-foreground/90">
       {blocks.map((block) => {
         if (block.kind === "heading") {
           const headingClass =
             block.level === 1
-              ? "pt-1 text-sm font-semibold text-foreground"
+              ? "pt-1.5 text-base font-semibold tracking-tight text-foreground"
               : block.level === 2
-                ? "pt-1 text-xs font-semibold tracking-tight text-foreground"
-                : "pt-0.5 text-xs font-medium text-muted-foreground";
+                ? "pt-1.5 text-sm font-semibold tracking-tight text-foreground"
+                : "pt-1 text-xs font-semibold text-foreground/85";
           return (
             <h4 key={block.id} className={headingClass}>
               {renderInlineMarkdown(block.text)}
@@ -194,12 +203,9 @@ function DigestProse({ markdown }: { readonly markdown: string }) {
         }
         if (block.kind === "list") {
           return (
-            <ul
-              key={block.id}
-              className="space-y-1.5 pl-4 text-xs leading-relaxed text-foreground/90"
-            >
+            <ul key={block.id} className="space-y-2 pl-5 text-sm leading-6 text-foreground/90">
               {block.items.map((item) => (
-                <li key={item.id} className="list-disc marker:text-muted-foreground/70">
+                <li key={item.id} className="list-disc marker:text-muted-foreground/65">
                   {renderInlineMarkdown(item.text)}
                 </li>
               ))}
@@ -207,13 +213,27 @@ function DigestProse({ markdown }: { readonly markdown: string }) {
           );
         }
         return (
-          <p key={block.id} className="text-xs leading-relaxed text-foreground/90">
+          <p key={block.id} className="text-sm leading-6 text-foreground/90">
             {renderInlineMarkdown(block.text)}
           </p>
         );
       })}
     </div>
   );
+}
+
+function formatDirectiveAuthor(createdBy: string | null | undefined): string | null {
+  const trimmed = createdBy?.trim() ?? "";
+  if (!trimmed) return null;
+  const normalized = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
+  if (!normalized) return null;
+  if (/^usr_/i.test(normalized)) return null;
+  if (!normalized.includes(" ") && normalized.length > 20) return null;
+  return normalized;
+}
+
+function formatDigestTimestamp(createdAt: string): string {
+  return createdAt.slice(0, 16).replace("T", " ");
 }
 
 function formatTriggerLabel(triggerType: string, gt: ReturnType<typeof useGT>): string {
@@ -255,12 +275,26 @@ export function CockpitMemoryTab({
   onGenerateDigest,
 }: CockpitMemoryTabProps) {
   const gt = useGT();
+  const [activeSubTab, setActiveSubTab] = useState<MemorySubTab>("digests");
+  const [selectedDigestId, setSelectedDigestId] = useState<string>("");
   const [newDirectiveText, setNewDirectiveText] = useState("");
 
   const directives = memory?.directives ?? [];
+  const activeDirectivesCount = directives.filter((directive) => directive.active).length;
   const architectureDecisions = memory?.architectureDecisions ?? [];
   const recurringRisks = memory?.recurringRisks ?? [];
   const digestList = digests?.digests ?? [];
+
+  const activeDigest =
+    digestList.find((digest) => digest.id === selectedDigestId) ?? digestList[0] ?? null;
+  const activeDigestIndex = activeDigest
+    ? digestList.findIndex((digest) => digest.id === activeDigest.id)
+    : -1;
+
+  const formatDigestOptionLabel = (createdAt: string, index: number) => {
+    const timestamp = formatDigestTimestamp(createdAt);
+    return index === 0 ? gt("{timestamp} (Latest)", { timestamp }) : timestamp;
+  };
 
   const handleSubmitDirective = () => {
     const trimmed = newDirectiveText.trim();
@@ -269,220 +303,63 @@ export function CockpitMemoryTab({
     onAddDirective(trimmed);
   };
 
+  const handleGenerateDigestClick = () => {
+    setSelectedDigestId("");
+    onGenerateDigest();
+  };
+
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-2">
-      <div className="space-y-6">
-        <section className="space-y-2">
-          <CockpitSectionHeader
-            action={
-              memory ? (
-                <Badge size="sm" variant="outline">
-                  <T>
-                    v<Var>{memory.version}</Var>
-                  </T>
-                </Badge>
-              ) : null
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ToggleGroup
+          aria-label={gt("Memory & Digests sections")}
+          size="segmented"
+          value={[activeSubTab]}
+          variant="segmented"
+          onValueChange={(next) => {
+            const value = next[0];
+            if (value === "digests" || value === "memory") {
+              setActiveSubTab(value);
             }
-            count={directives.length}
-            icon={<LockIcon />}
-            title={<T>Owner Directives</T>}
-          />
-          <p className="px-1 text-xs text-muted-foreground">
-            <T>Locked project rules preserved against AI overwrite during digest synthesis.</T>
-          </p>
+          }}
+        >
+          <Toggle value="digests">
+            <BotIcon />
+            <T>AI Digests</T>
+            {digestList.length > 0 ? (
+              <span className="ml-1 tabular-nums opacity-60">{digestList.length}</span>
+            ) : null}
+          </Toggle>
+          <Toggle value="memory">
+            <LockIcon />
+            <T>Directives & Memory</T>
+            {activeDirectivesCount > 0 ? (
+              <span className="ml-1 tabular-nums opacity-60">{activeDirectivesCount}</span>
+            ) : null}
+          </Toggle>
+        </ToggleGroup>
 
-          <CockpitSurface divided variant="grouped">
-            {directives.length === 0 ? (
-              <CockpitSurfaceRow>
-                <p className="py-1 text-xs text-muted-foreground">
-                  <T>
-                    No directives locked yet. Add permanent engineering or release guardrails below.
-                  </T>
-                </p>
-              </CockpitSurfaceRow>
-            ) : (
-              directives.map((directive) => (
-                <CockpitSurfaceRow
-                  key={directive.id}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <p
-                      className={
-                        directive.active
-                          ? "text-xs leading-relaxed text-foreground"
-                          : "text-xs leading-relaxed text-muted-foreground line-through"
-                      }
-                    >
-                      {directive.text}
-                    </p>
-                    <p className="font-mono text-2xs text-muted-foreground/80">
-                      @{directive.createdBy}
-                    </p>
-                  </div>
-                  <Switch
-                    aria-label={directive.active ? gt("Disable directive") : gt("Enable directive")}
-                    checked={directive.active}
-                    disabled={savingDirectives}
-                    size="sm"
-                    onCheckedChange={() => onToggleDirective(directive.id)}
-                  />
-                </CockpitSurfaceRow>
-              ))
-            )}
-
-            <CockpitSurfaceRow className="bg-muted/15">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    disabled={!selectedProjectId || savingDirectives}
-                    placeholder={gt("Add permanent rule (e.g. Never auto-merge main)")}
-                    size="sm"
-                    value={newDirectiveText}
-                    onChange={(event) => setNewDirectiveText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleSubmitDirective();
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  disabled={savingDirectives || !newDirectiveText.trim() || !selectedProjectId}
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSubmitDirective}
-                >
-                  <PlusIcon />
-                  <T>Add</T>
-                </Button>
-              </div>
-            </CockpitSurfaceRow>
-          </CockpitSurface>
-        </section>
-
-        <section className="space-y-2">
-          <CockpitSectionHeader
-            count={architectureDecisions.length}
-            icon={<LayersIcon />}
-            title={<T>Architecture Decisions</T>}
-          />
-
-          {architectureDecisions.length === 0 ? (
-            <CockpitSurface variant="grouped">
-              <Empty size="compact">
-                <EmptyMedia variant="icon">
-                  <LayersIcon />
-                </EmptyMedia>
-                <EmptyHeader>
-                  <EmptyTitle>
-                    <T>No decisions synthesized yet</T>
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    <T>
-                      Generate a digest to distill architecture decisions from work item pulses and
-                      pull requests.
-                    </T>
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            </CockpitSurface>
-          ) : (
-            <CockpitSurface divided variant="grouped">
-              {architectureDecisions.map((adr) => (
-                <CockpitSurfaceRow key={adr.id} className="space-y-1">
-                  <p className="text-xs leading-relaxed font-medium text-foreground">
-                    {adr.summary}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 font-mono text-2xs tabular-nums text-muted-foreground">
-                    <span>{adr.date}</span>
-                    {adr.repoFullName ? (
-                      <span className="rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-foreground/80">
-                        {adr.repoFullName}
-                      </span>
-                    ) : null}
-                  </div>
-                </CockpitSurfaceRow>
-              ))}
-            </CockpitSurface>
-          )}
-        </section>
-
-        <section className="space-y-2">
-          <CockpitSectionHeader
-            count={recurringRisks.length}
-            icon={<AlertTriangleIcon />}
-            title={<T>Recurring Risks</T>}
-          />
-
-          {recurringRisks.length === 0 ? (
-            <CockpitSurface variant="grouped">
-              <Empty size="compact">
-                <EmptyMedia variant="icon">
-                  <ShieldCheckIcon />
-                </EmptyMedia>
-                <EmptyHeader>
-                  <EmptyTitle>
-                    <T>No recurring risks recorded</T>
-                  </EmptyTitle>
-                  <EmptyDescription>
-                    <T>
-                      Delivery bottlenecks and repeated quality blockers surfaced in digests will
-                      appear here.
-                    </T>
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            </CockpitSurface>
-          ) : (
-            <CockpitSurface divided variant="grouped">
-              {recurringRisks.map((risk) => (
-                <CockpitSurfaceRow key={risk.id} className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                    <CockpitStatusDot
-                      className="mt-1.5"
-                      tone={risk.severity === "high" ? "error" : "warning"}
-                    />
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-xs font-medium text-foreground">{risk.title}</p>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {risk.mitigation}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge size="sm" variant={risk.severity === "high" ? "error" : "warning"}>
-                    <T>
-                      <Var>{formatRiskSeverity(risk.severity, gt)}</Var> x
-                      <Var>{risk.occurrences}</Var>
-                    </T>
-                  </Badge>
-                </CockpitSurfaceRow>
-              ))}
-            </CockpitSurface>
-          )}
-        </section>
+        {activeSubTab === "digests" ? (
+          <Button
+            disabled={generatingDigest}
+            size="sm"
+            variant="default"
+            onClick={handleGenerateDigestClick}
+          >
+            <FileTextIcon />
+            {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
+          </Button>
+        ) : memory ? (
+          <Badge size="sm" variant="outline">
+            <T>
+              v<Var>{memory.version}</Var>
+            </T>
+          </Badge>
+        ) : null}
       </div>
 
-      <section className="space-y-2">
-        <CockpitSectionHeader
-          action={
-            <Button
-              disabled={generatingDigest}
-              size="xs"
-              variant="default"
-              onClick={onGenerateDigest}
-            >
-              <FileTextIcon />
-              {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
-            </Button>
-          }
-          count={digestList.length}
-          icon={<BotIcon />}
-          title={<T>AI Cockpit Digests</T>}
-        />
-
-        {digestList.length === 0 ? (
+      {activeSubTab === "digests" ? (
+        !activeDigest ? (
           <CockpitSurface variant="grouped">
             <Empty size="compact">
               <EmptyMedia variant="icon">
@@ -504,7 +381,7 @@ export function CockpitMemoryTab({
                   disabled={generatingDigest}
                   size="sm"
                   variant="outline"
-                  onClick={onGenerateDigest}
+                  onClick={handleGenerateDigestClick}
                 >
                   <FileTextIcon />
                   {generatingDigest ? <T>Synthesizing...</T> : <T>Generate First Digest</T>}
@@ -513,30 +390,216 @@ export function CockpitMemoryTab({
             </Empty>
           </CockpitSurface>
         ) : (
-          <div className="space-y-3">
-            {digestList.slice(0, 5).map((digest, index) => (
-              <CockpitSurface key={digest.id} className="overflow-hidden" variant="grouped">
-                <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/15 px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <Badge size="sm" variant={index === 0 ? "info" : "secondary"}>
-                      {formatTriggerLabel(digest.triggerType, gt)}
-                    </Badge>
-                    {index === 0 ? (
-                      <span className="text-2xs font-medium text-muted-foreground">
-                        <T>Latest</T>
-                      </span>
-                    ) : null}
-                  </div>
-                  <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-                    {digest.createdAt.slice(0, 16).replace("T", " ")}
+          <CockpitSurface className="overflow-hidden border-border/60 bg-card/35" variant="grouped">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-muted/15 px-6 py-3.5">
+              <div className="flex items-center gap-2">
+                <Badge size="sm" variant={activeDigestIndex === 0 ? "info" : "secondary"}>
+                  {formatTriggerLabel(activeDigest.triggerType, gt)}
+                </Badge>
+                {digestList.length === 1 ? (
+                  <span className="text-2xs font-medium text-muted-foreground">
+                    <T>Latest</T>
                   </span>
+                ) : null}
+              </div>
+
+              {digestList.length > 1 ? (
+                <div className="w-56">
+                  <Select
+                    value={activeDigest.id}
+                    onValueChange={(nextId) => {
+                      if (nextId) setSelectedDigestId(nextId);
+                    }}
+                  >
+                    <SelectTrigger aria-label={gt("Digest history")} size="compact">
+                      <SelectValue>
+                        {formatDigestOptionLabel(activeDigest.createdAt, activeDigestIndex)}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end">
+                      {digestList.map((digest, index) => (
+                        <SelectItem key={digest.id} value={digest.id}>
+                          {formatDigestOptionLabel(digest.createdAt, index)}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
                 </div>
-                <DigestProse markdown={digest.markdownBody} />
-              </CockpitSurface>
-            ))}
-          </div>
-        )}
-      </section>
+              ) : (
+                <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                  {formatDigestTimestamp(activeDigest.createdAt)}
+                </span>
+              )}
+            </div>
+
+            <DigestProse markdown={activeDigest.markdownBody} />
+          </CockpitSurface>
+        )
+      ) : (
+        <div className="space-y-6">
+          <section className="space-y-2.5">
+            <CockpitSectionHeader
+              count={directives.length}
+              icon={<LockIcon />}
+              title={<T>Owner Directives</T>}
+            />
+            <p className="px-1 text-xs text-muted-foreground">
+              <T>Locked project rules preserved against AI overwrite during digest synthesis.</T>
+            </p>
+
+            <CockpitSurface divided variant="grouped">
+              {directives.length === 0 ? (
+                <CockpitSurfaceRow className="px-5 py-3.5">
+                  <p className="text-xs text-muted-foreground">
+                    <T>
+                      No directives locked yet. Add permanent engineering or release guardrails
+                      below.
+                    </T>
+                  </p>
+                </CockpitSurfaceRow>
+              ) : (
+                directives.map((directive) => {
+                  const author = formatDirectiveAuthor(directive.createdBy);
+                  return (
+                    <CockpitSurfaceRow
+                      key={directive.id}
+                      className="flex items-center justify-between gap-4 px-5 py-3.5"
+                    >
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <p
+                          className={
+                            directive.active
+                              ? "text-sm leading-relaxed text-foreground"
+                              : "text-sm leading-relaxed text-muted-foreground line-through"
+                          }
+                        >
+                          {directive.text}
+                        </p>
+                        {author ? (
+                          <p className="text-2xs text-muted-foreground/80">{author}</p>
+                        ) : null}
+                      </div>
+                      <Switch
+                        aria-label={
+                          directive.active ? gt("Disable directive") : gt("Enable directive")
+                        }
+                        checked={directive.active}
+                        disabled={savingDirectives}
+                        size="sm"
+                        onCheckedChange={() => onToggleDirective(directive.id)}
+                      />
+                    </CockpitSurfaceRow>
+                  );
+                })
+              )}
+
+              <CockpitSurfaceRow className="bg-muted/15 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      disabled={!selectedProjectId || savingDirectives}
+                      placeholder={gt("Add permanent rule (e.g. Never auto-merge main)")}
+                      size="sm"
+                      value={newDirectiveText}
+                      onChange={(event) => setNewDirectiveText(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleSubmitDirective();
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button
+                    disabled={savingDirectives || !newDirectiveText.trim() || !selectedProjectId}
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSubmitDirective}
+                  >
+                    <PlusIcon />
+                    <T>Add rule</T>
+                  </Button>
+                </div>
+              </CockpitSurfaceRow>
+            </CockpitSurface>
+          </section>
+
+          {architectureDecisions.length === 0 && recurringRisks.length === 0 ? (
+            <p className="px-1 text-xs leading-relaxed text-muted-foreground">
+              <T>
+                No architecture decisions or recurring risks distilled yet. Generate a digest to
+                synthesize them automatically.
+              </T>
+            </p>
+          ) : (
+            <>
+              {architectureDecisions.length > 0 ? (
+                <section className="space-y-2.5">
+                  <CockpitSectionHeader
+                    count={architectureDecisions.length}
+                    icon={<LayersIcon />}
+                    title={<T>Architecture Decisions</T>}
+                  />
+                  <CockpitSurface divided variant="grouped">
+                    {architectureDecisions.map((adr) => (
+                      <CockpitSurfaceRow key={adr.id} className="space-y-1 px-5 py-3.5">
+                        <p className="text-sm leading-relaxed font-medium text-foreground">
+                          {adr.summary}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 font-mono text-2xs tabular-nums text-muted-foreground">
+                          <span>{adr.date}</span>
+                          {adr.repoFullName ? (
+                            <span className="rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-foreground/80">
+                              {adr.repoFullName}
+                            </span>
+                          ) : null}
+                        </div>
+                      </CockpitSurfaceRow>
+                    ))}
+                  </CockpitSurface>
+                </section>
+              ) : null}
+
+              {recurringRisks.length > 0 ? (
+                <section className="space-y-2.5">
+                  <CockpitSectionHeader
+                    count={recurringRisks.length}
+                    icon={<AlertTriangleIcon />}
+                    title={<T>Recurring Risks</T>}
+                  />
+                  <CockpitSurface divided variant="grouped">
+                    {recurringRisks.map((risk) => (
+                      <CockpitSurfaceRow
+                        key={risk.id}
+                        className="flex items-start justify-between gap-4 px-5 py-3.5"
+                      >
+                        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                          <CockpitStatusDot
+                            className="mt-1.5"
+                            tone={risk.severity === "high" ? "error" : "warning"}
+                          />
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-sm font-medium text-foreground">{risk.title}</p>
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              {risk.mitigation}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge size="sm" variant={risk.severity === "high" ? "error" : "warning"}>
+                          <T>
+                            <Var>{formatRiskSeverity(risk.severity, gt)}</Var> x
+                            <Var>{risk.occurrences}</Var>
+                          </T>
+                        </Badge>
+                      </CockpitSurfaceRow>
+                    ))}
+                  </CockpitSurface>
+                </section>
+              ) : null}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

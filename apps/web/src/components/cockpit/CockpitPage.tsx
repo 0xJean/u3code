@@ -505,6 +505,8 @@ export function CockpitPage() {
   const gates = activeProject?.workflowConfig.gates ?? [];
   const allCards = overview?.cards ?? [];
   const filteredCards = allCards.filter((card) => matchesBoardFilter(card, boardFilter));
+  const blockedCardCount = allCards.filter((card) => matchesBoardFilter(card, "blocked")).length;
+  const hasPrCardCount = allCards.filter((card) => matchesBoardFilter(card, "has_pr")).length;
 
   const selectedWorkspace =
     status?.me?.workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? null;
@@ -530,6 +532,13 @@ export function CockpitPage() {
   };
 
   const isConnected = Boolean(primaryEnvironmentId && !loadingStatus && status?.connected);
+  const isPullRequestPaneOpen = Boolean(
+    isConnected && primaryEnvironmentId && selectedChangeRequest,
+  );
+  const hasActiveBlockers = Boolean(
+    overview &&
+    (overview.metrics.blockedWorkItems > 0 || overview.metrics.botBlockedChangeRequests > 0),
+  );
 
   return (
     <SidebarInset className="flex h-dvh flex-col overflow-hidden">
@@ -542,24 +551,27 @@ export function CockpitPage() {
       ) : null}
 
       <WorkspacePageHeader
-        className="border-b border-border/60 bg-background"
+        className="border-b border-border/50 bg-background"
         electron={isElectron}
       >
-        <WorkspaceBreadcrumb ariaLabel={gt("Team Cockpit")}>
-          <WorkspaceBreadcrumbItem current>
-            <h1 className="truncate font-medium text-foreground">
-              <T>Team Cockpit</T>
-            </h1>
-          </WorkspaceBreadcrumbItem>
-        </WorkspaceBreadcrumb>
-
-        {status?.connected && status.me ? (
-          <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
-            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border/60 bg-muted/35 px-2 text-2xs font-medium text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <WorkspaceBreadcrumb ariaLabel={gt("Team Cockpit")}>
+            <WorkspaceBreadcrumbItem current>
+              <h1 className="truncate font-medium text-foreground">
+                <T>Team Cockpit</T>
+              </h1>
+            </WorkspaceBreadcrumbItem>
+          </WorkspaceBreadcrumb>
+          {isConnected && status?.me ? (
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-2xs font-medium text-muted-foreground">
               <CockpitStatusDot ring tone="success" />
               <T>Live</T>
             </span>
+          ) : null}
+        </div>
 
+        {isConnected && status?.me ? (
+          <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
             {status.me.workspaces.length > 0 ? (
               <div className="max-w-44">
                 <Select
@@ -618,7 +630,7 @@ export function CockpitPage() {
               </div>
             ) : null}
 
-            {selectedProjectId ? (
+            {activeTab === "board" && selectedProjectId ? (
               <Button size="xs" variant="default" onClick={() => setCreateDialogOpen(true)}>
                 <PlusIcon />
                 <T>New Item</T>
@@ -629,7 +641,7 @@ export function CockpitPage() {
               aria-label={gt("Refresh Cockpit")}
               disabled={loadingData}
               size="icon-xs"
-              variant="outline"
+              variant="ghost-muted"
               onClick={() => {
                 if (primaryEnvironmentId) {
                   void loadCockpitData(
@@ -656,7 +668,7 @@ export function CockpitPage() {
       </WorkspacePageHeader>
 
       {isConnected ? (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 border-b border-border/60 bg-background px-5 py-2 sm:px-6">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-background px-5 py-2.5 sm:px-6">
           <ToggleGroup
             size="segmented"
             value={[activeTab]}
@@ -677,6 +689,11 @@ export function CockpitPage() {
             <Toggle value="board">
               <KanbanIcon />
               <T>Board</T>
+              {overview && overview.metrics.activeWorkItems > 0 ? (
+                <span className="font-mono text-2xs tabular-nums opacity-70">
+                  {overview.metrics.activeWorkItems}
+                </span>
+              ) : null}
             </Toggle>
             <Toggle value="triage">
               <PullRequestGlyph.pullRequest />
@@ -701,58 +718,44 @@ export function CockpitPage() {
             </Toggle>
           </ToggleGroup>
 
-          {overview ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <CockpitStatPill
-                active={activeTab === "board" && boardFilter === "all"}
-                label={<T>Active</T>}
-                tone="neutral"
-                value={overview.metrics.activeWorkItems}
-                onClick={() => {
-                  setActiveTab("board");
-                  setBoardFilter("all");
-                }}
-              />
-              <CockpitStatPill
-                active={activeTab === "board" && boardFilter === "blocked"}
-                label={<T>Blocked</T>}
-                tone="error"
-                value={overview.metrics.blockedWorkItems}
-                onClick={() => {
-                  setActiveTab("board");
-                  setBoardFilter("blocked");
-                }}
-              />
-              <CockpitStatPill
-                active={activeTab === "triage" && triageFilter === "blocked"}
-                label={<T>Bot Blocked</T>}
-                tone="error"
-                value={overview.metrics.botBlockedChangeRequests}
-                onClick={() => {
-                  setActiveTab("triage");
-                  setTriageFilter("blocked");
-                }}
-              />
-              <CockpitStatPill
-                active={activeTab === "triage" && triageFilter === "human"}
-                label={<T>Human Review</T>}
-                tone="info"
-                value={overview.metrics.readyForHumanReviewCount}
-                onClick={() => {
-                  setActiveTab("triage");
-                  setTriageFilter("human");
-                }}
-              />
-              <CockpitStatPill
-                active={activeTab === "triage" && triageFilter === "unlinked"}
-                label={<T>Orphan PRs</T>}
-                tone="warning"
-                value={overview.metrics.orphanChangeRequests}
-                onClick={() => {
-                  setActiveTab("triage");
-                  setTriageFilter("unlinked");
-                }}
-              />
+          {hasActiveBlockers && overview ? (
+            <div className="flex items-center gap-2">
+              {overview.metrics.blockedWorkItems > 0 ? (
+                <CockpitStatPill
+                  active={activeTab === "board" && boardFilter === "blocked"}
+                  label={<T>Blocked</T>}
+                  tone="error"
+                  value={overview.metrics.blockedWorkItems}
+                  onClick={() => {
+                    setActiveTab("board");
+                    setBoardFilter("blocked");
+                  }}
+                />
+              ) : null}
+              {overview.metrics.botBlockedChangeRequests > 0 ? (
+                <CockpitStatPill
+                  active={activeTab === "triage" && triageFilter === "blocked"}
+                  label={<T>Bot Blocked</T>}
+                  tone="error"
+                  value={overview.metrics.botBlockedChangeRequests}
+                  onClick={() => {
+                    setActiveTab("triage");
+                    setTriageFilter("blocked");
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : activeTab === "board" && activeProject ? (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{activeProject.workflowConfig.preset}</span>
+              <span aria-hidden className="opacity-40">
+                ·
+              </span>
+              <span className="tabular-nums">
+                <T>
+                  <Var>{overview?.repos.length ?? 0}</Var> repos
+                </T>
+              </span>
             </div>
           ) : null}
         </div>
@@ -761,7 +764,7 @@ export function CockpitPage() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="scrollbar-gutter-both min-h-0 min-w-0 flex-1 overflow-y-auto">
           {!primaryEnvironmentId ? (
-            <WorkspacePageContainer width="expanded">
+            <WorkspacePageContainer width="readable">
               <Empty size="compact">
                 <EmptyMedia variant="icon">
                   <ServerIcon />
@@ -777,54 +780,101 @@ export function CockpitPage() {
               </Empty>
             </WorkspacePageContainer>
           ) : loadingStatus ? (
-            <WorkspacePageContainer width="expanded">
+            <WorkspacePageContainer width="readable">
               <p className="py-8 text-center text-sm text-muted-foreground">
                 <T>Checking Team Hub connection...</T>
               </p>
             </WorkspacePageContainer>
           ) : !status?.connected ? (
-            <WorkspacePageContainer width="expanded">
+            <WorkspacePageContainer width="readable">
               <CockpitConnectCard
                 environmentId={primaryEnvironmentId}
                 initialHubUrl={status?.hubUrl}
                 onConnected={handleConnected}
               />
             </WorkspacePageContainer>
-          ) : activeTab === "board" ? (
-            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-5 py-4 sm:px-6">
+          ) : (
+            <WorkspacePageContainer
+              className={
+                isPullRequestPaneOpen
+                  ? "max-w-none px-5 py-5 sm:px-5"
+                  : cn(
+                      "py-6 pb-12",
+                      activeTab === "board" && boardView === "board" && "max-w-[1600px]",
+                    )
+              }
+              width={activeTab === "board" ? "expanded" : "readable"}
+            >
               {errorMessage ? (
                 <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
               ) : null}
 
-              {stages.length === 0 ? (
-                <CockpitSurface variant="grouped">
-                  <Empty size="compact">
-                    <EmptyMedia variant="icon">
-                      <KanbanIcon />
-                    </EmptyMedia>
-                    <EmptyHeader>
-                      <EmptyTitle>
-                        <T>No project configured yet</T>
-                      </EmptyTitle>
-                      <EmptyDescription>
-                        <T>
-                          Create or select a project in Setup to track cross-repository work items
-                          and workflow gates.
-                        </T>
-                      </EmptyDescription>
-                    </EmptyHeader>
-                    <EmptyContent>
-                      <Button size="sm" variant="outline" onClick={() => setActiveTab("setup")}>
-                        <SlidersHorizontalIcon />
-                        <T>Open Setup</T>
-                      </Button>
-                    </EmptyContent>
-                  </Empty>
-                </CockpitSurface>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center justify-between gap-2.5">
-                    <div className="flex flex-wrap items-center gap-2">
+              {activeTab === "board" ? (
+                stages.length === 0 ? (
+                  <CockpitSurface variant="grouped">
+                    <Empty size="compact">
+                      <EmptyMedia variant="icon">
+                        <KanbanIcon />
+                      </EmptyMedia>
+                      <EmptyHeader>
+                        <EmptyTitle>
+                          <T>No project configured yet</T>
+                        </EmptyTitle>
+                        <EmptyDescription>
+                          <T>
+                            Create or select a project in Setup to track cross-repository work items
+                            and workflow gates.
+                          </T>
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent>
+                        <Button size="sm" variant="outline" onClick={() => setActiveTab("setup")}>
+                          <SlidersHorizontalIcon />
+                          <T>Open Setup</T>
+                        </Button>
+                      </EmptyContent>
+                    </Empty>
+                  </CockpitSurface>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <ToggleGroup
+                        size="segmented"
+                        value={[boardFilter]}
+                        variant="segmented"
+                        onValueChange={(next) => {
+                          const value = next[0];
+                          if (value === "all" || value === "blocked" || value === "has_pr") {
+                            setBoardFilter(value);
+                          }
+                        }}
+                      >
+                        <Toggle value="all">
+                          <T>All</T>
+                          {allCards.length > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {allCards.length}
+                            </span>
+                          ) : null}
+                        </Toggle>
+                        <Toggle value="blocked">
+                          <T>Blocked</T>
+                          {blockedCardCount > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {blockedCardCount}
+                            </span>
+                          ) : null}
+                        </Toggle>
+                        <Toggle value="has_pr">
+                          <T>Has PR</T>
+                          {hasPrCardCount > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {hasPrCardCount}
+                            </span>
+                          ) : null}
+                        </Toggle>
+                      </ToggleGroup>
+
                       <ToggleGroup
                         size="segmented"
                         value={[boardView]}
@@ -843,134 +893,54 @@ export function CockpitPage() {
                           <T>List</T>
                         </Toggle>
                       </ToggleGroup>
-
-                      <ToggleGroup
-                        size="segmented"
-                        value={[boardFilter]}
-                        variant="segmented"
-                        onValueChange={(next) => {
-                          const value = next[0];
-                          if (value === "all" || value === "blocked" || value === "has_pr") {
-                            setBoardFilter(value);
-                          }
-                        }}
-                      >
-                        <Toggle value="all">
-                          <T>All</T>
-                          <span className="font-mono text-2xs tabular-nums opacity-70">
-                            {allCards.length}
-                          </span>
-                        </Toggle>
-                        <Toggle value="blocked">
-                          <T>Blocked</T>
-                        </Toggle>
-                        <Toggle value="has_pr">
-                          <T>Has PR</T>
-                        </Toggle>
-                      </ToggleGroup>
                     </div>
 
-                    {activeProject ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Badge size="sm" variant="outline">
-                          {activeProject.workflowConfig.preset}
-                        </Badge>
-                        <span className="tabular-nums">
-                          <T>
-                            <Var>{overview?.repos.length ?? 0}</Var> repos
-                          </T>
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
+                    {filteredCards.length === 0 && boardFilter !== "all" ? (
+                      <CockpitSurface variant="grouped">
+                        <Empty size="compact">
+                          <EmptyMedia variant="icon">
+                            <KanbanIcon />
+                          </EmptyMedia>
+                          <EmptyHeader>
+                            <EmptyTitle>
+                              <T>No matching work items</T>
+                            </EmptyTitle>
+                            <EmptyDescription>
+                              <T>
+                                No work items match the active filter. Reset the filter to inspect
+                                all stages.
+                              </T>
+                            </EmptyDescription>
+                          </EmptyHeader>
+                          <EmptyContent>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setBoardFilter("all")}
+                            >
+                              <T>Show all items</T>
+                            </Button>
+                          </EmptyContent>
+                        </Empty>
+                      </CockpitSurface>
+                    ) : boardView === "board" ? (
+                      <div className="flex items-start gap-4 overflow-x-auto pb-4">
+                        {stages.map((stage) => {
+                          const stageCards = filteredCards.filter(
+                            (card) => card.workItem.stage === stage.id,
+                          );
+                          return (
+                            <CockpitSurface
+                              key={stage.id}
+                              className="flex w-80 shrink-0 flex-col gap-3"
+                              padding="sm"
+                              variant="subtle"
+                            >
+                              <CockpitSectionHeader count={stageCards.length} title={stage.label} />
 
-                  {filteredCards.length === 0 && boardFilter !== "all" ? (
-                    <CockpitSurface variant="grouped">
-                      <Empty size="compact">
-                        <EmptyMedia variant="icon">
-                          <KanbanIcon />
-                        </EmptyMedia>
-                        <EmptyHeader>
-                          <EmptyTitle>
-                            <T>No matching work items</T>
-                          </EmptyTitle>
-                          <EmptyDescription>
-                            <T>
-                              No work items match the active filter. Reset the filter to inspect all
-                              stages.
-                            </T>
-                          </EmptyDescription>
-                        </EmptyHeader>
-                        <EmptyContent>
-                          <Button size="sm" variant="outline" onClick={() => setBoardFilter("all")}>
-                            <T>Show all items</T>
-                          </Button>
-                        </EmptyContent>
-                      </Empty>
-                    </CockpitSurface>
-                  ) : boardView === "board" ? (
-                    <div className="flex items-start gap-3.5 overflow-x-auto pb-4">
-                      {stages.map((stage) => {
-                        const stageCards = filteredCards.filter(
-                          (card) => card.workItem.stage === stage.id,
-                        );
-                        return (
-                          <CockpitSurface
-                            key={stage.id}
-                            className="flex w-76 shrink-0 flex-col gap-2.5"
-                            padding="sm"
-                            variant="subtle"
-                          >
-                            <CockpitSectionHeader count={stageCards.length} title={stage.label} />
-
-                            <div className="flex flex-col gap-2">
-                              {stageCards.map((card) => (
-                                <WorkItemCardView
-                                  key={card.workItem.id}
-                                  card={card}
-                                  gates={gates}
-                                  selectedChangeRequestId={selectedChangeRequestId}
-                                  stages={stages}
-                                  onApproveGate={(gateKey) =>
-                                    void handleApproveGate(card.workItem.id, gateKey)
-                                  }
-                                  onMoveStage={(nextStage) =>
-                                    void handleMoveStage(card.workItem.id, nextStage)
-                                  }
-                                  onOpenChangeRequest={handleOpenChangeRequest}
-                                  onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
-                                />
-                              ))}
-                              {stageCards.length === 0 ? (
-                                <p className="py-6 text-center text-xs text-muted-foreground/70">
-                                  <T>No items</T>
-                                </p>
-                              ) : null}
-                            </div>
-                          </CockpitSurface>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="space-y-4 pb-4">
-                      {stages.map((stage) => {
-                        const stageCards = filteredCards.filter(
-                          (card) => card.workItem.stage === stage.id,
-                        );
-                        if (stageCards.length === 0 && boardFilter !== "all") return null;
-                        return (
-                          <section key={stage.id} className="space-y-1.5">
-                            <CockpitSectionHeader count={stageCards.length} title={stage.label} />
-                            {stageCards.length === 0 ? (
-                              <CockpitSurface padding="sm" variant="subtle">
-                                <p className="text-xs text-muted-foreground/75">
-                                  <T>No items in this stage</T>
-                                </p>
-                              </CockpitSurface>
-                            ) : (
-                              <CockpitSurface divided variant="grouped">
+                              <div className="flex flex-col gap-3">
                                 {stageCards.map((card) => (
-                                  <WorkItemListRowView
+                                  <WorkItemCardView
                                     key={card.workItem.id}
                                     card={card}
                                     gates={gates}
@@ -986,20 +956,60 @@ export function CockpitPage() {
                                     onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
                                   />
                                 ))}
-                              </CockpitSurface>
-                            )}
-                          </section>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <WorkspacePageContainer className="py-5" width="expanded">
-              {errorMessage ? (
-                <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
+                                {stageCards.length === 0 ? (
+                                  <p className="py-8 text-center text-xs text-muted-foreground/60">
+                                    <T>No items</T>
+                                  </p>
+                                ) : null}
+                              </div>
+                            </CockpitSurface>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="space-y-6 pb-4">
+                        {stages.map((stage) => {
+                          const stageCards = filteredCards.filter(
+                            (card) => card.workItem.stage === stage.id,
+                          );
+                          if (stageCards.length === 0 && boardFilter !== "all") return null;
+                          return (
+                            <section key={stage.id} className="space-y-2">
+                              <CockpitSectionHeader count={stageCards.length} title={stage.label} />
+                              {stageCards.length === 0 ? (
+                                <CockpitSurface padding="sm" variant="subtle">
+                                  <p className="text-xs text-muted-foreground/75">
+                                    <T>No items in this stage</T>
+                                  </p>
+                                </CockpitSurface>
+                              ) : (
+                                <CockpitSurface divided variant="grouped">
+                                  {stageCards.map((card) => (
+                                    <WorkItemListRowView
+                                      key={card.workItem.id}
+                                      card={card}
+                                      gates={gates}
+                                      selectedChangeRequestId={selectedChangeRequestId}
+                                      stages={stages}
+                                      onApproveGate={(gateKey) =>
+                                        void handleApproveGate(card.workItem.id, gateKey)
+                                      }
+                                      onMoveStage={(nextStage) =>
+                                        void handleMoveStage(card.workItem.id, nextStage)
+                                      }
+                                      onOpenChangeRequest={handleOpenChangeRequest}
+                                      onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
+                                    />
+                                  ))}
+                                </CockpitSurface>
+                              )}
+                            </section>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
               ) : null}
 
               {activeTab === "triage" ? (
@@ -1071,7 +1081,7 @@ export function CockpitPage() {
           )}
         </div>
 
-        {isConnected && primaryEnvironmentId && selectedChangeRequest ? (
+        {isPullRequestPaneOpen && primaryEnvironmentId && selectedChangeRequest ? (
           <CockpitPullRequestPane
             cards={allCards}
             changeRequest={selectedChangeRequest}
@@ -1304,7 +1314,7 @@ function WorkItemCardView({
 
   return (
     <CockpitSurface
-      className="space-y-2.5 transition-colors hover:border-border"
+      className="space-y-3 transition-colors hover:border-border/90"
       padding="sm"
       variant="card"
     >
@@ -1319,14 +1329,16 @@ function WorkItemCardView({
             {card.workItem.code}
           </button>
         </div>
-        {card.workItem.health === "blocked" ? (
-          <Badge size="sm" variant="error">
-            <T>Blocked</T>
-          </Badge>
-        ) : card.workItem.health === "at_risk" ? (
-          <Badge size="sm" variant="warning">
-            <T>At Risk</T>
-          </Badge>
+        {card.workItem.health !== "on_track" ? (
+          card.workItem.health === "blocked" ? (
+            <Badge size="sm" variant="error">
+              <T>Blocked</T>
+            </Badge>
+          ) : (
+            <Badge size="sm" variant="warning">
+              <T>At Risk</T>
+            </Badge>
+          )
         ) : null}
       </div>
 
@@ -1358,17 +1370,17 @@ function WorkItemCardView({
       ) : null}
 
       {card.changeRequests.length > 0 ? (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {card.changeRequests.map((cr) => {
             const isSelected = cr.id === selectedChangeRequestId;
             return (
               <button
                 key={cr.id}
                 className={cn(
-                  "flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-1 text-left text-xs transition-colors",
+                  "flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors",
                   isSelected
                     ? "border-border bg-accent/65 text-foreground"
-                    : "border-border/60 bg-muted/25 text-foreground hover:border-border hover:bg-accent/40",
+                    : "border-border/50 bg-muted/20 text-foreground hover:border-border/80 hover:bg-accent/40",
                 )}
                 type="button"
                 onClick={() => onOpenChangeRequest(cr)}
@@ -1396,7 +1408,7 @@ function WorkItemCardView({
       ) : null}
 
       {rejectedGates.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {rejectedGates.map((gate) => (
             <Badge key={gate.key} size="sm" variant="error">
               <ShieldAlertIcon />
@@ -1409,7 +1421,7 @@ function WorkItemCardView({
       ) : null}
 
       {pendingGatesForNext.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {pendingGatesForNext.map((gate) => (
             <Button
               key={gate.key}
@@ -1424,7 +1436,7 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
+      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2.5">
         <Button size="micro" variant="ghost-muted" onClick={onOpenDetail}>
           <T>Details</T>
         </Button>
@@ -1464,7 +1476,7 @@ function WorkItemListRowView({
   return (
     <CockpitSurfaceRow
       className="flex flex-wrap items-center justify-between gap-3"
-      density="compact"
+      density="default"
       interactive
     >
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1483,14 +1495,16 @@ function WorkItemListRowView({
         >
           {card.workItem.title}
         </button>
-        {card.workItem.health === "blocked" ? (
-          <Badge size="sm" variant="error">
-            <T>Blocked</T>
-          </Badge>
-        ) : card.workItem.health === "at_risk" ? (
-          <Badge size="sm" variant="warning">
-            <T>At Risk</T>
-          </Badge>
+        {card.workItem.health !== "on_track" ? (
+          card.workItem.health === "blocked" ? (
+            <Badge size="sm" variant="error">
+              <T>Blocked</T>
+            </Badge>
+          ) : (
+            <Badge size="sm" variant="warning">
+              <T>At Risk</T>
+            </Badge>
+          )
         ) : null}
       </div>
 

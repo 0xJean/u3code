@@ -55,14 +55,14 @@ export function CockpitSectionHeader({
 }: {
   readonly title: ReactNode;
   readonly icon?: ReactNode;
-  readonly count?: number | undefined;
+  readonly count?: number | string | undefined;
   readonly action?: ReactNode;
   readonly className?: string;
 }) {
   return (
     <div
       className={cn(
-        "flex min-h-6 items-center gap-2 px-1 pb-1 text-xs font-medium text-muted-foreground",
+        "flex min-h-7 items-center gap-2 px-0.5 pb-1.5 text-xs font-medium text-muted-foreground",
         className,
       )}
     >
@@ -82,15 +82,16 @@ export function CockpitSectionHeader({
 }
 
 const SURFACE_VARIANT_CLASS = {
-  grouped: "rounded-xl border border-border/60 bg-card/40 shadow-xs/5",
-  subtle: "rounded-xl border border-border/50 bg-muted/20",
-  card: "rounded-lg border border-border/70 bg-background/90 shadow-2xs",
+  grouped: "rounded-xl border border-border/55 bg-card/35 shadow-xs/5",
+  subtle: "rounded-xl border border-border/45 bg-muted/15",
+  card: "rounded-lg border border-border/55 bg-background/95 shadow-2xs",
 } as const;
 
 const SURFACE_PADDING_CLASS = {
   none: "",
-  sm: "p-3",
+  sm: "p-3.5",
   md: "p-4",
+  lg: "p-5",
 } as const;
 
 export function CockpitSurface({
@@ -134,7 +135,7 @@ export function CockpitSurfaceRow({
       data-slot="cockpit-surface-row"
       {...props}
       className={cn(
-        density === "compact" ? "px-3 py-2" : "px-3.5 py-2.5",
+        density === "compact" ? "px-3.5 py-2.5" : "px-4 py-3",
         selected
           ? "bg-accent/65"
           : interactive
@@ -166,8 +167,8 @@ export function CockpitStatPill({
     "inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors",
     active
       ? "border-border bg-accent text-foreground"
-      : "border-transparent bg-muted/35 text-muted-foreground",
-    onClick && "cursor-pointer hover:border-border/70 hover:bg-accent/60 hover:text-foreground",
+      : "border-border/45 bg-muted/25 text-muted-foreground",
+    onClick && "cursor-pointer hover:border-border/75 hover:bg-accent/55 hover:text-foreground",
     className,
   );
 
