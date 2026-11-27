@@ -2,6 +2,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, WorkItemDetail } from "@t3tools/contracts";
 import {
   resolveLatestGateApprovals,
+  type ChangeRequestAudit,
   type ChecklistItem,
   type Project,
   type ProjectMemory,
@@ -11,8 +12,7 @@ import {
 import { T, useGT, Var } from "gt-react";
 import {
   ActivityIcon,
-  CheckCircle2Icon,
-  CircleIcon,
+  CheckSquareIcon,
   ExternalLinkIcon,
   MessageSquarePlusIcon,
   PlusIcon,
@@ -23,8 +23,10 @@ import {
 } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -36,12 +38,29 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useProjects } from "~/state/entities";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
+import {
+  CockpitDiffStat,
+  CockpitFieldLabel,
+  CockpitHealthDot,
+  CockpitInlineAlert,
+  CockpitPriorityDot,
+  CockpitSectionHeader,
+  CockpitSurface,
+  CockpitSurfaceRow,
+} from "./CockpitPrimitives";
 import { formatCockpitCommandError } from "./cockpitError";
 import { buildWorkItemThreadPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
 
@@ -60,6 +79,35 @@ interface WorkItemDetailDialogProps {
   }>;
   readonly onClose: () => void;
   readonly onUpdated: () => void;
+  readonly onOpenChangeRequest?: (cr: ChangeRequestAudit) => void;
+}
+
+function workHealthLabel(health: WorkHealth, gt: ReturnType<typeof useGT>): string {
+  switch (health) {
+    case "on_track":
+      return gt("On track");
+    case "at_risk":
+      return gt("At risk");
+    case "blocked":
+      return gt("Blocked");
+  }
+}
+
+function reviewStatusLabel(status: string, gt: ReturnType<typeof useGT>): string {
+  switch (status) {
+    case "blocking":
+      return gt("Blocking");
+    case "pass":
+      return gt("Passed");
+    case "auto_merged":
+      return gt("Auto-merged");
+    case "pending":
+      return gt("Pending");
+    case "none":
+      return gt("None");
+    default:
+      return status;
+  }
 }
 
 export function WorkItemDetailDialog({
@@ -72,6 +120,7 @@ export function WorkItemDetailDialog({
   gates,
   onClose,
   onUpdated,
+  onOpenChangeRequest,
 }: WorkItemDetailDialogProps) {
   const gt = useGT();
   const localProjects = useProjects();
@@ -147,6 +196,9 @@ export function WorkItemDetailDialog({
   const selectedLocalProject =
     localProjects.find((p) => `${p.environmentId}:${p.id}` === chosenLocalProjectId) ??
     matchedProject;
+
+  const selectedStageLabel = stages.find((s) => s.id === stage)?.label ?? stage;
+  const verifiedCount = checklistItems.filter((item) => item.verified).length;
 
   const handleToggleChecklist = (itemId: string) => {
     setChecklistItems((prev) =>
@@ -308,11 +360,12 @@ export function WorkItemDetailDialog({
         <DialogHeader>
           <DialogTitle>
             {activeDetail ? (
-              <span className="flex items-center gap-2">
+              <span className="flex flex-wrap items-center gap-2">
+                <CockpitPriorityDot priority={activeDetail.workItem.priority} />
                 <span className="font-mono text-xs text-muted-foreground">
                   {activeDetail.workItem.code}
                 </span>
-                <span>{activeDetail.workItem.title}</span>
+                <span className="min-w-0">{activeDetail.workItem.title}</span>
               </span>
             ) : (
               <T>Work Item Details</T>
@@ -332,63 +385,70 @@ export function WorkItemDetailDialog({
               <T>Loading work item details...</T>
             </p>
           ) : loadError ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {loadError}
-            </div>
+            <CockpitInlineAlert tone="error">{loadError}</CockpitInlineAlert>
           ) : activeDetail ? (
             <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-foreground">
-                    <T>Start Coding Thread with Context</T>
+              <CockpitSurface padding="sm" variant="subtle">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                      <MessageSquarePlusIcon className="size-3.5 text-muted-foreground" />
+                      <T>Start Coding Thread with Context</T>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <T>
+                        Pre-fills a new U3 Code thread with spec, acceptance criteria, and locked
+                        directives.
+                      </T>
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    <T>
-                      Pre-fills a new thread with spec, acceptance criteria, and locked directives.
-                    </T>
-                  </p>
-                </div>
-                {localProjects.length > 0 && selectedLocalProject ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      aria-label={gt("Local workspace project")}
-                      className="h-7 max-w-52 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-                      value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
-                      onChange={(event) => setChosenLocalProjectId(event.target.value)}
-                    >
-                      {localProjects.map((proj) => (
-                        <option
-                          key={`${proj.environmentId}:${proj.id}`}
-                          value={`${proj.environmentId}:${proj.id}`}
+                  {localProjects.length > 0 && selectedLocalProject ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="w-44">
+                        <Select
+                          value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
+                          onValueChange={(value) => {
+                            if (value) setChosenLocalProjectId(value);
+                          }}
                         >
-                          {proj.title}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      disabled={startingThread}
-                      size="xs"
-                      onClick={() => void handleStartCodingThread()}
-                    >
-                      <MessageSquarePlusIcon />
-                      {startingThread ? <T>Opening...</T> : <T>Start Thread</T>}
-                    </Button>
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    <T>Add a local repository in the sidebar first.</T>
-                  </span>
-                )}
-              </div>
+                          <SelectTrigger aria-label={gt("Local workspace project")} size="compact">
+                            <SelectValue>{selectedLocalProject.title}</SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            {localProjects.map((proj) => (
+                              <SelectItem
+                                key={`${proj.environmentId}:${proj.id}`}
+                                value={`${proj.environmentId}:${proj.id}`}
+                              >
+                                {proj.title}
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+                      <Button
+                        disabled={startingThread}
+                        size="xs"
+                        variant="outline"
+                        onClick={() => void handleStartCodingThread()}
+                      >
+                        <MessageSquarePlusIcon />
+                        {startingThread ? <T>Opening...</T> : <T>Start Thread</T>}
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      <T>Add a local repository in the sidebar first.</T>
+                    </span>
+                  )}
+                </div>
+              </CockpitSurface>
 
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="sm:col-span-2">
-                  <label
-                    className="mb-1 block text-xs font-medium text-muted-foreground"
-                    htmlFor="wid-title"
-                  >
+                  <CockpitFieldLabel htmlFor="wid-title">
                     <T>Title</T>
-                  </label>
+                  </CockpitFieldLabel>
                   <Input
                     id="wid-title"
                     size="sm"
@@ -397,52 +457,57 @@ export function WorkItemDetailDialog({
                   />
                 </div>
                 <div>
-                  <label
-                    className="mb-1 block text-xs font-medium text-muted-foreground"
-                    htmlFor="wid-stage"
-                  >
+                  <CockpitFieldLabel htmlFor="wid-stage">
                     <T>Stage</T>
-                  </label>
-                  <select
-                    id="wid-stage"
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                  </CockpitFieldLabel>
+                  <Select
                     value={stage}
-                    onChange={(event) => setStage(event.target.value)}
+                    onValueChange={(value) => {
+                      if (value) setStage(value);
+                    }}
                   >
-                    {stages.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="wid-stage" size="sm">
+                      <SelectValue>{selectedStageLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {stages.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
                 </div>
                 <div>
-                  <label
-                    className="mb-1 block text-xs font-medium text-muted-foreground"
-                    htmlFor="wid-health"
-                  >
+                  <CockpitFieldLabel htmlFor="wid-health">
                     <T>Health</T>
-                  </label>
-                  <select
-                    id="wid-health"
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                  </CockpitFieldLabel>
+                  <Select
                     value={health}
-                    onChange={(event) => setHealth(event.target.value as WorkHealth)}
+                    onValueChange={(value) => {
+                      if (value === "on_track" || value === "at_risk" || value === "blocked") {
+                        setHealth(value);
+                      }
+                    }}
                   >
-                    <option value="on_track">{gt("On track")}</option>
-                    <option value="at_risk">{gt("At risk")}</option>
-                    <option value="blocked">{gt("Blocked")}</option>
-                  </select>
+                    <SelectTrigger id="wid-health" size="sm">
+                      <SelectValue>
+                        <CockpitHealthDot health={health} label={workHealthLabel(health, gt)} />
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      <SelectItem value="on_track">{gt("On track")}</SelectItem>
+                      <SelectItem value="at_risk">{gt("At risk")}</SelectItem>
+                      <SelectItem value="blocked">{gt("Blocked")}</SelectItem>
+                    </SelectPopup>
+                  </Select>
                 </div>
               </div>
 
               <div>
-                <label
-                  className="mb-1 block text-xs font-medium text-muted-foreground"
-                  htmlFor="wid-spec"
-                >
+                <CockpitFieldLabel htmlFor="wid-spec">
                   <T>Specification (Markdown)</T>
-                </label>
+                </CockpitFieldLabel>
                 <Textarea
                   id="wid-spec"
                   placeholder={gt("Write requirements, architecture notes, or rollout constraints")}
@@ -452,36 +517,41 @@ export function WorkItemDetailDialog({
                 />
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">
-                    <T>Acceptance Criteria</T>
-                  </span>
-                  <Badge size="sm" variant="secondary">
-                    {checklistItems.filter((item) => item.verified).length}/{checklistItems.length}
-                  </Badge>
-                </div>
+              <section className="space-y-2">
+                <CockpitSectionHeader
+                  action={
+                    <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                      {verifiedCount}/{checklistItems.length}
+                    </span>
+                  }
+                  icon={<CheckSquareIcon />}
+                  title={<T>Acceptance Criteria</T>}
+                />
 
-                {checklistItems.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {checklistItems.map((item) => {
+                <CockpitSurface divided variant="grouped">
+                  {checklistItems.length === 0 ? (
+                    <CockpitSurfaceRow density="compact">
+                      <p className="py-1 text-xs text-muted-foreground">
+                        <T>No acceptance criteria yet. Add one below.</T>
+                      </p>
+                    </CockpitSurfaceRow>
+                  ) : (
+                    checklistItems.map((item) => {
                       const verified = item.verified;
                       return (
-                        <div
+                        <CockpitSurfaceRow
                           key={item.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/25 px-3 py-1.5 text-xs"
+                          className="flex items-center justify-between gap-2.5"
+                          density="compact"
                         >
-                          <button
-                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                            type="button"
-                            onClick={() => handleToggleChecklist(item.id)}
-                          >
-                            {verified ? (
-                              <CheckCircle2Icon className="size-3.5 shrink-0 text-success-foreground" />
-                            ) : (
-                              <CircleIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                            )}
-                            <span className="font-mono text-muted-foreground">{item.id}</span>
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-xs">
+                            <Checkbox
+                              checked={verified}
+                              onCheckedChange={() => handleToggleChecklist(item.id)}
+                            />
+                            <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                              {item.id}
+                            </span>
                             <span
                               className={
                                 verified ? "text-muted-foreground line-through" : "text-foreground"
@@ -489,7 +559,7 @@ export function WorkItemDetailDialog({
                             >
                               {item.text}
                             </span>
-                          </button>
+                          </label>
                           <Button
                             aria-label={gt("Remove acceptance criterion")}
                             size="icon-xs"
@@ -498,55 +568,58 @@ export function WorkItemDetailDialog({
                           >
                             <Trash2Icon />
                           </Button>
-                        </div>
+                        </CockpitSurfaceRow>
                       );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    <T>No acceptance criteria yet. Add one below.</T>
-                  </p>
-                )}
+                    })
+                  )}
 
-                <div className="flex gap-2 pt-1">
-                  <Input
-                    placeholder={gt("Add acceptance criterion...")}
-                    size="sm"
-                    value={newAcText}
-                    onChange={(event) => setNewAcText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleAddChecklist();
-                      }
-                    }}
-                  />
-                  <Button
-                    disabled={!newAcText.trim()}
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddChecklist}
-                  >
-                    <PlusIcon />
-                    <T>Add AC</T>
-                  </Button>
-                </div>
-              </div>
+                  <CockpitSurfaceRow className="bg-muted/15" density="compact">
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Input
+                          placeholder={gt("Add acceptance criterion...")}
+                          size="sm"
+                          value={newAcText}
+                          onChange={(event) => setNewAcText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              handleAddChecklist();
+                            }
+                          }}
+                        />
+                      </div>
+                      <Button
+                        disabled={!newAcText.trim()}
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAddChecklist}
+                      >
+                        <PlusIcon />
+                        <T>Add AC</T>
+                      </Button>
+                    </div>
+                  </CockpitSurfaceRow>
+                </CockpitSurface>
+              </section>
 
               {gates.length > 0 ? (
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">
-                    <T>Workflow Gates</T>
-                  </span>
-                  <div className="space-y-1.5">
+                <section className="space-y-2">
+                  <CockpitSectionHeader
+                    count={gates.length}
+                    icon={<ShieldCheckIcon />}
+                    title={<T>Workflow Gates</T>}
+                  />
+                  <CockpitSurface divided variant="grouped">
                     {gates.map((gate) => {
                       const latest = latestGates.get(gate.key);
                       const status = latest?.status ?? null;
                       const isRejectingThis = rejectingGateKey === gate.key;
                       return (
-                        <div
+                        <CockpitSurfaceRow
                           key={gate.key}
-                          className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
+                          className="space-y-2 text-xs"
+                          density="compact"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
@@ -638,51 +711,73 @@ export function WorkItemDetailDialog({
                               </Button>
                             </div>
                           ) : null}
-                        </div>
+                        </CockpitSurfaceRow>
                       );
                     })}
-                  </div>
-                </div>
+                  </CockpitSurface>
+                </section>
               ) : null}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">
-                    <T>Linked Pull Requests</T>
-                  </span>
-                  <Badge size="sm" variant="secondary">
-                    {activeDetail.changeRequests.length}
-                  </Badge>
-                </div>
+              <section className="space-y-2">
+                <CockpitSectionHeader
+                  count={activeDetail.changeRequests.length}
+                  icon={<PullRequestGlyph.pullRequest />}
+                  title={<T>Linked Pull Requests</T>}
+                />
                 {activeDetail.changeRequests.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    <T>
-                      No PRs linked yet. Mention the work item code in a PR title or branch, or link
-                      an orphan PR from Review Triage.
-                    </T>
-                  </p>
+                  <CockpitSurface padding="sm" variant="subtle">
+                    <p className="text-xs text-muted-foreground">
+                      <T>
+                        No PRs linked yet. Mention the work item code in a PR title or branch, or
+                        link an orphan PR from Review Triage.
+                      </T>
+                    </p>
+                  </CockpitSurface>
                 ) : (
-                  <div className="space-y-1.5">
+                  <CockpitSurface divided variant="grouped">
                     {activeDetail.changeRequests.map((cr) => (
-                      <div
+                      <CockpitSurfaceRow
                         key={cr.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/25 px-3 py-2 text-xs"
+                        className="flex items-center justify-between gap-2.5 text-xs"
+                        density="compact"
+                        interactive={onOpenChangeRequest !== undefined}
                       >
-                        <a
-                          className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
-                          href={cr.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <span>
-                            {cr.repoFullName}#{cr.number}
-                          </span>
-                          <ExternalLinkIcon className="size-3" />
-                        </a>
-                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                          {cr.title}
-                        </span>
-                        <div className="flex items-center gap-1.5">
+                        {onOpenChangeRequest ? (
+                          <button
+                            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left focus-visible:outline-none"
+                            type="button"
+                            onClick={() => {
+                              onOpenChangeRequest(cr);
+                              onClose();
+                            }}
+                          >
+                            <PullRequestGlyph.pullRequest className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="shrink-0 font-mono text-2xs font-medium text-foreground">
+                              {cr.repoFullName}#{cr.number}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                              {cr.title}
+                            </span>
+                          </button>
+                        ) : (
+                          <a
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left hover:underline"
+                            href={cr.url}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            <PullRequestGlyph.pullRequest className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="shrink-0 font-mono text-2xs font-medium text-foreground">
+                              {cr.repoFullName}#{cr.number}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                              {cr.title}
+                            </span>
+                          </a>
+                        )}
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <CockpitDiffStat additions={cr.additions} deletions={cr.deletions} />
                           <Badge
                             size="sm"
                             variant={
@@ -694,8 +789,18 @@ export function WorkItemDetailDialog({
                                   : "secondary"
                             }
                           >
-                            {cr.automatedReview.status}
+                            {reviewStatusLabel(cr.automatedReview.status, gt)}
                           </Badge>
+                          <Button
+                            aria-label={gt("Open on GitHub")}
+                            render={
+                              <a href={cr.url} rel="noreferrer" target="_blank">
+                                <ExternalLinkIcon />
+                              </a>
+                            }
+                            size="icon-xs"
+                            variant="ghost-muted"
+                          />
                           <Button
                             aria-label={gt("Unlink pull request")}
                             disabled={unlinkingCrId === cr.id}
@@ -706,54 +811,47 @@ export function WorkItemDetailDialog({
                             <UnlinkIcon />
                           </Button>
                         </div>
-                      </div>
+                      </CockpitSurfaceRow>
                     ))}
-                  </div>
+                  </CockpitSurface>
                 )}
-              </div>
+              </section>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase">
-                    <ActivityIcon className="size-3.5" />
-                    <T>Pulse History</T>
-                  </span>
-                  <Badge size="sm" variant="secondary">
-                    {activeDetail.pulses.length}
-                  </Badge>
-                </div>
+              <section className="space-y-2">
+                <CockpitSectionHeader
+                  count={activeDetail.pulses.length}
+                  icon={<ActivityIcon />}
+                  title={<T>Pulse History</T>}
+                />
                 {activeDetail.pulses.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    <T>No pulses published yet. Sync a pulse from an active coding thread.</T>
-                  </p>
+                  <CockpitSurface padding="sm" variant="subtle">
+                    <p className="text-xs text-muted-foreground">
+                      <T>No pulses published yet. Sync a pulse from an active coding thread.</T>
+                    </p>
+                  </CockpitSurface>
                 ) : (
-                  <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                  <CockpitSurface className="max-h-56 overflow-y-auto" divided variant="grouped">
                     {activeDetail.pulses.map((pulse) => (
-                      <div
+                      <CockpitSurfaceRow
                         key={pulse.id}
-                        className="space-y-1 rounded-lg border border-border bg-muted/20 p-3 text-xs"
+                        className="space-y-1.5 text-xs"
+                        density="compact"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-2">
                             <Badge size="sm" variant="outline">
                               {pulse.sourceType}
                             </Badge>
-                            <Badge
-                              size="sm"
-                              variant={
-                                pulse.health === "blocked"
-                                  ? "error"
-                                  : pulse.health === "at_risk"
-                                    ? "warning"
-                                    : "success"
-                              }
-                            >
-                              {pulse.health}
-                            </Badge>
+                            <CockpitHealthDot
+                              health={pulse.health}
+                              label={workHealthLabel(pulse.health, gt)}
+                            />
                           </div>
-                          <span>{pulse.createdAt.slice(0, 16).replace("T", " ")}</span>
+                          <span className="font-mono text-2xs tabular-nums">
+                            {pulse.createdAt.slice(0, 16).replace("T", " ")}
+                          </span>
                         </div>
-                        <p className="text-foreground">{pulse.doneSummary}</p>
+                        <p className="leading-relaxed text-foreground">{pulse.doneSummary}</p>
                         {pulse.decisions.length > 0 ? (
                           <p className="text-muted-foreground">
                             <T>
@@ -775,11 +873,11 @@ export function WorkItemDetailDialog({
                             </T>
                           </p>
                         ) : null}
-                      </div>
+                      </CockpitSurfaceRow>
                     ))}
-                  </div>
+                  </CockpitSurface>
                 )}
-              </div>
+              </section>
             </div>
           ) : null}
         </DialogPanel>
@@ -790,6 +888,7 @@ export function WorkItemDetailDialog({
           </DialogClose>
           <Button
             disabled={saving || !activeDetail || !title.trim()}
+            variant="default"
             onClick={() => void handleSave()}
           >
             {saving ? <T>Saving...</T> : <T>Save Changes</T>}

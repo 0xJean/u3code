@@ -19,19 +19,14 @@ import {
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { T, useGT, Var } from "gt-react";
 import {
-  AlertTriangleIcon,
-  BotIcon,
+  ArrowRightIcon,
   BrainIcon,
-  CheckCircle2Icon,
-  ExternalLinkIcon,
-  FileTextIcon,
   KanbanIcon,
-  Link2Icon,
+  ListIcon,
   LogOutIcon,
   PackageCheckIcon,
   PlusIcon,
-  RadioIcon,
-  RefreshCwIcon,
+  ServerIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
@@ -39,7 +34,6 @@ import {
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "~/components/WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "~/components/WorkspacePageContainer";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
@@ -55,69 +49,113 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import { RefreshIcon } from "~/components/ui/refresh-icon";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { Textarea } from "~/components/ui/textarea";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { toastManager } from "~/components/ui/toast";
 import { isElectron } from "~/env";
+import { cn } from "~/lib/utils";
 import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CockpitConnectCard } from "./CockpitConnectCard";
+import { CockpitMemoryTab } from "./CockpitMemoryTab";
+import {
+  CockpitFieldLabel,
+  CockpitInlineAlert,
+  CockpitPriorityDot,
+  CockpitSectionHeader,
+  CockpitStatPill,
+  CockpitStatusDot,
+  CockpitSurface,
+  CockpitSurfaceRow,
+  type CockpitTone,
+} from "./CockpitPrimitives";
+import { CockpitPullRequestPane } from "./CockpitPullRequestPane";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
 import { CockpitSettingsTab } from "./CockpitSettingsTab";
+import { CockpitTriageTab } from "./CockpitTriageTab";
 import { WorkItemDetailDialog } from "./WorkItemDetailDialog";
 import { formatCockpitCommandError } from "./cockpitError";
 
 type CockpitTab = "board" | "triage" | "releases" | "memory" | "setup";
+type BoardViewMode = "board" | "list";
+type BoardFilter = "all" | "blocked" | "has_pr";
+type TriageFilter = "all" | "blocked" | "human" | "unlinked";
 
-function healthBadgeVariant(health: string): "success" | "warning" | "error" {
-  if (health === "blocked") return "error";
-  if (health === "at_risk") return "warning";
-  return "success";
-}
-
-function triageBucketLabel(bucket: string, gt: ReturnType<typeof useGT>): string {
-  switch (bucket) {
-    case "bot_blocked":
-      return gt("Bot-Blocked Review");
-    case "ready_for_human_review":
-      return gt("Ready for Human Review");
-    case "ci_blocked":
-      return gt("CI / Quality Blocked");
-    case "orphan":
-      return gt("Orphan PRs (No Work Item)");
-    case "auto_merged_integration":
-      return gt("Auto-Merged (Integration)");
-    case "draft":
-      return gt("Draft");
-    default:
-      return bucket;
+function workItemTypeLabel(itemType: WorkItemType, gt: ReturnType<typeof useGT>): string {
+  switch (itemType) {
+    case "feature":
+      return gt("Feature");
+    case "refactor":
+      return gt("Refactor");
+    case "bug":
+      return gt("Bug");
+    case "chore":
+      return gt("Chore");
+    case "security":
+      return gt("Security");
   }
 }
 
-function triageBucketVariant(
-  bucket: string,
-): "error" | "warning" | "info" | "success" | "secondary" {
-  switch (bucket) {
-    case "bot_blocked":
-    case "ci_blocked":
-      return "error";
-    case "orphan":
-      return "warning";
-    case "ready_for_human_review":
-      return "info";
-    case "auto_merged_integration":
-      return "success";
+function reviewStatusTone(status: string): CockpitTone {
+  if (status === "blocking") return "error";
+  if (status === "pass" || status === "auto_merged") return "success";
+  return "neutral";
+}
+
+function reviewStatusLabel(status: string, gt: ReturnType<typeof useGT>): string {
+  switch (status) {
+    case "blocking":
+      return gt("Blocking");
+    case "pass":
+      return gt("Passed");
+    case "auto_merged":
+      return gt("Auto-merged");
+    case "pending":
+      return gt("Pending");
+    case "none":
+      return gt("None");
     default:
-      return "secondary";
+      return status;
   }
+}
+
+function matchesBoardFilter(card: CockpitWorkItemCard, filter: BoardFilter): boolean {
+  if (filter === "blocked") {
+    return card.workItem.health === "blocked" || card.workItem.health === "at_risk";
+  }
+  if (filter === "has_pr") {
+    return card.changeRequests.length > 0;
+  }
+  return true;
 }
 
 export function CockpitPage() {
   const gt = useGT();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
   const [activeTab, setActiveTab] = useState<CockpitTab>("board");
+  const [boardView, setBoardView] = useState<BoardViewMode>("board");
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
+  const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
+
   const [statusLoadedForEnv, setStatusLoadedForEnv] = useState<EnvironmentId | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [status, setStatus] = useState<TeamHubStatusResult | null>(null);
@@ -138,10 +176,13 @@ export function CockpitPage() {
   const [creatingItem, setCreatingItem] = useState(false);
 
   const [generatingDigest, setGeneratingDigest] = useState(false);
-  const [newDirectiveText, setNewDirectiveText] = useState("");
   const [savingDirectives, setSavingDirectives] = useState(false);
   const [liveRefreshCount, setLiveRefreshCount] = useState(0);
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
+  const [selectedChangeRequestId, setSelectedChangeRequestId] = useState<string | null>(null);
+  const [fallbackChangeRequest, setFallbackChangeRequest] = useState<ChangeRequestAudit | null>(
+    null,
+  );
 
   const fetchStatus = useAtomCommand(teamHubEnvironment.status, { reportFailure: false });
   const connectTokens = useAtomCommand(teamHubEnvironment.connectTokens, { reportFailure: false });
@@ -272,11 +313,22 @@ export function CockpitPage() {
   const loadingStatus =
     primaryEnvironmentId !== null && statusLoadedForEnv !== primaryEnvironmentId;
 
+  const handleOpenChangeRequest = (cr: ChangeRequestAudit) => {
+    setSelectedChangeRequestId(cr.id);
+    setFallbackChangeRequest(cr);
+  };
+
+  const handleCloseChangeRequest = () => {
+    setSelectedChangeRequestId(null);
+    setFallbackChangeRequest(null);
+  };
+
   const handleConnected = (nextStatus: TeamHubStatusResult) => {
     setStatus(nextStatus);
     const firstWorkspaceId = nextStatus.me?.workspaces[0]?.id ?? "";
     setSelectedWorkspaceId(firstWorkspaceId);
     setSelectedProjectId("");
+    handleCloseChangeRequest();
     if (primaryEnvironmentId && nextStatus.connected && firstWorkspaceId) {
       void loadCockpitData(primaryEnvironmentId, firstWorkspaceId, "");
     }
@@ -290,6 +342,7 @@ export function CockpitPage() {
     setReviewQueue(null);
     setDigests(null);
     setMemory(null);
+    handleCloseChangeRequest();
   };
 
   const handleMoveStage = async (workItemId: string, nextStage: string) => {
@@ -427,8 +480,8 @@ export function CockpitPage() {
     }
   };
 
-  const handleAddDirective = () => {
-    const trimmed = newDirectiveText.trim();
+  const handleAddDirective = (text: string) => {
+    const trimmed = text.trim();
     if (!trimmed) return;
     const current = memory?.directives ?? [];
     const next: ProjectDirective = {
@@ -438,7 +491,6 @@ export function CockpitPage() {
       createdAt: new Date().toISOString(),
       active: true,
     };
-    setNewDirectiveText("");
     void handleSaveDirectives([...current, next]);
   };
 
@@ -451,6 +503,24 @@ export function CockpitPage() {
   const activeProject = overview?.project ?? null;
   const stages = activeProject?.workflowConfig.stages ?? [];
   const gates = activeProject?.workflowConfig.gates ?? [];
+  const allCards = overview?.cards ?? [];
+  const filteredCards = allCards.filter((card) => matchesBoardFilter(card, boardFilter));
+
+  const selectedWorkspace =
+    status?.me?.workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? null;
+  const selectedProject =
+    overview?.projects.find((proj) => proj.id === selectedProjectId) ?? activeProject;
+
+  const selectedChangeRequest: ChangeRequestAudit | null = (() => {
+    if (!selectedChangeRequestId) return null;
+    const fromQueue = reviewQueue?.items.find((cr) => cr.id === selectedChangeRequestId);
+    if (fromQueue) return fromQueue;
+    for (const card of allCards) {
+      const fromCard = card.changeRequests.find((cr) => cr.id === selectedChangeRequestId);
+      if (fromCard) return fromCard;
+    }
+    return fallbackChangeRequest?.id === selectedChangeRequestId ? fallbackChangeRequest : null;
+  })();
 
   const handleLiveHubEvent = (_event: HubWsEvent) => {
     setLiveRefreshCount((count) => count + 1);
@@ -458,6 +528,8 @@ export function CockpitPage() {
       void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
     }
   };
+
+  const isConnected = Boolean(primaryEnvironmentId && !loadingStatus && status?.connected);
 
   return (
     <SidebarInset className="flex h-dvh flex-col overflow-hidden">
@@ -468,62 +540,82 @@ export function CockpitPage() {
           onEvent={handleLiveHubEvent}
         />
       ) : null}
-      <WorkspacePageHeader electron={isElectron}>
+
+      <WorkspacePageHeader
+        className="border-b border-border/60 bg-background"
+        electron={isElectron}
+      >
         <WorkspaceBreadcrumb ariaLabel={gt("Team Cockpit")}>
-          <WorkspaceBreadcrumbItem>
-            <span className="font-medium text-foreground">
+          <WorkspaceBreadcrumbItem current>
+            <h1 className="truncate font-medium text-foreground">
               <T>Team Cockpit</T>
-            </span>
+            </h1>
           </WorkspaceBreadcrumbItem>
         </WorkspaceBreadcrumb>
 
         {status?.connected && status.me ? (
           <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
-            <Badge size="sm" variant="success">
-              <RadioIcon />
+            <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border/60 bg-muted/35 px-2 text-2xs font-medium text-muted-foreground">
+              <CockpitStatusDot ring tone="success" />
               <T>Live</T>
-            </Badge>
+            </span>
+
             {status.me.workspaces.length > 0 ? (
-              <select
-                aria-label={gt("Workspace")}
-                className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none"
-                value={selectedWorkspaceId}
-                onChange={(event) => {
-                  const nextWs = event.target.value;
-                  setSelectedWorkspaceId(nextWs);
-                  setSelectedProjectId("");
-                  if (primaryEnvironmentId) {
-                    void loadCockpitData(primaryEnvironmentId, nextWs, "");
-                  }
-                }}
-              >
-                {status.me.workspaces.map((ws) => (
-                  <option key={ws.id} value={ws.id}>
-                    {ws.name}
-                  </option>
-                ))}
-              </select>
+              <div className="max-w-44">
+                <Select
+                  value={selectedWorkspaceId}
+                  onValueChange={(nextWs) => {
+                    if (!nextWs) return;
+                    setSelectedWorkspaceId(nextWs);
+                    setSelectedProjectId("");
+                    handleCloseChangeRequest();
+                    if (primaryEnvironmentId) {
+                      void loadCockpitData(primaryEnvironmentId, nextWs, "");
+                    }
+                  }}
+                >
+                  <SelectTrigger aria-label={gt("Workspace")} size="compact">
+                    <SelectValue>{selectedWorkspace?.name ?? gt("Workspace")}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {status.me.workspaces.map((ws) => (
+                      <SelectItem key={ws.id} value={ws.id}>
+                        {ws.name}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
             ) : null}
 
             {overview && overview.projects.length > 0 ? (
-              <select
-                aria-label={gt("Project")}
-                className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none"
-                value={selectedProjectId}
-                onChange={(event) => {
-                  const nextProj = event.target.value;
-                  setSelectedProjectId(nextProj);
-                  if (primaryEnvironmentId) {
-                    void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, nextProj);
-                  }
-                }}
-              >
-                {overview.projects.map((proj) => (
-                  <option key={proj.id} value={proj.id}>
-                    {proj.key} · {proj.name}
-                  </option>
-                ))}
-              </select>
+              <div className="max-w-52">
+                <Select
+                  value={selectedProjectId}
+                  onValueChange={(nextProj) => {
+                    if (!nextProj) return;
+                    setSelectedProjectId(nextProj);
+                    if (primaryEnvironmentId) {
+                      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, nextProj);
+                    }
+                  }}
+                >
+                  <SelectTrigger aria-label={gt("Project")} size="compact">
+                    <SelectValue>
+                      {selectedProject
+                        ? `${selectedProject.key} · ${selectedProject.name}`
+                        : gt("Project")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {overview.projects.map((proj) => (
+                      <SelectItem key={proj.id} value={proj.id}>
+                        {proj.key} · {proj.name}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
             ) : null}
 
             {selectedProjectId ? (
@@ -548,7 +640,7 @@ export function CockpitPage() {
                 }
               }}
             >
-              <RefreshCwIcon />
+              <RefreshIcon refreshing={loadingData} />
             </Button>
 
             <Button
@@ -563,190 +655,368 @@ export function CockpitPage() {
         ) : null}
       </WorkspacePageHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <WorkspacePageContainer width="expanded">
+      {isConnected ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 border-b border-border/60 bg-background px-5 py-2 sm:px-6">
+          <ToggleGroup
+            size="segmented"
+            value={[activeTab]}
+            variant="segmented"
+            onValueChange={(next) => {
+              const value = next[0];
+              if (
+                value === "board" ||
+                value === "triage" ||
+                value === "releases" ||
+                value === "memory" ||
+                value === "setup"
+              ) {
+                setActiveTab(value);
+              }
+            }}
+          >
+            <Toggle value="board">
+              <KanbanIcon />
+              <T>Board</T>
+            </Toggle>
+            <Toggle value="triage">
+              <PullRequestGlyph.pullRequest />
+              <T>Review Triage</T>
+              {reviewQueue && reviewQueue.items.length > 0 ? (
+                <span className="font-mono text-2xs tabular-nums opacity-70">
+                  {reviewQueue.items.length}
+                </span>
+              ) : null}
+            </Toggle>
+            <Toggle value="releases">
+              <PackageCheckIcon />
+              <T>Releases</T>
+            </Toggle>
+            <Toggle value="memory">
+              <BrainIcon />
+              <T>Memory & Digests</T>
+            </Toggle>
+            <Toggle value="setup">
+              <SlidersHorizontalIcon />
+              <T>Setup</T>
+            </Toggle>
+          </ToggleGroup>
+
+          {overview ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <CockpitStatPill
+                active={activeTab === "board" && boardFilter === "all"}
+                label={<T>Active</T>}
+                tone="neutral"
+                value={overview.metrics.activeWorkItems}
+                onClick={() => {
+                  setActiveTab("board");
+                  setBoardFilter("all");
+                }}
+              />
+              <CockpitStatPill
+                active={activeTab === "board" && boardFilter === "blocked"}
+                label={<T>Blocked</T>}
+                tone="error"
+                value={overview.metrics.blockedWorkItems}
+                onClick={() => {
+                  setActiveTab("board");
+                  setBoardFilter("blocked");
+                }}
+              />
+              <CockpitStatPill
+                active={activeTab === "triage" && triageFilter === "blocked"}
+                label={<T>Bot Blocked</T>}
+                tone="error"
+                value={overview.metrics.botBlockedChangeRequests}
+                onClick={() => {
+                  setActiveTab("triage");
+                  setTriageFilter("blocked");
+                }}
+              />
+              <CockpitStatPill
+                active={activeTab === "triage" && triageFilter === "human"}
+                label={<T>Human Review</T>}
+                tone="info"
+                value={overview.metrics.readyForHumanReviewCount}
+                onClick={() => {
+                  setActiveTab("triage");
+                  setTriageFilter("human");
+                }}
+              />
+              <CockpitStatPill
+                active={activeTab === "triage" && triageFilter === "unlinked"}
+                label={<T>Orphan PRs</T>}
+                tone="warning"
+                value={overview.metrics.orphanChangeRequests}
+                onClick={() => {
+                  setActiveTab("triage");
+                  setTriageFilter("unlinked");
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="scrollbar-gutter-both min-h-0 min-w-0 flex-1 overflow-y-auto">
           {!primaryEnvironmentId ? (
-            <p className="text-sm text-muted-foreground">
-              <T>Connect to a U3 Code server environment first to use Team Cockpit.</T>
-            </p>
+            <WorkspacePageContainer width="expanded">
+              <Empty size="compact">
+                <EmptyMedia variant="icon">
+                  <ServerIcon />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>
+                    <T>No server environment connected</T>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <T>Connect to a U3 Code server environment first to use Team Cockpit.</T>
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            </WorkspacePageContainer>
           ) : loadingStatus ? (
-            <p className="text-sm text-muted-foreground">
-              <T>Checking Team Hub connection...</T>
-            </p>
+            <WorkspacePageContainer width="expanded">
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                <T>Checking Team Hub connection...</T>
+              </p>
+            </WorkspacePageContainer>
           ) : !status?.connected ? (
-            <CockpitConnectCard
-              environmentId={primaryEnvironmentId}
-              initialHubUrl={status?.hubUrl}
-              onConnected={handleConnected}
-            />
-          ) : (
-            <div className="space-y-6">
+            <WorkspacePageContainer width="expanded">
+              <CockpitConnectCard
+                environmentId={primaryEnvironmentId}
+                initialHubUrl={status?.hubUrl}
+                onConnected={handleConnected}
+              />
+            </WorkspacePageContainer>
+          ) : activeTab === "board" ? (
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-5 py-4 sm:px-6">
               {errorMessage ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                  {errorMessage}
-                </div>
+                <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
               ) : null}
 
-              {overview ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  <MetricTile label={gt("Active Items")} value={overview.metrics.activeWorkItems} />
-                  <MetricTile
-                    label={gt("Blocked")}
-                    tone={overview.metrics.blockedWorkItems > 0 ? "error" : "default"}
-                    value={overview.metrics.blockedWorkItems}
-                  />
-                  <MetricTile
-                    label={gt("At Risk")}
-                    tone={overview.metrics.atRiskWorkItems > 0 ? "warning" : "default"}
-                    value={overview.metrics.atRiskWorkItems}
-                  />
-                  <MetricTile
-                    label={gt("Bot Blocked PRs")}
-                    tone={overview.metrics.botBlockedChangeRequests > 0 ? "error" : "default"}
-                    value={overview.metrics.botBlockedChangeRequests}
-                  />
-                  <MetricTile
-                    label={gt("Human Review")}
-                    tone={overview.metrics.readyForHumanReviewCount > 0 ? "info" : "default"}
-                    value={overview.metrics.readyForHumanReviewCount}
-                  />
-                  <MetricTile
-                    label={gt("Orphan PRs")}
-                    tone={overview.metrics.orphanChangeRequests > 0 ? "warning" : "default"}
-                    value={overview.metrics.orphanChangeRequests}
-                  />
-                </div>
-              ) : null}
+              {stages.length === 0 ? (
+                <CockpitSurface variant="grouped">
+                  <Empty size="compact">
+                    <EmptyMedia variant="icon">
+                      <KanbanIcon />
+                    </EmptyMedia>
+                    <EmptyHeader>
+                      <EmptyTitle>
+                        <T>No project configured yet</T>
+                      </EmptyTitle>
+                      <EmptyDescription>
+                        <T>
+                          Create or select a project in Setup to track cross-repository work items
+                          and workflow gates.
+                        </T>
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button size="sm" variant="outline" onClick={() => setActiveTab("setup")}>
+                        <SlidersHorizontalIcon />
+                        <T>Open Setup</T>
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                </CockpitSurface>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ToggleGroup
+                        size="segmented"
+                        value={[boardView]}
+                        variant="segmented"
+                        onValueChange={(next) => {
+                          const value = next[0];
+                          if (value === "board" || value === "list") setBoardView(value);
+                        }}
+                      >
+                        <Toggle value="board">
+                          <KanbanIcon />
+                          <T>Board</T>
+                        </Toggle>
+                        <Toggle value="list">
+                          <ListIcon />
+                          <T>List</T>
+                        </Toggle>
+                      </ToggleGroup>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={activeTab === "board" ? "default" : "ghost"}
-                    onClick={() => setActiveTab("board")}
-                  >
-                    <KanbanIcon />
-                    <T>Board</T>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={activeTab === "triage" ? "default" : "ghost"}
-                    onClick={() => setActiveTab("triage")}
-                  >
-                    <PullRequestGlyph.pullRequest />
-                    <T>Review Triage</T>
-                    {reviewQueue && reviewQueue.items.length > 0 ? (
-                      <Badge size="sm" variant="secondary">
-                        {reviewQueue.items.length}
-                      </Badge>
+                      <ToggleGroup
+                        size="segmented"
+                        value={[boardFilter]}
+                        variant="segmented"
+                        onValueChange={(next) => {
+                          const value = next[0];
+                          if (value === "all" || value === "blocked" || value === "has_pr") {
+                            setBoardFilter(value);
+                          }
+                        }}
+                      >
+                        <Toggle value="all">
+                          <T>All</T>
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {allCards.length}
+                          </span>
+                        </Toggle>
+                        <Toggle value="blocked">
+                          <T>Blocked</T>
+                        </Toggle>
+                        <Toggle value="has_pr">
+                          <T>Has PR</T>
+                        </Toggle>
+                      </ToggleGroup>
+                    </div>
+
+                    {activeProject ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge size="sm" variant="outline">
+                          {activeProject.workflowConfig.preset}
+                        </Badge>
+                        <span className="tabular-nums">
+                          <T>
+                            <Var>{overview?.repos.length ?? 0}</Var> repos
+                          </T>
+                        </span>
+                      </div>
                     ) : null}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={activeTab === "releases" ? "default" : "ghost"}
-                    onClick={() => setActiveTab("releases")}
-                  >
-                    <PackageCheckIcon />
-                    <T>Releases</T>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={activeTab === "memory" ? "default" : "ghost"}
-                    onClick={() => setActiveTab("memory")}
-                  >
-                    <BrainIcon />
-                    <T>Memory & Digests</T>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={activeTab === "setup" ? "default" : "ghost"}
-                    onClick={() => setActiveTab("setup")}
-                  >
-                    <SlidersHorizontalIcon />
-                    <T>Setup</T>
-                  </Button>
-                </div>
-
-                {activeProject ? (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Badge size="sm" variant="outline">
-                      {activeProject.workflowConfig.preset}
-                    </Badge>
-                    <span>
-                      {overview?.repos.length ?? 0} <T>repos</T>
-                    </span>
                   </div>
-                ) : null}
-              </div>
 
-              {activeTab === "board" ? (
-                stages.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                    <T>
-                      No project selected or configured in this workspace yet. Create a project in
-                      u3code-hub to start tracking work items.
-                    </T>
-                  </div>
-                ) : (
-                  <div className="flex gap-4 overflow-x-auto pb-4">
-                    {stages.map((stage) => {
-                      const stageCards = (overview?.cards ?? []).filter(
-                        (card) => card.workItem.stage === stage.id,
-                      );
-                      return (
-                        <div
-                          key={stage.id}
-                          className="flex w-72 shrink-0 flex-col gap-3 rounded-xl border border-border bg-muted/25 p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold tracking-wide text-foreground uppercase">
-                              {stage.label}
-                            </span>
-                            <Badge size="sm" variant="secondary">
-                              {stageCards.length}
-                            </Badge>
-                          </div>
+                  {filteredCards.length === 0 && boardFilter !== "all" ? (
+                    <CockpitSurface variant="grouped">
+                      <Empty size="compact">
+                        <EmptyMedia variant="icon">
+                          <KanbanIcon />
+                        </EmptyMedia>
+                        <EmptyHeader>
+                          <EmptyTitle>
+                            <T>No matching work items</T>
+                          </EmptyTitle>
+                          <EmptyDescription>
+                            <T>
+                              No work items match the active filter. Reset the filter to inspect all
+                              stages.
+                            </T>
+                          </EmptyDescription>
+                        </EmptyHeader>
+                        <EmptyContent>
+                          <Button size="sm" variant="outline" onClick={() => setBoardFilter("all")}>
+                            <T>Show all items</T>
+                          </Button>
+                        </EmptyContent>
+                      </Empty>
+                    </CockpitSurface>
+                  ) : boardView === "board" ? (
+                    <div className="flex items-start gap-3.5 overflow-x-auto pb-4">
+                      {stages.map((stage) => {
+                        const stageCards = filteredCards.filter(
+                          (card) => card.workItem.stage === stage.id,
+                        );
+                        return (
+                          <CockpitSurface
+                            key={stage.id}
+                            className="flex w-76 shrink-0 flex-col gap-2.5"
+                            padding="sm"
+                            variant="subtle"
+                          >
+                            <CockpitSectionHeader count={stageCards.length} title={stage.label} />
 
-                          <div className="flex flex-col gap-2.5">
-                            {stageCards.map((card) => (
-                              <WorkItemCardView
-                                key={card.workItem.id}
-                                card={card}
-                                gates={gates}
-                                stages={stages}
-                                onApproveGate={(gateKey) =>
-                                  void handleApproveGate(card.workItem.id, gateKey)
-                                }
-                                onMoveStage={(nextStage) =>
-                                  void handleMoveStage(card.workItem.id, nextStage)
-                                }
-                                onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
-                              />
-                            ))}
+                            <div className="flex flex-col gap-2">
+                              {stageCards.map((card) => (
+                                <WorkItemCardView
+                                  key={card.workItem.id}
+                                  card={card}
+                                  gates={gates}
+                                  selectedChangeRequestId={selectedChangeRequestId}
+                                  stages={stages}
+                                  onApproveGate={(gateKey) =>
+                                    void handleApproveGate(card.workItem.id, gateKey)
+                                  }
+                                  onMoveStage={(nextStage) =>
+                                    void handleMoveStage(card.workItem.id, nextStage)
+                                  }
+                                  onOpenChangeRequest={handleOpenChangeRequest}
+                                  onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
+                                />
+                              ))}
+                              {stageCards.length === 0 ? (
+                                <p className="py-6 text-center text-xs text-muted-foreground/70">
+                                  <T>No items</T>
+                                </p>
+                              ) : null}
+                            </div>
+                          </CockpitSurface>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-4 pb-4">
+                      {stages.map((stage) => {
+                        const stageCards = filteredCards.filter(
+                          (card) => card.workItem.stage === stage.id,
+                        );
+                        if (stageCards.length === 0 && boardFilter !== "all") return null;
+                        return (
+                          <section key={stage.id} className="space-y-1.5">
+                            <CockpitSectionHeader count={stageCards.length} title={stage.label} />
                             {stageCards.length === 0 ? (
-                              <p className="py-4 text-center text-xs text-muted-foreground">
-                                <T>Empty</T>
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
+                              <CockpitSurface padding="sm" variant="subtle">
+                                <p className="text-xs text-muted-foreground/75">
+                                  <T>No items in this stage</T>
+                                </p>
+                              </CockpitSurface>
+                            ) : (
+                              <CockpitSurface divided variant="grouped">
+                                {stageCards.map((card) => (
+                                  <WorkItemListRowView
+                                    key={card.workItem.id}
+                                    card={card}
+                                    gates={gates}
+                                    selectedChangeRequestId={selectedChangeRequestId}
+                                    stages={stages}
+                                    onApproveGate={(gateKey) =>
+                                      void handleApproveGate(card.workItem.id, gateKey)
+                                    }
+                                    onMoveStage={(nextStage) =>
+                                      void handleMoveStage(card.workItem.id, nextStage)
+                                    }
+                                    onOpenChangeRequest={handleOpenChangeRequest}
+                                    onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
+                                  />
+                                ))}
+                              </CockpitSurface>
+                            )}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <WorkspacePageContainer className="py-5" width="expanded">
+              {errorMessage ? (
+                <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
               ) : null}
 
               {activeTab === "triage" ? (
-                <TriageQueueView
-                  cards={overview?.cards ?? []}
+                <CockpitTriageTab
+                  cards={allCards}
+                  filter={triageFilter}
                   reviewQueue={reviewQueue}
-                  onLinkChangeRequest={(crId, wiId) => void handleLinkChangeRequest(crId, wiId)}
+                  selectedChangeRequestId={selectedChangeRequestId}
+                  onFilterChange={setTriageFilter}
+                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                  onSelectChangeRequest={handleOpenChangeRequest}
                 />
               ) : null}
 
               {activeTab === "releases" ? (
                 <CockpitReleasesTab
-                  cards={overview?.cards ?? []}
+                  cards={allCards}
                   environmentId={primaryEnvironmentId}
                   refreshSignal={liveRefreshCount}
                   repos={overview?.repos ?? []}
@@ -756,176 +1026,18 @@ export function CockpitPage() {
               ) : null}
 
               {activeTab === "memory" ? (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <div className="space-y-4 rounded-xl border border-border bg-card p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <BrainIcon className="size-4 text-muted-foreground" />
-                        <h3 className="text-sm font-semibold text-foreground">
-                          <T>Living Project Memory</T>
-                        </h3>
-                      </div>
-                      {memory ? (
-                        <Badge size="sm" variant="outline">
-                          v{memory.version}
-                        </Badge>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase">
-                        <T>Owner Directives (Locked Against AI Overwrite)</T>
-                      </h4>
-                      <div className="space-y-1.5">
-                        {(memory?.directives ?? []).map((directive) => (
-                          <div
-                            key={directive.id}
-                            className="flex items-start justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs"
-                          >
-                            <span
-                              className={
-                                directive.active
-                                  ? "text-foreground"
-                                  : "text-muted-foreground line-through"
-                              }
-                            >
-                              {directive.text}
-                            </span>
-                            <Button
-                              disabled={savingDirectives}
-                              size="micro"
-                              variant="ghost"
-                              onClick={() => handleToggleDirective(directive.id)}
-                            >
-                              {directive.active ? <T>Disable</T> : <T>Enable</T>}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2 pt-1">
-                        <Input
-                          placeholder={gt("Add permanent rule (e.g. Never auto-merge main)")}
-                          size="sm"
-                          value={newDirectiveText}
-                          onChange={(event) => setNewDirectiveText(event.target.value)}
-                        />
-                        <Button
-                          disabled={savingDirectives || !newDirectiveText.trim()}
-                          size="sm"
-                          onClick={handleAddDirective}
-                        >
-                          <T>Add</T>
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase">
-                        <T>Architecture Decisions</T>
-                      </h4>
-                      {(memory?.architectureDecisions ?? []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          <T>No decisions synthesized yet. Generate a digest to distill them.</T>
-                        </p>
-                      ) : (
-                        <ul className="space-y-1.5 text-xs">
-                          {(memory?.architectureDecisions ?? []).map((adr) => (
-                            <li
-                              key={adr.id}
-                              className="rounded-md border border-border bg-background p-2.5"
-                            >
-                              <div className="font-medium text-foreground">{adr.summary}</div>
-                              <div className="mt-0.5 text-muted-foreground">
-                                {adr.date} {adr.repoFullName ? `· ${adr.repoFullName}` : ""}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 pt-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground uppercase">
-                        <T>Recurring Risks</T>
-                      </h4>
-                      {(memory?.recurringRisks ?? []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          <T>No active recurring risks recorded.</T>
-                        </p>
-                      ) : (
-                        <ul className="space-y-1.5 text-xs">
-                          {(memory?.recurringRisks ?? []).map((risk) => (
-                            <li
-                              key={risk.id}
-                              className="flex items-start justify-between gap-2 rounded-md border border-border bg-background p-2.5"
-                            >
-                              <div>
-                                <div className="font-medium text-foreground">{risk.title}</div>
-                                <div className="mt-0.5 text-muted-foreground">
-                                  {risk.mitigation}
-                                </div>
-                              </div>
-                              <Badge
-                                size="sm"
-                                variant={risk.severity === "high" ? "error" : "warning"}
-                              >
-                                {risk.severity} ×{risk.occurrences}
-                              </Badge>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 rounded-xl border border-border bg-card p-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <BotIcon className="size-4 text-muted-foreground" />
-                        <h3 className="text-sm font-semibold text-foreground">
-                          <T>AI Cockpit Digests</T>
-                        </h3>
-                      </div>
-                      <Button
-                        disabled={generatingDigest}
-                        size="xs"
-                        onClick={() => void handleGenerateDigest()}
-                      >
-                        <FileTextIcon />
-                        {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
-                      </Button>
-                    </div>
-
-                    {(digests?.digests ?? []).length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
-                        <T>
-                          No digests yet. Click Generate Digest to synthesize recent Pulses and PR
-                          activity into an executive summary and update project memory.
-                        </T>
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {(digests?.digests ?? []).slice(0, 5).map((digest) => (
-                          <div
-                            key={digest.id}
-                            className="rounded-lg border border-border bg-muted/20 p-3.5"
-                          >
-                            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                              <Badge size="sm" variant="outline">
-                                {digest.triggerType}
-                              </Badge>
-                              <span>{digest.createdAt.slice(0, 16).replace("T", " ")}</span>
-                            </div>
-                            <pre className="max-h-72 overflow-y-auto font-sans text-xs leading-relaxed whitespace-pre-wrap text-foreground">
-                              {digest.markdownBody}
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <CockpitMemoryTab
+                  digests={digests}
+                  generatingDigest={generatingDigest}
+                  memory={memory}
+                  savingDirectives={savingDirectives}
+                  selectedProjectId={selectedProjectId}
+                  onAddDirective={handleAddDirective}
+                  onGenerateDigest={() => void handleGenerateDigest()}
+                  onToggleDirective={handleToggleDirective}
+                />
               ) : null}
+
               {activeTab === "setup" ? (
                 <CockpitSettingsTab
                   environmentId={primaryEnvironmentId}
@@ -955,9 +1067,23 @@ export function CockpitPage() {
                   }}
                 />
               ) : null}
-            </div>
+            </WorkspacePageContainer>
           )}
-        </WorkspacePageContainer>
+        </div>
+
+        {isConnected && primaryEnvironmentId && selectedChangeRequest ? (
+          <CockpitPullRequestPane
+            cards={allCards}
+            changeRequest={selectedChangeRequest}
+            environmentId={primaryEnvironmentId}
+            memory={memory}
+            project={activeProject}
+            repos={overview?.repos ?? []}
+            onClose={handleCloseChangeRequest}
+            onLinkChangeRequest={(crId, wiId) => void handleLinkChangeRequest(crId, wiId)}
+            onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+          />
+        ) : null}
       </div>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -971,71 +1097,97 @@ export function CockpitPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <div>
-                <label
-                  className="mb-1 block text-xs font-medium text-muted-foreground"
-                  htmlFor="wi-title"
-                >
+                <CockpitFieldLabel htmlFor="wi-title">
                   <T>Title</T>
-                </label>
+                </CockpitFieldLabel>
                 <Input
                   id="wi-title"
                   placeholder={gt("e.g. Idempotent settlement outbox")}
+                  size="sm"
                   value={newTitle}
                   onChange={(event) => setNewTitle(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && newTitle.trim() && !creatingItem) {
+                      event.preventDefault();
+                      void handleCreateWorkItem();
+                    }
+                  }}
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label
-                    className="mb-1 block text-xs font-medium text-muted-foreground"
-                    htmlFor="wi-type"
-                  >
+                  <CockpitFieldLabel htmlFor="wi-type">
                     <T>Type</T>
-                  </label>
-                  <select
-                    id="wi-type"
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground"
+                  </CockpitFieldLabel>
+                  <Select
                     value={newType}
-                    onChange={(event) => setNewType(event.target.value as WorkItemType)}
+                    onValueChange={(value) => {
+                      if (
+                        value === "feature" ||
+                        value === "refactor" ||
+                        value === "bug" ||
+                        value === "chore" ||
+                        value === "security"
+                      ) {
+                        setNewType(value);
+                      }
+                    }}
                   >
-                    <option value="feature">feature</option>
-                    <option value="refactor">refactor</option>
-                    <option value="bug">bug</option>
-                    <option value="chore">chore</option>
-                    <option value="security">security</option>
-                  </select>
+                    <SelectTrigger id="wi-type" size="sm">
+                      <SelectValue>{workItemTypeLabel(newType, gt)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      <SelectItem value="feature">{gt("Feature")}</SelectItem>
+                      <SelectItem value="refactor">{gt("Refactor")}</SelectItem>
+                      <SelectItem value="bug">{gt("Bug")}</SelectItem>
+                      <SelectItem value="chore">{gt("Chore")}</SelectItem>
+                      <SelectItem value="security">{gt("Security")}</SelectItem>
+                    </SelectPopup>
+                  </Select>
                 </div>
                 <div>
-                  <label
-                    className="mb-1 block text-xs font-medium text-muted-foreground"
-                    htmlFor="wi-priority"
-                  >
+                  <CockpitFieldLabel htmlFor="wi-priority">
                     <T>Priority</T>
-                  </label>
-                  <select
-                    id="wi-priority"
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground"
+                  </CockpitFieldLabel>
+                  <Select
                     value={newPriority}
-                    onChange={(event) => setNewPriority(event.target.value as WorkItemPriority)}
+                    onValueChange={(value) => {
+                      if (value === "p0" || value === "p1" || value === "p2" || value === "p3") {
+                        setNewPriority(value);
+                      }
+                    }}
                   >
-                    <option value="p0">P0</option>
-                    <option value="p1">P1</option>
-                    <option value="p2">P2</option>
-                    <option value="p3">P3</option>
-                  </select>
+                    <SelectTrigger id="wi-priority" size="sm">
+                      <SelectValue>
+                        <CockpitPriorityDot priority={newPriority} />
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      <SelectItem value="p0">
+                        <CockpitPriorityDot priority="p0" />
+                      </SelectItem>
+                      <SelectItem value="p1">
+                        <CockpitPriorityDot priority="p1" />
+                      </SelectItem>
+                      <SelectItem value="p2">
+                        <CockpitPriorityDot priority="p2" />
+                      </SelectItem>
+                      <SelectItem value="p3">
+                        <CockpitPriorityDot priority="p3" />
+                      </SelectItem>
+                    </SelectPopup>
+                  </Select>
                 </div>
               </div>
               <div>
-                <label
-                  className="mb-1 block text-xs font-medium text-muted-foreground"
-                  htmlFor="wi-spec"
-                >
+                <CockpitFieldLabel htmlFor="wi-spec">
                   <T>Spec / Acceptance Criteria (Markdown)</T>
-                </label>
+                </CockpitFieldLabel>
                 <Textarea
                   id="wi-spec"
+                  placeholder={gt("Outline requirements, edge cases, and acceptance criteria")}
                   rows={4}
                   value={newSpec}
                   onChange={(event) => setNewSpec(event.target.value)}
@@ -1049,6 +1201,7 @@ export function CockpitPage() {
             </DialogClose>
             <Button
               disabled={creatingItem || !newTitle.trim()}
+              variant="default"
               onClick={() => void handleCreateWorkItem()}
             >
               {creatingItem ? <T>Creating...</T> : <T>Create</T>}
@@ -1056,6 +1209,7 @@ export function CockpitPage() {
           </DialogFooter>
         </DialogPopup>
       </Dialog>
+
       {primaryEnvironmentId ? (
         <WorkItemDetailDialog
           environmentId={primaryEnvironmentId}
@@ -1066,6 +1220,7 @@ export function CockpitPage() {
           stages={stages}
           workItemId={selectedWorkItemId}
           onClose={() => setSelectedWorkItemId(null)}
+          onOpenChangeRequest={handleOpenChangeRequest}
           onUpdated={() => {
             if (primaryEnvironmentId && selectedWorkspaceId) {
               void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
@@ -1103,39 +1258,7 @@ function CockpitLiveEventsBridge({
   return null;
 }
 
-function MetricTile({
-  label,
-  value,
-  tone = "default",
-}: {
-  readonly label: string;
-  readonly value: number;
-  readonly tone?: "default" | "error" | "warning" | "info";
-}) {
-  const valueClass =
-    tone === "error"
-      ? "text-destructive"
-      : tone === "warning"
-        ? "text-warning-foreground"
-        : tone === "info"
-          ? "text-info-foreground"
-          : "text-foreground";
-  return (
-    <div className="rounded-xl border border-border bg-card px-3.5 py-2.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
-    </div>
-  );
-}
-
-function WorkItemCardView({
-  card,
-  stages,
-  gates,
-  onMoveStage,
-  onApproveGate,
-  onOpenDetail,
-}: {
+interface WorkItemCardViewProps {
   readonly card: CockpitWorkItemCard;
   readonly stages: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly gates: ReadonlyArray<{
@@ -1144,10 +1267,24 @@ function WorkItemCardView({
     readonly beforeStage: string;
     readonly optional?: boolean | undefined;
   }>;
+  readonly selectedChangeRequestId: string | null;
   readonly onMoveStage: (nextStage: string) => void;
   readonly onApproveGate: (gateKey: string) => void;
   readonly onOpenDetail: () => void;
-}) {
+  readonly onOpenChangeRequest: (cr: ChangeRequestAudit) => void;
+}
+
+function WorkItemCardView({
+  card,
+  stages,
+  gates,
+  selectedChangeRequestId,
+  onMoveStage,
+  onApproveGate,
+  onOpenDetail,
+  onOpenChangeRequest,
+}: WorkItemCardViewProps) {
+  const gt = useGT();
   const latestGates = resolveLatestGateApprovals(card.gateApprovals);
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
@@ -1160,29 +1297,41 @@ function WorkItemCardView({
       )
     : [];
   const rejectedGates = gates.filter((g) => latestGates.get(g.key)?.status === "rejected");
+  const acPercent =
+    card.checklistTotalCount > 0
+      ? Math.round((card.checklistVerifiedCount / card.checklistTotalCount) * 100)
+      : 0;
 
   return (
-    <div className="space-y-2.5 rounded-lg border border-border bg-card p-3 shadow-2xs">
-      <div className="flex items-center justify-between gap-1.5">
-        <button
-          className="font-mono text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-          type="button"
-          onClick={onOpenDetail}
-        >
-          {card.workItem.code}
-        </button>
-        <div className="flex items-center gap-1">
-          <Badge size="sm" variant="outline">
-            {card.workItem.priority.toUpperCase()}
-          </Badge>
-          <Badge size="sm" variant={healthBadgeVariant(card.workItem.health)}>
-            {card.workItem.health}
-          </Badge>
+    <CockpitSurface
+      className="space-y-2.5 transition-colors hover:border-border"
+      padding="sm"
+      variant="card"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <CockpitPriorityDot priority={card.workItem.priority} />
+          <button
+            className="cursor-pointer truncate font-mono text-2xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+            type="button"
+            onClick={onOpenDetail}
+          >
+            {card.workItem.code}
+          </button>
         </div>
+        {card.workItem.health === "blocked" ? (
+          <Badge size="sm" variant="error">
+            <T>Blocked</T>
+          </Badge>
+        ) : card.workItem.health === "at_risk" ? (
+          <Badge size="sm" variant="warning">
+            <T>At Risk</T>
+          </Badge>
+        ) : null}
       </div>
 
       <button
-        className="block w-full text-left text-sm leading-snug font-medium text-foreground hover:underline"
+        className="block w-full cursor-pointer text-left text-sm leading-snug font-medium text-foreground underline-offset-2 hover:underline"
         type="button"
         onClick={onOpenDetail}
       >
@@ -1190,47 +1339,58 @@ function WorkItemCardView({
       </button>
 
       {card.checklistTotalCount > 0 ? (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CheckCircle2Icon className="size-3.5" />
-          <span>
-            AC {card.checklistVerifiedCount}/{card.checklistTotalCount}
+        <div className="flex items-center gap-2">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width]",
+                acPercent === 100 ? "bg-success" : "bg-foreground/60",
+              )}
+              style={{ width: `${acPercent}%` }}
+            />
+          </div>
+          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
+            <T>
+              AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
+            </T>
           </span>
         </div>
       ) : null}
 
       {card.changeRequests.length > 0 ? (
         <div className="space-y-1">
-          {card.changeRequests.map((cr) => (
-            <a
-              key={cr.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs hover:bg-muted/60"
-              href={cr.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <span className="truncate text-foreground">
-                {cr.repoFullName.split("/").at(-1)}#{cr.number}
-              </span>
-              <Badge
-                size="sm"
-                variant={
-                  cr.automatedReview.status === "blocking"
-                    ? "error"
-                    : cr.automatedReview.status === "auto_merged" ||
-                        cr.automatedReview.status === "pass"
-                      ? "success"
-                      : "secondary"
-                }
+          {card.changeRequests.map((cr) => {
+            const isSelected = cr.id === selectedChangeRequestId;
+            return (
+              <button
+                key={cr.id}
+                className={cn(
+                  "flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-1 text-left text-xs transition-colors",
+                  isSelected
+                    ? "border-border bg-accent/65 text-foreground"
+                    : "border-border/60 bg-muted/25 text-foreground hover:border-border hover:bg-accent/40",
+                )}
+                type="button"
+                onClick={() => onOpenChangeRequest(cr)}
               >
-                {cr.automatedReview.status}
-              </Badge>
-            </a>
-          ))}
+                <span className="flex min-w-0 items-center gap-1.5 font-mono text-2xs">
+                  <PullRequestGlyph.pullRequest className="size-3 shrink-0 text-muted-foreground" />
+                  <span className="truncate">
+                    {cr.repoFullName.split("/").at(-1)}#{cr.number}
+                  </span>
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 font-mono text-2xs text-muted-foreground">
+                  <CockpitStatusDot tone={reviewStatusTone(cr.automatedReview.status)} />
+                  <span>{reviewStatusLabel(cr.automatedReview.status, gt)}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
       {card.latestPulse ? (
-        <p className="line-clamp-2 rounded-md bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
+        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
           {card.latestPulse.doneSummary}
         </p>
       ) : null}
@@ -1249,7 +1409,7 @@ function WorkItemCardView({
       ) : null}
 
       {pendingGatesForNext.length > 0 ? (
-        <div className="flex flex-wrap gap-1 pt-0.5">
+        <div className="flex flex-wrap gap-1">
           {pendingGatesForNext.map((gate) => (
             <Button
               key={gate.key}
@@ -1264,166 +1424,126 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <Button size="micro" variant="ghost" onClick={onOpenDetail}>
+      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2">
+        <Button size="micro" variant="ghost-muted" onClick={onOpenDetail}>
           <T>Details</T>
         </Button>
         {nextStage ? (
           <Button size="micro" variant="outline" onClick={() => onMoveStage(nextStage.id)}>
-            → {nextStage.label}
+            <span>{nextStage.label}</span>
+            <ArrowRightIcon />
           </Button>
         ) : null}
       </div>
-    </div>
+    </CockpitSurface>
   );
 }
 
-function TriageQueueView({
-  reviewQueue,
-  cards,
-  onLinkChangeRequest,
-}: {
-  readonly reviewQueue: TeamHubReviewQueueResult | null;
-  readonly cards: ReadonlyArray<CockpitWorkItemCard>;
-  readonly onLinkChangeRequest: (changeRequestId: string, workItemId: string) => void;
-}) {
-  const gt = useGT();
-  const [selectedTargets, setSelectedTargets] = useState<Record<string, string>>({});
-  const bucketOrder = [
-    "bot_blocked",
-    "ready_for_human_review",
-    "ci_blocked",
-    "orphan",
-    "auto_merged_integration",
-    "draft",
-  ];
-
-  const grouped = reviewQueue?.grouped ?? {};
-  const activeBuckets = bucketOrder.filter((bucket) => (grouped[bucket]?.length ?? 0) > 0);
-
-  if (activeBuckets.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-        <T>All caught up: no open pull requests require triage.</T>
-      </div>
-    );
-  }
+function WorkItemListRowView({
+  card,
+  stages,
+  gates,
+  selectedChangeRequestId,
+  onMoveStage,
+  onApproveGate,
+  onOpenDetail,
+  onOpenChangeRequest,
+}: WorkItemCardViewProps) {
+  const latestGates = resolveLatestGateApprovals(card.gateApprovals);
+  const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
+  const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
+  const pendingGatesForNext = nextStage
+    ? gates.filter(
+        (g) =>
+          g.beforeStage === nextStage.id &&
+          !g.optional &&
+          latestGates.get(g.key)?.status !== "approved",
+      )
+    : [];
 
   return (
-    <div className="space-y-5">
-      {activeBuckets.map((bucket) => {
-        const items: ReadonlyArray<ChangeRequestAudit> = grouped[bucket] ?? [];
-        return (
-          <div key={bucket} className="space-y-2.5">
-            <div className="flex items-center gap-2">
-              <Badge variant={triageBucketVariant(bucket)}>{triageBucketLabel(bucket, gt)}</Badge>
-              <span className="text-xs text-muted-foreground">{items.length}</span>
-            </div>
+    <CockpitSurfaceRow
+      className="flex flex-wrap items-center justify-between gap-3"
+      density="compact"
+      interactive
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <CockpitPriorityDot priority={card.workItem.priority} />
+        <button
+          className="shrink-0 cursor-pointer font-mono text-2xs font-medium text-muted-foreground hover:text-foreground"
+          type="button"
+          onClick={onOpenDetail}
+        >
+          {card.workItem.code}
+        </button>
+        <button
+          className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm font-medium text-foreground hover:underline"
+          type="button"
+          onClick={onOpenDetail}
+        >
+          {card.workItem.title}
+        </button>
+        {card.workItem.health === "blocked" ? (
+          <Badge size="sm" variant="error">
+            <T>Blocked</T>
+          </Badge>
+        ) : card.workItem.health === "at_risk" ? (
+          <Badge size="sm" variant="warning">
+            <T>At Risk</T>
+          </Badge>
+        ) : null}
+      </div>
 
-            <div className="space-y-2">
-              {items.map((cr) => (
-                <div
-                  key={cr.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <a
-                        className="inline-flex items-center gap-1 text-sm font-medium text-foreground hover:underline"
-                        href={cr.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        <span>
-                          {cr.repoFullName}#{cr.number}
-                        </span>
-                        <ExternalLinkIcon className="size-3" />
-                      </a>
-                      <span className="text-sm text-foreground">{cr.title}</span>
-                    </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {card.checklistTotalCount > 0 ? (
+          <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+            <T>
+              AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
+            </T>
+          </span>
+        ) : null}
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>@{cr.authorVcsLogin}</span>
-                      <span>
-                        {cr.headBranch} → {cr.baseBranch} ({cr.baseBranchRole})
-                      </span>
-                      <span className="font-mono">
-                        +{cr.additions}/-{cr.deletions}
-                      </span>
-                      {cr.isOversized ? (
-                        <Badge size="sm" variant="warning">
-                          <AlertTriangleIcon />
-                          <T>Oversized</T>
-                        </Badge>
-                      ) : null}
-                      <Badge
-                        size="sm"
-                        variant={
-                          cr.qualitySignals.ciStatus === "failure"
-                            ? "error"
-                            : cr.qualitySignals.ciStatus === "success"
-                              ? "success"
-                              : "secondary"
-                        }
-                      >
-                        <T>
-                          CI: <Var>{cr.qualitySignals.ciStatus}</Var>
-                        </T>
-                      </Badge>
-                    </div>
+        {card.changeRequests.map((cr) => {
+          const isSelected = cr.id === selectedChangeRequestId;
+          return (
+            <button
+              key={cr.id}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-2xs transition-colors",
+                isSelected
+                  ? "border-border bg-accent/65 text-foreground"
+                  : "border-border/60 bg-muted/25 text-muted-foreground hover:border-border hover:text-foreground",
+              )}
+              type="button"
+              onClick={() => onOpenChangeRequest(cr)}
+            >
+              <CockpitStatusDot tone={reviewStatusTone(cr.automatedReview.status)} />
+              <span>
+                {cr.repoFullName.split("/").at(-1)}#{cr.number}
+              </span>
+            </button>
+          );
+        })}
 
-                    {cr.automatedReview.reviewers.length > 0 ? (
-                      <div className="space-y-1 pt-1">
-                        {cr.automatedReview.reviewers.map((finding) => (
-                          <div
-                            key={`${finding.reviewerName}:${finding.updatedAt}:${finding.state}`}
-                            className="rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
-                          >
-                            <span className="font-medium text-foreground">
-                              {finding.reviewerName}
-                            </span>{" "}
-                            [{finding.state}]: {finding.bodyExcerpt}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                  {cr.workItemId === null && cards.length > 0 ? (
-                    <div className="flex items-center gap-1.5">
-                      <select
-                        aria-label={gt("Link to work item")}
-                        className="h-7 max-w-48 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-                        value={selectedTargets[cr.id] ?? cards[0]?.workItem.id ?? ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setSelectedTargets((prev) => ({ ...prev, [cr.id]: value }));
-                        }}
-                      >
-                        {cards.map((card) => (
-                          <option key={card.workItem.id} value={card.workItem.id}>
-                            {card.workItem.code} · {card.workItem.title}
-                          </option>
-                        ))}
-                      </select>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={() => {
-                          const targetId = selectedTargets[cr.id] ?? cards[0]?.workItem.id;
-                          if (targetId) onLinkChangeRequest(cr.id, targetId);
-                        }}
-                      >
-                        <Link2Icon />
-                        <T>Link</T>
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+        {pendingGatesForNext.map((gate) => (
+          <Button
+            key={gate.key}
+            size="micro"
+            variant="warning-outline"
+            onClick={() => onApproveGate(gate.key)}
+          >
+            <ShieldCheckIcon />
+            {gate.label}
+          </Button>
+        ))}
+
+        {nextStage ? (
+          <Button size="micro" variant="outline" onClick={() => onMoveStage(nextStage.id)}>
+            <span>{nextStage.label}</span>
+            <ArrowRightIcon />
+          </Button>
+        ) : null}
+      </div>
+    </CockpitSurfaceRow>
   );
 }

@@ -1,12 +1,15 @@
 import type { EnvironmentId, TeamHubStatusResult } from "@t3tools/contracts";
 import { T, useGT } from "gt-react";
-import { ExternalLinkIcon, KeyRoundIcon, ServerIcon } from "lucide-react";
+import { ExternalLinkIcon, KeyRoundIcon, ServerIcon, TerminalIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Separator } from "~/components/ui/separator";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { CockpitFieldLabel, CockpitInlineAlert, CockpitSurface } from "./CockpitPrimitives";
 import { formatCockpitCommandError } from "./cockpitError";
 
 interface CockpitConnectCardProps {
@@ -99,146 +102,159 @@ export function CockpitConnectCard({
   };
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xs">
-      <div className="flex items-center gap-2 text-foreground">
-        <ServerIcon className="size-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold">
-          <T>Connect to Team Hub</T>
-        </h2>
-      </div>
-      <p className="mt-1.5 text-sm text-muted-foreground">
-        <T>
-          Connect this environment to a self-hosted u3code-hub server to view cross-repo work items,
-          automated review triage, living project memory, and AI digests.
-        </T>
-      </p>
-
-      <div className="mt-4 flex items-center gap-2">
-        <Button
-          size="sm"
-          variant={mode === "local" ? "default" : "outline"}
-          onClick={() => {
-            setMode("local");
-            setErrorMessage(null);
-          }}
-        >
-          <T>Local / Dev Sign-in</T>
-        </Button>
-        <Button
-          size="sm"
-          variant={mode === "tokens" ? "default" : "outline"}
-          onClick={() => {
-            setMode("tokens");
-            setErrorMessage(null);
-          }}
-        >
-          <KeyRoundIcon />
-          <T>OAuth / Token Sign-in</T>
-        </Button>
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-muted-foreground" htmlFor="hub-url">
-            <T>Hub Server URL</T>
-          </label>
-          <Input
-            id="hub-url"
-            placeholder="http://127.0.0.1:4310"
-            value={hubUrl}
-            onChange={(event) => setHubUrl(event.target.value)}
-          />
+    <div className="mx-auto my-8 w-full max-w-lg">
+      <CockpitSurface className="p-6" variant="grouped">
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background text-foreground shadow-2xs">
+            <ServerIcon className="size-4" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">
+              <T>Connect to Team Hub</T>
+            </h2>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              <T>
+                Connect this U3 Code environment to a self-hosted u3code-hub server for cross-repo
+                work items, in-app PR review triage, release trains, and living project memory.
+              </T>
+            </p>
+          </div>
         </div>
 
-        {mode === "local" ? (
-          <>
-            <div>
-              <label
-                className="mb-1 block text-xs font-medium text-muted-foreground"
-                htmlFor="hub-username"
-              >
-                <T>Username</T>
-              </label>
-              <Input
-                id="hub-username"
-                placeholder="alice"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-              />
-            </div>
-            <div>
-              <label
-                className="mb-1 block text-xs font-medium text-muted-foreground"
-                htmlFor="hub-display-name"
-              >
-                <T>Display Name (optional)</T>
-              </label>
-              <Input
-                id="hub-display-name"
-                placeholder={gt("Alice Chen")}
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
-              <span>
-                <T>
-                  One-click GitHub OAuth redirects back to Team Cockpit and connects automatically.
-                </T>
-              </span>
-              {normalizedHubUrl ? (
-                <Button size="xs" variant="default" onClick={handleStartGitHubOAuth}>
-                  <T>Sign in with GitHub</T>
-                  <ExternalLinkIcon className="size-3" />
-                </Button>
-              ) : null}
-            </div>
-            <div>
-              <label
-                className="mb-1 block text-xs font-medium text-muted-foreground"
-                htmlFor="hub-access-token"
-              >
-                <T>Access Token</T>
-              </label>
-              <Input
-                id="hub-access-token"
-                type="password"
-                value={accessToken}
-                onChange={(event) => setAccessToken(event.target.value)}
-              />
-            </div>
-            <div>
-              <label
-                className="mb-1 block text-xs font-medium text-muted-foreground"
-                htmlFor="hub-refresh-token"
-              >
-                <T>Refresh Token</T>
-              </label>
-              <Input
-                id="hub-refresh-token"
-                type="password"
-                value={refreshToken}
-                onChange={(event) => setRefreshToken(event.target.value)}
-              />
-            </div>
-          </>
-        )}
+        <Separator className="my-5" />
 
-        {errorMessage ? (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {errorMessage}
-          </p>
-        ) : null}
-
-        <div className="flex justify-end pt-1">
-          <Button disabled={submitting} onClick={() => void handleSubmit()}>
-            {submitting ? <T>Connecting...</T> : <T>Connect</T>}
-          </Button>
+        <div className="flex items-center justify-between gap-2">
+          <ToggleGroup
+            size="segmented"
+            value={[mode]}
+            variant="segmented"
+            onValueChange={(next) => {
+              const value = next[0];
+              if (value === "local" || value === "tokens") {
+                setMode(value);
+                setErrorMessage(null);
+              }
+            }}
+          >
+            <Toggle value="local">
+              <TerminalIcon />
+              <T>Local / Dev Sign-in</T>
+            </Toggle>
+            <Toggle value="tokens">
+              <KeyRoundIcon />
+              <T>OAuth / Token Sign-in</T>
+            </Toggle>
+          </ToggleGroup>
         </div>
-      </div>
+
+        <form
+          className="mt-4 space-y-3.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+        >
+          <div>
+            <CockpitFieldLabel htmlFor="hub-url">
+              <T>Hub Server URL</T>
+            </CockpitFieldLabel>
+            <Input
+              font="mono"
+              id="hub-url"
+              placeholder="http://127.0.0.1:4310"
+              size="sm"
+              value={hubUrl}
+              onChange={(event) => setHubUrl(event.target.value)}
+            />
+          </div>
+
+          {mode === "local" ? (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <div>
+                <CockpitFieldLabel htmlFor="hub-username">
+                  <T>Username</T>
+                </CockpitFieldLabel>
+                <Input
+                  id="hub-username"
+                  placeholder="alice"
+                  size="sm"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </div>
+              <div>
+                <CockpitFieldLabel htmlFor="hub-display-name">
+                  <T>Display Name (optional)</T>
+                </CockpitFieldLabel>
+                <Input
+                  id="hub-display-name"
+                  placeholder={gt("Alice Chen")}
+                  size="sm"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              <CockpitSurface padding="sm" variant="subtle">
+                <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs text-muted-foreground">
+                  <span className="min-w-0 flex-1 leading-relaxed">
+                    <T>
+                      One-click GitHub OAuth redirects back to Team Cockpit and connects
+                      automatically.
+                    </T>
+                  </span>
+                  {normalizedHubUrl ? (
+                    <Button size="xs" variant="outline" onClick={handleStartGitHubOAuth}>
+                      <T>Sign in with GitHub</T>
+                      <ExternalLinkIcon />
+                    </Button>
+                  ) : null}
+                </div>
+              </CockpitSurface>
+
+              <div>
+                <CockpitFieldLabel htmlFor="hub-access-token">
+                  <T>Access Token</T>
+                </CockpitFieldLabel>
+                <Input
+                  font="mono"
+                  id="hub-access-token"
+                  size="sm"
+                  type="password"
+                  value={accessToken}
+                  onChange={(event) => setAccessToken(event.target.value)}
+                />
+              </div>
+
+              <div>
+                <CockpitFieldLabel htmlFor="hub-refresh-token">
+                  <T>Refresh Token</T>
+                </CockpitFieldLabel>
+                <Input
+                  font="mono"
+                  id="hub-refresh-token"
+                  size="sm"
+                  type="password"
+                  value={refreshToken}
+                  onChange={(event) => setRefreshToken(event.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {errorMessage ? (
+            <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
+          ) : null}
+
+          <div className="flex justify-end pt-1">
+            <Button disabled={submitting} size="sm" type="submit" variant="default">
+              {submitting ? <T>Connecting...</T> : <T>Connect</T>}
+            </Button>
+          </div>
+        </form>
+      </CockpitSurface>
     </div>
   );
 }

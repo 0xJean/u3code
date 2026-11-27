@@ -12,9 +12,11 @@ import type {
 import { T, useGT, Var } from "gt-react";
 import {
   BellIcon,
+  CheckIcon,
   FolderPlusIcon,
   GitBranchIcon,
   LayersIcon,
+  PlusIcon,
   PuzzleIcon,
   RefreshCwIcon,
   SendIcon,
@@ -22,15 +24,50 @@ import {
   UserCogIcon,
   UserPlusIcon,
   UsersIcon,
+  WorkflowIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
+import { Switch } from "~/components/ui/switch";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { toastManager } from "~/components/ui/toast";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
+import {
+  CockpitFieldLabel,
+  CockpitSectionHeader,
+  CockpitStatusDot,
+  CockpitSurface,
+  CockpitSurfaceRow,
+} from "./CockpitPrimitives";
 import { formatCockpitCommandError } from "./cockpitError";
 
 interface CockpitSettingsTabProps {
@@ -42,6 +79,8 @@ interface CockpitSettingsTabProps {
   readonly onRefreshAll: (nextWorkspaceId?: string, nextProjectId?: string) => void;
 }
 
+type SetupSection = "overview" | "team" | "notifications" | "plugins";
+
 const DEFAULT_EVENTS: ReadonlyArray<NotificationEventKind> = [
   "digest.ready",
   "pr.bot_blocked",
@@ -51,6 +90,61 @@ const DEFAULT_EVENTS: ReadonlyArray<NotificationEventKind> = [
 ];
 
 const WORKSPACE_ROLES = ["owner", "pm", "qa", "ops", "security", "dev"] as const;
+type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+
+const FORGE_OPTIONS: ReadonlyArray<{ readonly value: ForgeKind; readonly label: string }> = [
+  { value: "github", label: "GitHub" },
+  { value: "gitlab", label: "GitLab" },
+];
+
+const NOTIFIER_DRIVERS: ReadonlyArray<NotifierDriverKind> = ["lark", "webhook", "slack", "discord"];
+
+function getRoleLabel(role: string, gt: ReturnType<typeof useGT>): string {
+  switch (role) {
+    case "owner":
+      return gt("Owner", { $context: "workspace member role" });
+    case "pm":
+      return gt("PM", { $context: "workspace member role, product manager" });
+    case "qa":
+      return gt("QA", { $context: "workspace member role, quality assurance" });
+    case "ops":
+      return gt("Ops", { $context: "workspace member role, operations" });
+    case "security":
+      return gt("Security", { $context: "workspace member role" });
+    case "dev":
+      return gt("Dev", { $context: "workspace member role, developer" });
+    default:
+      return role;
+  }
+}
+
+function getDriverLabel(driver: NotifierDriverKind, gt: ReturnType<typeof useGT>): string {
+  switch (driver) {
+    case "lark":
+      return gt("Lark / Feishu");
+    case "webhook":
+      return gt("Generic Webhook");
+    case "slack":
+      return gt("Slack");
+    case "discord":
+      return gt("Discord");
+  }
+}
+
+function getForgeLabel(forge: ForgeKind): string {
+  return forge === "gitlab" ? "GitLab" : "GitHub";
+}
+
+function getBranchRoleLabel(role: string, gt: ReturnType<typeof useGT>): string {
+  switch (role) {
+    case "integration":
+      return gt("integration", { $context: "git branch policy role" });
+    case "release":
+      return gt("release", { $context: "git branch policy role" });
+    default:
+      return role;
+  }
+}
 
 export function CockpitSettingsTab({
   environmentId,
@@ -61,6 +155,14 @@ export function CockpitSettingsTab({
   onRefreshAll,
 }: CockpitSettingsTabProps) {
   const gt = useGT();
+  const [activeSection, setActiveSection] = useState<SetupSection>("overview");
+
+  // Creation dialog open states
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [repoDialogOpen, setRepoDialogOpen] = useState(false);
+  const [memberDialogOpen, setMemberDialogOpen] = useState(false);
+  const [channelDialogOpen, setChannelDialogOpen] = useState(false);
 
   // Workspace creation
   const [wsName, setWsName] = useState("");
@@ -109,8 +211,10 @@ export function CockpitSettingsTab({
   const [members, setMembers] = useState<ReadonlyArray<WorkspaceMember>>([]);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [newMemberIdentifier, setNewMemberIdentifier] = useState("");
-  const [newMemberRole, setNewMemberRole] = useState<(typeof WORKSPACE_ROLES)[number]>("dev");
+  const [newMemberRole, setNewMemberRole] = useState<WorkspaceRole>("dev");
   const [addingMember, setAddingMember] = useState(false);
+
+  // Row-level busy states
   const [removingRepoId, setRemovingRepoId] = useState<string | null>(null);
   const [syncingRepoId, setSyncingRepoId] = useState<string | null>(null);
   const [busyChannelId, setBusyChannelId] = useState<string | null>(null);
@@ -200,6 +304,29 @@ export function CockpitSettingsTab({
 
   const visibleChannels = selectedWorkspaceId ? channels : [];
   const visibleMembers = selectedWorkspaceId ? members : [];
+  const repos = overview?.repos ?? [];
+  const activeWorkspace = status.me?.workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? null;
+  const activeProject = overview?.project ?? null;
+
+  const fallbackPresets: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
+    {
+      id: "full-delivery",
+      label: gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)"),
+    },
+    {
+      id: "lean",
+      label: gt("Lean (Backlog → In Progress → Review → Done)"),
+    },
+  ];
+  const presetOptions =
+    workflowPresets.length > 0
+      ? workflowPresets.map((preset) => ({ id: preset.id, label: preset.label }))
+      : fallbackPresets;
+  const effectiveProjPreset = presetOptions.some((option) => option.id === projPreset)
+    ? projPreset
+    : (presetOptions[0]?.id ?? "full-delivery");
+  const selectedPresetLabel =
+    presetOptions.find((option) => option.id === effectiveProjPreset)?.label ?? effectiveProjPreset;
 
   const handleCreateWorkspace = async () => {
     const slug = wsSlug.trim().toLowerCase() || wsName.trim().toLowerCase().replace(/\s+/g, "-");
@@ -213,6 +340,7 @@ export function CockpitSettingsTab({
     if (res._tag === "Success") {
       setWsName("");
       setWsSlug("");
+      setWorkspaceDialogOpen(false);
       toastManager.add({ title: gt("Workspace created"), type: "success" });
       onRefreshAll(res.value.workspace.id, "");
     } else {
@@ -233,7 +361,7 @@ export function CockpitSettingsTab({
         key: projKey.trim().toUpperCase(),
         name: projName.trim(),
         ...(projDesc.trim() ? { description: projDesc.trim() } : {}),
-        preset: projPreset,
+        preset: effectiveProjPreset,
       },
     });
     setCreatingProj(false);
@@ -241,6 +369,7 @@ export function CockpitSettingsTab({
       setProjKey("");
       setProjName("");
       setProjDesc("");
+      setProjectDialogOpen(false);
       toastManager.add({ title: gt("Project created"), type: "success" });
       onRefreshAll(selectedWorkspaceId, res.value.project.id);
     } else {
@@ -311,6 +440,9 @@ export function CockpitSettingsTab({
     setAddingRepo(false);
     if (res._tag === "Success") {
       setRepoFullName("");
+      setBotName("");
+      setBotLogins("");
+      setRepoDialogOpen(false);
       toastManager.add({ title: gt("Repository linked to project"), type: "success" });
       onRefreshAll(selectedWorkspaceId, selectedProjectId);
     } else {
@@ -341,6 +473,7 @@ export function CockpitSettingsTab({
       setChannelName("");
       setChannelWebhookUrl("");
       setChannelSecret("");
+      setChannelDialogOpen(false);
       setChannels((prev) => [...prev, res.value.channel]);
       toastManager.add({ title: gt("Notification channel added"), type: "success" });
     } else {
@@ -422,6 +555,7 @@ export function CockpitSettingsTab({
     setAddingMember(false);
     if (res._tag === "Success") {
       setNewMemberIdentifier("");
+      setMemberDialogOpen(false);
       setMembers((prev) => {
         const exists = prev.some((m) => m.userId === res.value.member.userId);
         return exists
@@ -552,307 +686,277 @@ export function CockpitSettingsTab({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-2">
-            <UserCogIcon className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">
-              <T>My Profile & Notification Handles</T>
-            </h3>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            <T>
-              Bind your GitHub login and Lark or Slack user ID so Hub cards can @mention you when
-              PRs or blockers need attention.
-            </T>
-          </p>
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <Input
-              placeholder={gt("Display name")}
-              size="sm"
-              value={profileDisplayName}
-              onChange={(event) => setProfileDisplayName(event.target.value)}
-            />
-            <Input
-              placeholder={gt("GitHub / VCS login")}
-              size="sm"
-              value={profileVcsLogin}
-              onChange={(event) => setProfileVcsLogin(event.target.value)}
-            />
-            <Input
-              placeholder={gt("Lark open_id (for @mentions)")}
-              size="sm"
-              value={larkHandle}
-              onChange={(event) => setLarkHandle(event.target.value)}
-            />
-            <Input
-              placeholder={gt("Slack member ID (optional)")}
-              size="sm"
-              value={slackHandle}
-              onChange={(event) => setSlackHandle(event.target.value)}
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button disabled={savingProfile} size="sm" onClick={() => void handleSaveProfile()}>
-              {savingProfile ? <T>Saving...</T> : <T>Save Profile</T>}
-            </Button>
-          </div>
-        </section>
-
-        <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <UsersIcon className="size-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">
-                <T>Team Members & Roles</T>
-              </h3>
-            </div>
-            <Badge size="sm" variant="secondary">
-              {visibleMembers.length}
-            </Badge>
-          </div>
-          {!selectedWorkspaceId ? (
-            <p className="text-xs text-muted-foreground">
-              <T>Select or create a workspace to manage member roles.</T>
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <div className="min-w-44 flex-1">
-                  <Input
-                    placeholder={gt("GitHub login or email of existing Hub user")}
-                    size="sm"
-                    value={newMemberIdentifier}
-                    onChange={(event) => setNewMemberIdentifier(event.target.value)}
-                  />
-                </div>
-                <select
-                  aria-label={gt("Initial role")}
-                  className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
-                  value={newMemberRole}
-                  onChange={(event) =>
-                    setNewMemberRole(event.target.value as (typeof WORKSPACE_ROLES)[number])
-                  }
-                >
-                  {WORKSPACE_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  disabled={addingMember || !newMemberIdentifier.trim()}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void handleAddMember()}
-                >
-                  <UserPlusIcon />
-                  {addingMember ? <T>Adding...</T> : <T>Add Member</T>}
-                </Button>
-              </div>
-              {visibleMembers.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  <T>No members loaded yet.</T>
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {visibleMembers.map((member) => (
-                    <div
-                      key={member.userId}
-                      className="space-y-2 rounded-lg border border-border bg-muted/25 p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="font-medium text-foreground">
-                          {member.displayName}
-                          {member.primaryVcsLogin ? ` (@${member.primaryVcsLogin})` : ""}
-                        </span>
-                        {member.notificationHandles.lark ? (
-                          <Badge size="sm" variant="outline">
-                            <T>
-                              Lark: <Var>{member.notificationHandles.lark}</Var>
-                            </T>
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {WORKSPACE_ROLES.map((role) => {
-                          const active = member.roles.includes(role);
-                          return (
-                            <Button
-                              key={role}
-                              disabled={updatingMemberId === member.userId}
-                              size="micro"
-                              variant={active ? "default" : "outline"}
-                              onClick={() => void handleToggleMemberRole(member, role)}
-                            >
-                              {role}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Sub-Navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ToggleGroup
+          aria-label={gt("Setup sections")}
+          size="segmented"
+          value={[activeSection]}
+          variant="segmented"
+          onValueChange={(next) => {
+            const value = next[0];
+            if (
+              value === "overview" ||
+              value === "team" ||
+              value === "notifications" ||
+              value === "plugins"
+            ) {
+              setActiveSection(value);
+            }
+          }}
+        >
+          <Toggle value="overview">
+            <T>Overview & Repos</T>
+          </Toggle>
+          <Toggle value="team">
+            <T>Team & Profile</T>
+          </Toggle>
+          <Toggle value="notifications">
+            <T>Notifications</T>
+          </Toggle>
+          <Toggle value="plugins">
+            <T>Plugins & Packs</T>
+          </Toggle>
+        </ToggleGroup>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* 1. Workspace & Project Setup */}
+      {/* Section 1: Overview & Repos */}
+      {activeSection === "overview" ? (
         <div className="space-y-6">
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center gap-2">
-              <LayersIcon className="size-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">
-                <T>Create Workspace</T>
-              </h3>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              <T>
-                Signed in as <Var>{status.me?.user.displayName ?? "user"}</Var>. Create a workspace
-                to organize projects, repositories, and team roles.
-              </T>
-            </p>
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <Input
-                placeholder={gt("Workspace name (e.g. Engineering)")}
-                size="sm"
-                value={wsName}
-                onChange={(event) => setWsName(event.target.value)}
-              />
-              <Input
-                placeholder={gt("Slug (e.g. eng)")}
-                size="sm"
-                value={wsSlug}
-                onChange={(event) => setWsSlug(event.target.value)}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button
-                disabled={creatingWs || !wsName.trim()}
-                size="sm"
-                onClick={() => void handleCreateWorkspace()}
-              >
-                {creatingWs ? <T>Creating...</T> : <T>Create Workspace</T>}
-              </Button>
-            </div>
-          </section>
+          <section className="space-y-2.5">
+            <CockpitSectionHeader
+              action={
+                <>
+                  <Button size="xs" variant="outline" onClick={() => setWorkspaceDialogOpen(true)}>
+                    <PlusIcon />
+                    <T>New Workspace</T>
+                  </Button>
+                  <Button
+                    disabled={!selectedWorkspaceId}
+                    size="xs"
+                    variant="outline"
+                    onClick={() => setProjectDialogOpen(true)}
+                  >
+                    <FolderPlusIcon />
+                    <T>New Project</T>
+                  </Button>
+                </>
+              }
+              icon={<LayersIcon />}
+              title={<T>Workspace & Project</T>}
+            />
 
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center gap-2">
-              <FolderPlusIcon className="size-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold text-foreground">
-                <T>Create Project</T>
-              </h3>
-            </div>
-            {!selectedWorkspaceId ? (
-              <p className="text-xs text-muted-foreground">
-                <T>Create or select a workspace first.</T>
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <Input
-                    placeholder={gt("Key (e.g. CORE)")}
-                    size="sm"
-                    value={projKey}
-                    onChange={(event) => setProjKey(event.target.value)}
-                  />
-                  <div className="sm:col-span-2">
-                    <Input
-                      placeholder={gt("Project name")}
-                      size="sm"
-                      value={projName}
-                      onChange={(event) => setProjName(event.target.value)}
-                    />
+            <CockpitSurface divided variant="grouped">
+              <CockpitSurfaceRow className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-sm font-medium text-foreground">
+                    <T>Hub Connection</T>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>
+                      <T>
+                        Signed in as <Var>{status.me?.user.displayName ?? gt("user")}</Var>
+                      </T>
+                    </span>
+                    {status.me?.user.primaryVcsLogin ? (
+                      <span className="font-mono">@{status.me.user.primaryVcsLogin}</span>
+                    ) : null}
+                    {status.hubUrl ? (
+                      <span className="font-mono text-muted-foreground/80">{status.hubUrl}</span>
+                    ) : null}
                   </div>
                 </div>
-                <Input
-                  placeholder={gt("Short description (optional)")}
-                  size="sm"
-                  value={projDesc}
-                  onChange={(event) => setProjDesc(event.target.value)}
-                />
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <select
-                    aria-label={gt("Workflow Preset")}
-                    className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground"
-                    value={projPreset}
-                    onChange={(event) => setProjPreset(event.target.value)}
-                  >
-                    {workflowPresets.length > 0 ? (
-                      workflowPresets.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.label}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="full-delivery">
-                          {gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)")}
-                        </option>
-                        <option value="lean">
-                          {gt("Lean (Backlog → In Progress → Review → Done)")}
-                        </option>
-                      </>
-                    )}
-                  </select>
-                  <Button
-                    disabled={creatingProj || !projKey.trim() || !projName.trim()}
-                    size="sm"
-                    onClick={() => void handleCreateProject()}
-                  >
-                    {creatingProj ? <T>Creating...</T> : <T>Create Project</T>}
-                  </Button>
+                <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <CockpitStatusDot ring tone="success" />
+                  <span>
+                    <T>Connected</T>
+                  </span>
                 </div>
-              </div>
-            )}
+              </CockpitSurfaceRow>
+
+              <CockpitSurfaceRow className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-sm font-medium text-foreground">
+                    <T>Active Workspace</T>
+                  </div>
+                  {activeWorkspace ? (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="text-foreground">{activeWorkspace.name}</span>
+                      <span className="font-mono">{activeWorkspace.slug}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      <T>Create or select a workspace to organize projects and team roles.</T>
+                    </p>
+                  )}
+                </div>
+                {activeWorkspace && activeWorkspace.roles.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {activeWorkspace.roles.map((role) => (
+                      <Badge key={role} size="sm" variant="outline">
+                        {getRoleLabel(role, gt)}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </CockpitSurfaceRow>
+
+              <CockpitSurfaceRow className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-sm font-medium text-foreground">
+                    <T>Active Project</T>
+                  </div>
+                  {activeProject ? (
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-foreground">{activeProject.key}</span>
+                        <span className="text-foreground">{activeProject.name}</span>
+                      </div>
+                      {activeProject.description ? <p>{activeProject.description}</p> : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      <T>Select or create a project to configure repositories and workflows.</T>
+                    </p>
+                  )}
+                </div>
+                {activeProject ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge size="sm" variant="secondary">
+                      {activeProject.workflowConfig.preset}
+                    </Badge>
+                    <Badge size="sm" variant="outline">
+                      <T>
+                        <Var>{activeProject.workflowConfig.stages.length}</Var> stages
+                      </T>
+                    </Badge>
+                    <Badge size="sm" variant="outline">
+                      <T>
+                        <Var>{activeProject.workflowConfig.gates.length}</Var> gates
+                      </T>
+                    </Badge>
+                  </div>
+                ) : null}
+              </CockpitSurfaceRow>
+            </CockpitSurface>
           </section>
-        </div>
 
-        {/* 2. Repository Policies & Notification Channels */}
-        <div className="space-y-6">
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <GitBranchIcon className="size-4 text-muted-foreground" />
-                <h3 className="text-sm font-semibold text-foreground">
-                  <T>Linked Repositories & Policy</T>
-                </h3>
-              </div>
-              <Badge size="sm" variant="secondary">
-                {overview?.repos.length ?? 0}
-              </Badge>
-            </div>
+          <section className="space-y-2.5">
+            <CockpitSectionHeader
+              action={
+                <Button
+                  disabled={!selectedProjectId}
+                  size="xs"
+                  variant={selectedProjectId && repos.length > 0 ? "default" : "outline"}
+                  onClick={() => setRepoDialogOpen(true)}
+                >
+                  <PlusIcon />
+                  <T>Link Repository</T>
+                </Button>
+              }
+              count={repos.length}
+              icon={<GitBranchIcon />}
+              title={<T>Linked Repositories & Policy</T>}
+            />
 
-            {(overview?.repos ?? []).length > 0 ? (
-              <ul className="space-y-1.5 text-xs">
-                {(overview?.repos ?? []).map((repo) => (
-                  <li
+            {!selectedProjectId ? (
+              <CockpitSurface variant="grouped">
+                <Empty size="compact">
+                  <EmptyMedia variant="icon">
+                    <GitBranchIcon />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      <T>Select a project first</T>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <T>
+                        Create or select a project to link repositories, branch merge rules, and
+                        automated review bots.
+                      </T>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  {selectedWorkspaceId ? (
+                    <EmptyContent>
+                      <Button size="sm" onClick={() => setProjectDialogOpen(true)}>
+                        <FolderPlusIcon />
+                        <T>New Project</T>
+                      </Button>
+                    </EmptyContent>
+                  ) : null}
+                </Empty>
+              </CockpitSurface>
+            ) : repos.length === 0 ? (
+              <CockpitSurface variant="grouped">
+                <Empty size="compact">
+                  <EmptyMedia variant="icon">
+                    <GitBranchIcon />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      <T>No linked repositories</T>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <T>
+                        Link a GitHub or GitLab repository to sync open pull requests, enforce PR
+                        line thresholds, and track automated reviewers.
+                      </T>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button size="sm" onClick={() => setRepoDialogOpen(true)}>
+                      <PlusIcon />
+                      <T>Link Repository</T>
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              </CockpitSurface>
+            ) : (
+              <CockpitSurface divided variant="grouped">
+                {repos.map((repo) => (
+                  <CockpitSurfaceRow
                     key={repo.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                    className="flex flex-wrap items-center justify-between gap-3"
+                    interactive
                   >
-                    <span className="font-mono font-medium text-foreground">
-                      {repo.repoFullName}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {repo.repoPolicy.branches.map((branch) => (
-                        <Badge key={branch.name} size="sm" variant="outline">
-                          {branch.name}:{branch.role}
+                    <div className="min-w-0 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-medium text-foreground">
+                          {repo.repoFullName}
+                        </span>
+                        <Badge size="sm" variant="outline">
+                          {getForgeLabel(repo.forgeKind)}
                         </Badge>
-                      ))}
-                      {repo.repoPolicy.automatedReviewers.map((bot) => (
-                        <Badge key={bot.name} size="sm" variant="info">
-                          bot:{bot.name}
-                        </Badge>
-                      ))}
+                        {repo.repoPolicy.maxPrChangedLines ? (
+                          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                            <T>
+                              Max <Var>{repo.repoPolicy.maxPrChangedLines}</Var> lines
+                            </T>
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {repo.repoPolicy.branches.map((branch) => (
+                          <Badge key={branch.name} size="sm" variant="secondary">
+                            {branch.name}: {getBranchRoleLabel(branch.role, gt)}
+                          </Badge>
+                        ))}
+                        {repo.repoPolicy.automatedReviewers.map((bot) => (
+                          <Badge key={bot.name} size="sm" variant="info">
+                            <T>
+                              Bot: <Var>{bot.name}</Var>
+                            </T>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
                       {repo.forgeKind === "github" ? (
                         <Button
                           disabled={syncingRepoId === repo.id}
-                          size="micro"
+                          size="xs"
                           variant="outline"
                           onClick={() => void handleSyncRepo(repo.id)}
                         >
@@ -864,35 +968,726 @@ export function CockpitSettingsTab({
                         aria-label={gt("Remove repository")}
                         disabled={removingRepoId === repo.id}
                         size="icon-xs"
-                        variant="ghost-muted"
+                        variant="ghost-destructive"
                         onClick={() => void handleDeleteRepo(repo.id)}
                       >
                         <Trash2Icon />
                       </Button>
                     </div>
-                  </li>
+                  </CockpitSurfaceRow>
                 ))}
-              </ul>
-            ) : null}
+              </CockpitSurface>
+            )}
+          </section>
+        </div>
+      ) : null}
 
-            {!selectedProjectId ? (
-              <p className="text-xs text-muted-foreground">
-                <T>Select or create a project to link repositories.</T>
-              </p>
-            ) : (
-              <div className="space-y-2.5 pt-1">
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <select
-                    aria-label={gt("Forge")}
-                    className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
-                    value={forgeKind}
-                    onChange={(event) => setForgeKind(event.target.value as ForgeKind)}
-                  >
-                    <option value="github">github</option>
-                    <option value="gitlab">gitlab</option>
-                  </select>
-                  <div className="sm:col-span-2">
+      {/* Section 2: Team & Profile */}
+      {activeSection === "team" ? (
+        <div className="space-y-6">
+          <form
+            className="space-y-2.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSaveProfile();
+            }}
+          >
+            <CockpitSectionHeader
+              action={
+                <Button disabled={savingProfile} size="xs" type="submit">
+                  {savingProfile ? <T>Saving...</T> : <T>Save Profile</T>}
+                </Button>
+              }
+              icon={<UserCogIcon />}
+              title={<T>My Profile & Notification Handles</T>}
+            />
+
+            <CockpitSurface divided variant="grouped">
+              <CockpitSurfaceRow className="space-y-3">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  <T>
+                    Bind your GitHub login and Lark or Slack user ID so Hub cards can @mention you
+                    when PRs or blockers need attention.
+                  </T>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-profile-name">
+                      <T>Display name</T>
+                    </CockpitFieldLabel>
                     <Input
+                      id="cockpit-profile-name"
+                      placeholder={gt("Display name")}
+                      size="sm"
+                      value={profileDisplayName}
+                      onChange={(event) => setProfileDisplayName(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-profile-vcs">
+                      <T>GitHub / VCS login</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-profile-vcs"
+                      placeholder={gt("GitHub / VCS login")}
+                      size="sm"
+                      value={profileVcsLogin}
+                      onChange={(event) => setProfileVcsLogin(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </CockpitSurfaceRow>
+
+              <CockpitSurfaceRow>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-profile-lark">
+                      <T>Lark open_id</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-profile-lark"
+                      placeholder={gt("Lark open_id (for @mentions)")}
+                      size="sm"
+                      value={larkHandle}
+                      onChange={(event) => setLarkHandle(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-profile-slack">
+                      <T>Slack member ID</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-profile-slack"
+                      placeholder={gt("Slack member ID (optional)")}
+                      size="sm"
+                      value={slackHandle}
+                      onChange={(event) => setSlackHandle(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </CockpitSurfaceRow>
+            </CockpitSurface>
+          </form>
+
+          <section className="space-y-2.5">
+            <CockpitSectionHeader
+              action={
+                <Button
+                  disabled={!selectedWorkspaceId}
+                  size="xs"
+                  variant="outline"
+                  onClick={() => setMemberDialogOpen(true)}
+                >
+                  <UserPlusIcon />
+                  <T>Add Member</T>
+                </Button>
+              }
+              count={visibleMembers.length}
+              icon={<UsersIcon />}
+              title={<T>Team Members & Roles</T>}
+            />
+
+            {!selectedWorkspaceId ? (
+              <CockpitSurface variant="grouped">
+                <Empty size="compact">
+                  <EmptyMedia variant="icon">
+                    <UsersIcon />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      <T>Select a workspace first</T>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <T>Select or create a workspace to manage member roles and gate sign-offs.</T>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setWorkspaceDialogOpen(true)}
+                    >
+                      <PlusIcon />
+                      <T>New Workspace</T>
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              </CockpitSurface>
+            ) : visibleMembers.length === 0 ? (
+              <CockpitSurface variant="grouped">
+                <Empty size="compact">
+                  <EmptyMedia variant="icon">
+                    <UsersIcon />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      <T>No members loaded yet</T>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <T>
+                        Add existing Hub users by GitHub login or email and assign roles for review
+                        and release gates.
+                      </T>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button size="sm" variant="outline" onClick={() => setMemberDialogOpen(true)}>
+                      <UserPlusIcon />
+                      <T>Add Member</T>
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              </CockpitSurface>
+            ) : (
+              <CockpitSurface divided variant="grouped">
+                {visibleMembers.map((member) => (
+                  <CockpitSurfaceRow key={member.userId} className="space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {member.displayName}
+                        </span>
+                        {member.primaryVcsLogin ? (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            @{member.primaryVcsLogin}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {member.notificationHandles.lark ? (
+                          <Badge size="sm" variant="outline">
+                            <T>
+                              Lark: <Var>{member.notificationHandles.lark}</Var>
+                            </T>
+                          </Badge>
+                        ) : null}
+                        {member.notificationHandles.slack ? (
+                          <Badge size="sm" variant="outline">
+                            <T>
+                              Slack: <Var>{member.notificationHandles.slack}</Var>
+                            </T>
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {WORKSPACE_ROLES.map((role) => {
+                        const active = member.roles.includes(role);
+                        return (
+                          <Button
+                            key={role}
+                            aria-pressed={active}
+                            disabled={updatingMemberId === member.userId}
+                            size="micro"
+                            variant={active ? "secondary" : "ghost-muted"}
+                            onClick={() => void handleToggleMemberRole(member, role)}
+                          >
+                            {active ? <CheckIcon /> : null}
+                            {getRoleLabel(role, gt)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </CockpitSurfaceRow>
+                ))}
+              </CockpitSurface>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {/* Section 3: Notifications */}
+      {activeSection === "notifications" ? (
+        <section className="space-y-2.5">
+          <CockpitSectionHeader
+            action={
+              <Button
+                disabled={!selectedWorkspaceId}
+                size="xs"
+                variant={selectedWorkspaceId && visibleChannels.length > 0 ? "default" : "outline"}
+                onClick={() => setChannelDialogOpen(true)}
+              >
+                <PlusIcon />
+                <T>Add Channel</T>
+              </Button>
+            }
+            count={visibleChannels.length}
+            icon={<BellIcon />}
+            title={<T>Notification Channels</T>}
+          />
+
+          {!selectedWorkspaceId ? (
+            <CockpitSurface variant="grouped">
+              <Empty size="compact">
+                <EmptyMedia variant="icon">
+                  <BellIcon />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>
+                    <T>Select a workspace first</T>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <T>Select or create a workspace to add notification channels.</T>
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button size="sm" onClick={() => setWorkspaceDialogOpen(true)}>
+                    <PlusIcon />
+                    <T>New Workspace</T>
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            </CockpitSurface>
+          ) : visibleChannels.length === 0 ? (
+            <CockpitSurface variant="grouped">
+              <Empty size="compact">
+                <EmptyMedia variant="icon">
+                  <BellIcon />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>
+                    <T>No notification channels</T>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <T>
+                      Connect Lark, Slack, Discord, or a custom webhook to receive PR triage alerts,
+                      blocker @mentions, and release updates.
+                    </T>
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button size="sm" onClick={() => setChannelDialogOpen(true)}>
+                    <PlusIcon />
+                    <T>Add Channel</T>
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            </CockpitSurface>
+          ) : (
+            <CockpitSurface divided variant="grouped">
+              {visibleChannels.map((ch) => (
+                <CockpitSurfaceRow
+                  key={ch.id}
+                  className="flex flex-wrap items-center justify-between gap-3"
+                  interactive
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                    <CockpitStatusDot tone={ch.isEnabled ? "success" : "neutral"} />
+                    <span
+                      className={
+                        ch.isEnabled
+                          ? "text-sm font-medium text-foreground"
+                          : "text-sm font-medium text-muted-foreground"
+                      }
+                    >
+                      {ch.name}
+                    </span>
+                    <Badge size="sm" variant="outline">
+                      {getDriverLabel(ch.driver, gt)}
+                    </Badge>
+                    <Badge size="sm" variant={ch.isEnabled ? "success" : "secondary"}>
+                      <T>
+                        <Var>{ch.events.length}</Var> events
+                      </T>
+                    </Badge>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      disabled={testingChannelId === ch.id}
+                      size="xs"
+                      variant="outline"
+                      onClick={() => void handleTestChannel(ch.id)}
+                    >
+                      <SendIcon />
+                      {testingChannelId === ch.id ? <T>Sending...</T> : <T>Test</T>}
+                    </Button>
+                    <Switch
+                      aria-label={gt("Enable {name}", { name: ch.name })}
+                      checked={ch.isEnabled}
+                      disabled={busyChannelId === ch.id}
+                      size="sm"
+                      onCheckedChange={() => void handleToggleChannel(ch)}
+                    />
+                    <Button
+                      aria-label={gt("Delete notification channel")}
+                      disabled={busyChannelId === ch.id}
+                      size="icon-xs"
+                      variant="ghost-destructive"
+                      onClick={() => void handleDeleteChannel(ch.id)}
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </div>
+                </CockpitSurfaceRow>
+              ))}
+            </CockpitSurface>
+          )}
+        </section>
+      ) : null}
+
+      {/* Section 4: Plugins & Packs */}
+      {activeSection === "plugins" ? (
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <CockpitSectionHeader
+              count={hubPlugins.length}
+              icon={<PuzzleIcon />}
+              title={<T>Hub Plugins & Playbook Packs</T>}
+            />
+
+            <CockpitSurface padding="sm" variant="subtle">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                <T>
+                  Server-side Hub plugins extend notification drivers, workflow presets, lifecycle
+                  hooks, and callback routes. Load external plugins via{" "}
+                  <code className="font-mono text-foreground">HUB_PLUGINS</code>, or install
+                  reusable Workflow & Skill Playbook Packs with{" "}
+                  <code className="font-mono text-foreground">
+                    node infra/hub/src/packs/cli.ts packs/bot-review-autofix
+                  </code>
+                  .
+                </T>
+              </p>
+            </CockpitSurface>
+
+            {hubPlugins.length === 0 ? (
+              <CockpitSurface variant="grouped">
+                <Empty size="compact">
+                  <EmptyMedia variant="icon">
+                    <PuzzleIcon />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>
+                      <T>No plugins reported</T>
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      <T>No plugins reported by the connected Hub.</T>
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              </CockpitSurface>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {hubPlugins.map((plugin) => (
+                  <CockpitSurface
+                    key={plugin.id}
+                    className="space-y-2.5"
+                    padding="md"
+                    variant="card"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground">{plugin.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          v{plugin.version}
+                        </span>
+                      </div>
+                      <Badge size="sm" variant={plugin.builtin ? "outline" : "info"}>
+                        {plugin.builtin ? <T>Built-in</T> : <T>External</T>}
+                      </Badge>
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {plugin.description}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {plugin.capabilities.notifiers.map((item) => (
+                        <Badge key={`n:${item}`} size="sm" variant="secondary">
+                          <T>
+                            Notifier: <Var>{item}</Var>
+                          </T>
+                        </Badge>
+                      ))}
+                      {plugin.capabilities.workflowPresets.map((item) => (
+                        <Badge key={`p:${item}`} size="sm" variant="secondary">
+                          <T>
+                            Preset: <Var>{item}</Var>
+                          </T>
+                        </Badge>
+                      ))}
+                      {plugin.capabilities.eventHooks.map((item) => (
+                        <Badge key={`e:${item}`} size="sm" variant="outline">
+                          <T>
+                            Hook: <Var>{item}</Var>
+                          </T>
+                        </Badge>
+                      ))}
+                      {plugin.capabilities.routes.map((item) => (
+                        <Badge key={`r:${item}`} size="sm" variant="outline">
+                          <T>
+                            Route: <Var>{item}</Var>
+                          </T>
+                        </Badge>
+                      ))}
+                    </div>
+                  </CockpitSurface>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {workflowPresets.length > 0 ? (
+            <section className="space-y-2.5">
+              <CockpitSectionHeader
+                count={workflowPresets.length}
+                icon={<WorkflowIcon />}
+                title={<T>Registered Workflow Presets</T>}
+              />
+              <CockpitSurface divided variant="grouped">
+                {workflowPresets.map((preset) => (
+                  <CockpitSurfaceRow
+                    key={preset.id}
+                    className="flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">{preset.label}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{preset.id}</span>
+                      </div>
+                      {preset.description ? (
+                        <p className="text-xs text-muted-foreground">{preset.description}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      <Badge size="sm" variant="outline">
+                        <T>
+                          <Var>{preset.workflowConfig.stages.length}</Var> stages
+                        </T>
+                      </Badge>
+                      <Badge size="sm" variant="outline">
+                        <T>
+                          <Var>{preset.workflowConfig.gates.length}</Var> gates
+                        </T>
+                      </Badge>
+                    </div>
+                  </CockpitSurfaceRow>
+                ))}
+              </CockpitSurface>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Dialog 1: Create Workspace */}
+      <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}>
+        <DialogPopup>
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateWorkspace();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <T>Create Workspace</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Signed in as <Var>{status.me?.user.displayName ?? gt("user")}</Var>. Create a
+                  workspace to organize projects, repositories, and team roles.
+                </T>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="space-y-3">
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-ws-name">
+                    <T>Workspace name</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="cockpit-ws-name"
+                    placeholder={gt("Workspace name (e.g. Engineering)")}
+                    size="sm"
+                    value={wsName}
+                    onChange={(event) => setWsName(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-ws-slug">
+                    <T>Slug</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    font="mono"
+                    id="cockpit-ws-slug"
+                    placeholder={gt("Slug (e.g. eng)")}
+                    size="sm"
+                    value={wsSlug}
+                    onChange={(event) => setWsSlug(event.target.value)}
+                  />
+                </div>
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                <T>Cancel</T>
+              </DialogClose>
+              <Button disabled={creatingWs || !wsName.trim()} type="submit">
+                {creatingWs ? <T>Creating...</T> : <T>Create Workspace</T>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+
+      {/* Dialog 2: Create Project */}
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+        <DialogPopup>
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateProject();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <T>Create Project</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Configure a project key, name, and delivery workflow preset for this workspace.
+                </T>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-proj-key">
+                      <T>Project key</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-proj-key"
+                      placeholder={gt("Key (e.g. CORE)")}
+                      size="sm"
+                      value={projKey}
+                      onChange={(event) => setProjKey(event.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <CockpitFieldLabel htmlFor="cockpit-proj-name">
+                      <T>Project name</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="cockpit-proj-name"
+                      placeholder={gt("Project name")}
+                      size="sm"
+                      value={projName}
+                      onChange={(event) => setProjName(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-proj-desc">
+                    <T>Description</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="cockpit-proj-desc"
+                    placeholder={gt("Short description (optional)")}
+                    size="sm"
+                    value={projDesc}
+                    onChange={(event) => setProjDesc(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <CockpitFieldLabel>
+                    <T>Workflow preset</T>
+                  </CockpitFieldLabel>
+                  <Select
+                    value={effectiveProjPreset}
+                    onValueChange={(value) => {
+                      if (typeof value === "string" && value.length > 0) {
+                        setProjPreset(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={gt("Workflow Preset")} size="sm">
+                      <SelectValue>{selectedPresetLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup alignItemWithTrigger={false}>
+                      {presetOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                <T>Cancel</T>
+              </DialogClose>
+              <Button disabled={creatingProj || !projKey.trim() || !projName.trim()} type="submit">
+                {creatingProj ? <T>Creating...</T> : <T>Create Project</T>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+
+      {/* Dialog 3: Link Repository */}
+      <Dialog open={repoDialogOpen} onOpenChange={setRepoDialogOpen}>
+        <DialogPopup>
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddRepo();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <T>Link Repository</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Bind a repository and define its integration branch, release branch, PR size
+                  guardrail, and automated reviewer bots.
+                </T>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                  <div>
+                    <CockpitFieldLabel>
+                      <T>Forge</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={forgeKind}
+                      onValueChange={(value) => {
+                        if (value === "github" || value === "gitlab") {
+                          setForgeKind(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger aria-label={gt("Forge")} size="sm">
+                        <SelectValue>{getForgeLabel(forgeKind)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup alignItemWithTrigger={false}>
+                        {FORGE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-fullname">
+                      <T>Repository</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-repo-fullname"
                       placeholder={gt("org/repository")}
                       size="sm"
                       value={repoFullName}
@@ -900,135 +1695,230 @@ export function CockpitSettingsTab({
                     />
                   </div>
                 </div>
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <Input
-                    placeholder={gt("Integration branch (dev)")}
-                    size="sm"
-                    value={integrationBranch}
-                    onChange={(event) => setIntegrationBranch(event.target.value)}
-                  />
-                  <Input
-                    placeholder={gt("Release branch (main)")}
-                    size="sm"
-                    value={releaseBranch}
-                    onChange={(event) => setReleaseBranch(event.target.value)}
-                  />
-                  <Input
-                    placeholder={gt("Max PR lines (500)")}
-                    size="sm"
-                    value={maxPrLines}
-                    onChange={(event) => setMaxPrLines(event.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  <Input
-                    placeholder={gt("Automated reviewer name (optional)")}
-                    size="sm"
-                    value={botName}
-                    onChange={(event) => setBotName(event.target.value)}
-                  />
-                  <Input
-                    placeholder={gt("Bot logins comma-separated (optional)")}
-                    size="sm"
-                    value={botLogins}
-                    onChange={(event) => setBotLogins(event.target.value)}
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    disabled={addingRepo || !repoFullName.trim()}
-                    size="sm"
-                    onClick={() => void handleAddRepo()}
-                  >
-                    {addingRepo ? <T>Linking...</T> : <T>Link Repository</T>}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </section>
 
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BellIcon className="size-4 text-muted-foreground" />
-                <h3 className="text-sm font-semibold text-foreground">
-                  <T>Notification Channels</T>
-                </h3>
-              </div>
-              <Badge size="sm" variant="secondary">
-                {visibleChannels.length}
-              </Badge>
-            </div>
-
-            {visibleChannels.length > 0 ? (
-              <ul className="space-y-1.5 text-xs">
-                {visibleChannels.map((ch) => (
-                  <li
-                    key={ch.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
-                  >
-                    <span className="font-medium text-foreground">{ch.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      <Badge size="sm" variant="outline">
-                        {ch.driver}
-                      </Badge>
-                      <Badge size="sm" variant={ch.isEnabled ? "success" : "secondary"}>
-                        <T>
-                          <Var>{ch.events.length}</Var> events
-                        </T>
-                      </Badge>
-                      <Button
-                        disabled={testingChannelId === ch.id}
-                        size="micro"
-                        variant="outline"
-                        onClick={() => void handleTestChannel(ch.id)}
-                      >
-                        <SendIcon />
-                        {testingChannelId === ch.id ? <T>Sending...</T> : <T>Test</T>}
-                      </Button>
-                      <Button
-                        disabled={busyChannelId === ch.id}
-                        size="micro"
-                        variant="outline"
-                        onClick={() => void handleToggleChannel(ch)}
-                      >
-                        {ch.isEnabled ? <T>Disable</T> : <T>Enable</T>}
-                      </Button>
-                      <Button
-                        aria-label={gt("Delete notification channel")}
-                        disabled={busyChannelId === ch.id}
-                        size="icon-xs"
-                        variant="ghost-muted"
-                        onClick={() => void handleDeleteChannel(ch.id)}
-                      >
-                        <Trash2Icon />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {!selectedWorkspaceId ? (
-              <p className="text-xs text-muted-foreground">
-                <T>Select or create a workspace to add notification channels.</T>
-              </p>
-            ) : (
-              <div className="space-y-2.5 pt-1">
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <select
-                    aria-label={gt("Notification Driver")}
-                    className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
-                    value={channelDriver}
-                    onChange={(event) => setChannelDriver(event.target.value as NotifierDriverKind)}
-                  >
-                    <option value="lark">{gt("Lark / Feishu")}</option>
-                    <option value="webhook">{gt("Generic Webhook")}</option>
-                    <option value="slack">{gt("Slack")}</option>
-                    <option value="discord">{gt("Discord")}</option>
-                  </select>
-                  <div className="sm:col-span-2">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-integration">
+                      <T>Integration branch</T>
+                    </CockpitFieldLabel>
                     <Input
+                      font="mono"
+                      id="cockpit-repo-integration"
+                      placeholder={gt("Integration branch (dev)")}
+                      size="sm"
+                      value={integrationBranch}
+                      onChange={(event) => setIntegrationBranch(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-release">
+                      <T>Release branch</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-repo-release"
+                      placeholder={gt("Release branch (main)")}
+                      size="sm"
+                      value={releaseBranch}
+                      onChange={(event) => setReleaseBranch(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-max-lines">
+                      <T>Max PR lines</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-repo-max-lines"
+                      inputMode="numeric"
+                      placeholder={gt("Max PR lines (500)")}
+                      size="sm"
+                      value={maxPrLines}
+                      onChange={(event) => setMaxPrLines(event.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-bot-name">
+                      <T>Automated reviewer name</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="cockpit-repo-bot-name"
+                      placeholder={gt("Automated reviewer name (optional)")}
+                      size="sm"
+                      value={botName}
+                      onChange={(event) => setBotName(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-repo-bot-logins">
+                      <T>Bot logins</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      font="mono"
+                      id="cockpit-repo-bot-logins"
+                      placeholder={gt("Bot logins comma-separated (optional)")}
+                      size="sm"
+                      value={botLogins}
+                      onChange={(event) => setBotLogins(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                <T>Cancel</T>
+              </DialogClose>
+              <Button disabled={addingRepo || !repoFullName.trim()} type="submit">
+                {addingRepo ? <T>Linking...</T> : <T>Link Repository</T>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+
+      {/* Dialog 4: Add Member */}
+      <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
+        <DialogPopup>
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddMember();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <T>Add Team Member</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Add an existing Hub user by GitHub login or email and pick their initial workspace
+                  role.
+                </T>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="space-y-3">
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-member-identifier">
+                    <T>GitHub login or email</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="cockpit-member-identifier"
+                    placeholder={gt("GitHub login or email of existing Hub user")}
+                    size="sm"
+                    value={newMemberIdentifier}
+                    onChange={(event) => setNewMemberIdentifier(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <CockpitFieldLabel>
+                    <T>Initial role</T>
+                  </CockpitFieldLabel>
+                  <Select
+                    value={newMemberRole}
+                    onValueChange={(value) => {
+                      if (
+                        value === "owner" ||
+                        value === "pm" ||
+                        value === "qa" ||
+                        value === "ops" ||
+                        value === "security" ||
+                        value === "dev"
+                      ) {
+                        setNewMemberRole(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={gt("Initial role")} size="sm">
+                      <SelectValue>{getRoleLabel(newMemberRole, gt)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup alignItemWithTrigger={false}>
+                      {WORKSPACE_ROLES.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {getRoleLabel(role, gt)}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                <T>Cancel</T>
+              </DialogClose>
+              <Button disabled={addingMember || !newMemberIdentifier.trim()} type="submit">
+                {addingMember ? <T>Adding...</T> : <T>Add Member</T>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
+
+      {/* Dialog 5: Add Notification Channel */}
+      <Dialog open={channelDialogOpen} onOpenChange={setChannelDialogOpen}>
+        <DialogPopup>
+          <form
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateChannel();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                <T>Add Notification Channel</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Deliver digest summaries, blocked PR alerts, and release updates to your team chat
+                  or webhook endpoint.
+                </T>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                  <div>
+                    <CockpitFieldLabel>
+                      <T>Driver</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={channelDriver}
+                      onValueChange={(value) => {
+                        if (
+                          value === "lark" ||
+                          value === "webhook" ||
+                          value === "slack" ||
+                          value === "discord"
+                        ) {
+                          setChannelDriver(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger aria-label={gt("Notification Driver")} size="sm">
+                        <SelectValue>{getDriverLabel(channelDriver, gt)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup alignItemWithTrigger={false}>
+                        {NOTIFIER_DRIVERS.map((driver) => (
+                          <SelectItem key={driver} value={driver}>
+                            {getDriverLabel(driver, gt)}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="cockpit-channel-name">
+                      <T>Channel name</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="cockpit-channel-name"
                       placeholder={gt("Channel name (e.g. Engineering Alerts)")}
                       size="sm"
                       value={channelName}
@@ -1036,109 +1926,58 @@ export function CockpitSettingsTab({
                     />
                   </div>
                 </div>
-                <Input
-                  placeholder={gt("Webhook URL")}
-                  size="sm"
-                  value={channelWebhookUrl}
-                  onChange={(event) => setChannelWebhookUrl(event.target.value)}
-                />
-                <Input
-                  placeholder={gt("Signing secret (optional, stored AES-256-GCM encrypted)")}
-                  size="sm"
-                  type="password"
-                  value={channelSecret}
-                  onChange={(event) => setChannelSecret(event.target.value)}
-                />
-                <div className="flex justify-end">
-                  <Button
-                    disabled={creatingChannel || !channelName.trim() || !channelWebhookUrl.trim()}
+
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-channel-url">
+                    <T>Webhook URL</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    font="mono"
+                    id="cockpit-channel-url"
+                    placeholder={gt("Webhook URL")}
                     size="sm"
-                    onClick={() => void handleCreateChannel()}
-                  >
-                    {creatingChannel ? <T>Saving...</T> : <T>Add Channel</T>}
-                  </Button>
+                    value={channelWebhookUrl}
+                    onChange={(event) => setChannelWebhookUrl(event.target.value)}
+                  />
                 </div>
+
+                <div>
+                  <CockpitFieldLabel htmlFor="cockpit-channel-secret">
+                    <T>Signing secret</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="cockpit-channel-secret"
+                    placeholder={gt("Signing secret (optional, stored AES-256-GCM encrypted)")}
+                    size="sm"
+                    type="password"
+                    value={channelSecret}
+                    onChange={(event) => setChannelSecret(event.target.value)}
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  <T>
+                    Subscribes to <Var>{DEFAULT_EVENTS.length}</Var> core events by default (digest
+                    ready, bot-blocked PR, ready for human review, blocker attention, and release
+                    ready).
+                  </T>
+                </p>
               </div>
-            )}
-          </section>
-        </div>
-      </div>
-
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <PuzzleIcon className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">
-              <T>Hub Plugins & Playbook Packs</T>
-            </h3>
-          </div>
-          <Badge size="sm" variant="secondary">
-            <T>
-              <Var>{hubPlugins.length}</Var> loaded
-            </T>
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          <T>
-            Server-side Hub plugins extend notification drivers, workflow presets, lifecycle hooks,
-            and callback routes. Load external plugins via{" "}
-            <code className="font-mono text-foreground">HUB_PLUGINS</code>, or install reusable
-            Workflow & Skill Playbook Packs with{" "}
-            <code className="font-mono text-foreground">
-              node infra/hub/src/packs/cli.ts packs/bot-review-autofix
-            </code>
-            .
-          </T>
-        </p>
-
-        {hubPlugins.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            <T>No plugins reported by the connected Hub.</T>
-          </p>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {hubPlugins.map((plugin) => (
-              <div
-                key={plugin.id}
-                className="space-y-2 rounded-lg border border-border bg-muted/25 p-3.5 text-xs"
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                <T>Cancel</T>
+              </DialogClose>
+              <Button
+                disabled={creatingChannel || !channelName.trim() || !channelWebhookUrl.trim()}
+                type="submit"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">{plugin.name}</span>
-                    <span className="font-mono text-muted-foreground">v{plugin.version}</span>
-                  </div>
-                  <Badge size="sm" variant={plugin.builtin ? "outline" : "info"}>
-                    {plugin.builtin ? <T>Built-in</T> : <T>External</T>}
-                  </Badge>
-                </div>
-                <p className="text-muted-foreground">{plugin.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {plugin.capabilities.notifiers.map((item) => (
-                    <Badge key={`n:${item}`} size="sm" variant="secondary">
-                      notifier:{item}
-                    </Badge>
-                  ))}
-                  {plugin.capabilities.workflowPresets.map((item) => (
-                    <Badge key={`p:${item}`} size="sm" variant="secondary">
-                      preset:{item}
-                    </Badge>
-                  ))}
-                  {plugin.capabilities.eventHooks.map((item) => (
-                    <Badge key={`e:${item}`} size="sm" variant="outline">
-                      hook:{item}
-                    </Badge>
-                  ))}
-                  {plugin.capabilities.routes.map((item) => (
-                    <Badge key={`r:${item}`} size="sm" variant="outline">
-                      route:{item}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+                {creatingChannel ? <T>Saving...</T> : <T>Add Channel</T>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogPopup>
+      </Dialog>
     </div>
   );
 }

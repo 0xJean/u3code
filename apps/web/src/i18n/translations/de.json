@@ -3271,10 +3271,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "auf dem Computer, der diese Seite geöffnet hat"
-      ]
+      "c": [" ", "auf dem Computer, der diese Seite geöffnet hat"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3286,10 +3283,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· wer es ausführt, erhält diesen Zugriff"
-      ]
+      "c": [" ", "· wer es ausführt, erhält diesen Zugriff"]
     }
   ],
   "c54cc9c75db9dc58": "Genehmige nur eine Anmeldung, die du gerade selbst gestartet hast.",
@@ -5323,7 +5317,7 @@
   "ede9c4c0b3b6ab95": "Failed to connect with tokens.",
   "4f42f6aa15cd4cc4": "Alice Chen",
   "a0cb92b7aafebd64": "Connect to Team Hub",
-  "c405be0b97a4173a": "Connect this environment to a self-hosted u3code-hub server to view cross-repo work items, automated review triage, living project memory, and AI digests.",
+  "6ebfc9cde79b2168": "Connect this U3 Code environment to a self-hosted u3code-hub server for cross-repo work items, in-app PR review triage, release trains, and living project memory.",
   "0aae8f85b59d6473": "Local / Dev Sign-in",
   "f1c6979eac1f5e47": "OAuth / Token Sign-in",
   "ae26340de966dc79": "Hub Server URL",
@@ -5335,6 +5329,54 @@
   "0f54651dc9530e62": "Refresh Token",
   "32db31f0dc62bec8": "Verbinde...",
   "90f46dbf8782cfde": "Verbinden",
+  "e2f6572a891945b4": "Disable directive",
+  "c18284dafd3ceac6": "Enable directive",
+  "f634972407bb9a55": "Add permanent rule (e.g. Never auto-merge main)",
+  "31e4cd294be7530f": "High",
+  "b2ac3183408cf717": "Medium",
+  "af3d81238e8baedd": "Low",
+  "62570d4bfe4ab517": "Manuell",
+  "9dad6db998848e83": "Scheduled",
+  "28dc6c374e072782": "Release",
+  "077ca0a8bb1aea28": "Daily",
+  "5be3259dc52851fc": [
+    "v",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "54215028cfd71cd2": "Owner Directives",
+  "2ae46a9c5f1b39f4": "Locked project rules preserved against AI overwrite during digest synthesis.",
+  "049040d878a146a4": "No directives locked yet. Add permanent engineering or release guardrails below.",
+  "2c5c798252f91fdc": "Hinzufügen",
+  "d208717da1823aeb": "Architecture Decisions",
+  "53d1f586d532d807": "No decisions synthesized yet",
+  "0805cd9f5de8830a": "Generate a digest to distill architecture decisions from work item pulses and pull requests.",
+  "3cca072d33538d32": "Recurring Risks",
+  "bc42992e32e88fc6": "No recurring risks recorded",
+  "a8d67d8a7ac8e0b2": "Delivery bottlenecks and repeated quality blockers surfaced in digests will appear here.",
+  "0d57a283a8d3795d": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " x",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
+  "632e5e8dddeed0c4": "Synthesizing...",
+  "6cbcd905527b516c": "Generate Digest",
+  "a91830b7e120dda5": "AI Cockpit Digests",
+  "6c8d6cd9dd21c88f": "No digests generated yet",
+  "6efbfe93493475c4": "Synthesize recent work item pulses and pull request activity into an executive summary and update living project memory.",
+  "d5c7b266de6a8357": "Generate First Digest",
+  "0dde92a0e2d0258a": "Neueste",
   "ea3e950490806ad0": "Failed to load cockpit overview.",
   "5ce06134ebdbd625": "Failed to inspect Team Hub status.",
   "7f7ddce1ce0228dc": "Stage updated",
@@ -5353,47 +5395,52 @@
   "a251b778c698fb5f": "Team Cockpit",
   "5b37ad9bc5c0a238": "Refresh Cockpit",
   "83c0c69e5ed0da1a": "Disconnect Team Hub",
-  "d46a0b53d99bfc6a": "Active Items",
-  "4dccb48528cb04d2": "Blocked",
-  "bc32a29716dcc59f": "At Risk",
-  "ec65530f764b5c52": "Bot Blocked PRs",
-  "5fa2a00642cb1a56": "Human Review",
-  "0941380eed7381e4": "Orphan PRs",
-  "f634972407bb9a55": "Add permanent rule (e.g. Never auto-merge main)",
   "10f1933ed8a99cb0": "e.g. Idempotent settlement outbox",
-  "7d7a761d5c5e2009": "Bot-Blocked Review",
-  "40f2dcaaddd3b811": "Ready for Human Review",
-  "080f5e6fa843da53": "CI / Quality Blocked",
-  "1713f84cd41cf8cd": "Orphan PRs (No Work Item)",
-  "e967616b6ecbe8b0": "Auto-Merged (Integration)",
-  "e0b196715ec7a4a6": "Entwurf",
-  "7601ecdd6a75bc1f": "Link to work item",
+  "6f02a5ab8c9e794a": "Feature",
+  "b579ddd2e1847788": "Refactor",
+  "d9f5f2c228107120": "Chore",
+  "ec8e528936b96b22": "Security",
+  "5d593f65a22fb808": "Outline requirements, edge cases, and acceptance criteria",
+  "5695bcf364c7f316": "Blocking",
+  "edb9bc067fe3638c": "Passed",
+  "117ab7481d901d6e": "Auto-merged",
+  "353b08f4363dbb2c": "Ausstehend",
+  "f86d1b3defd75cea": "Keine",
   "5d2cedf4b8b28251": "Team Cockpit",
   "9a06fd459ce858b9": "Live",
   "8b25153390e240fe": "New Item",
-  "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
-  "daee9e8b51384a85": "Checking Team Hub connection...",
   "f1f55521bea76543": "Board",
   "50e69de3abc32870": "Review Triage",
   "72d72a452aed7f1d": "Releases",
   "117f9ddebc9053e6": "Memory & Digests",
   "143cde2e0b8d2e7c": "Setup",
-  "c8768bae0faf479e": "repos",
-  "aed7649bcf370f22": "No project selected or configured in this workspace yet. Create a project in u3code-hub to start tracking work items.",
-  "dc9325090f8dbb94": "Empty",
-  "b8db3dfbea818e60": "Living Project Memory",
-  "662a17894f54f634": "Owner Directives (Locked Against AI Overwrite)",
-  "ab5a2a5731282a75": "Deaktivieren",
-  "df0b13d74a5eae90": "Enable",
-  "2c5c798252f91fdc": "Hinzufügen",
-  "d208717da1823aeb": "Architecture Decisions",
-  "62963ed9682def6c": "No decisions synthesized yet. Generate a digest to distill them.",
-  "3cca072d33538d32": "Recurring Risks",
-  "49118214b5b92d28": "No active recurring risks recorded.",
-  "a91830b7e120dda5": "AI Cockpit Digests",
-  "632e5e8dddeed0c4": "Synthesizing...",
-  "6cbcd905527b516c": "Generate Digest",
-  "dc8d0ef0b67d6b4f": "No digests yet. Click Generate Digest to synthesize recent Pulses and PR activity into an executive summary and update project memory.",
+  "2543655df54b5176": "Active",
+  "25911e4a4804b73e": "Blocked",
+  "d5f7866df2e1fb25": "Bot Blocked",
+  "4ab5f42b38d52f33": "Human Review",
+  "d26010b41206da60": "Orphan PRs",
+  "b21e23bd6421075c": "No server environment connected",
+  "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
+  "daee9e8b51384a85": "Checking Team Hub connection...",
+  "345b2c797156733f": "No project configured yet",
+  "9d1e700b8e32ad9b": "Create or select a project in Setup to track cross-repository work items and workflow gates.",
+  "8c03a789a0570c98": "Open Setup",
+  "dc6de46021f4f9ec": "List",
+  "a65ad03dda72be9a": "All",
+  "e18bc1817ce7cafc": "Has PR",
+  "013dfe4a2448e211": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " repos"
+  ],
+  "33f72596bc1c7d2a": "No matching work items",
+  "5d6b2d0602ae75d6": "No work items match the active filter. Reset the filter to inspect all stages.",
+  "78ecbaa429a6444e": "Show all items",
+  "5cde7238fa9d38f0": "No items",
+  "48295e8e0480d4de": "No items in this stage",
   "a4a5a19f3650a913": "New Work Item",
   "9c4ec57e543d3dc5": "Create a cross-repository work item tracked in Team Cockpit.",
   "3ac8ed47fe50bd34": "Title",
@@ -5402,6 +5449,21 @@
   "1bef2b0960294d41": "Spec / Acceptance Criteria (Markdown)",
   "479c50cef585f907": "Wird erstellt...",
   "baaf07d893736ec8": "Erstellen",
+  "e1d4235d9234707f": "At Risk",
+  "2686a36b6d74306c": [
+    "AC ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
   "0daa5529b1062c17": [
     "Rejected: ",
     {
@@ -5410,8 +5472,28 @@
       "v": "v"
     }
   ],
-  "e86b5bf0922116dd": "All caught up: no open pull requests require triage.",
-  "b5fcc94920c9bd0e": "Oversized",
+  "d35e594fc5ea919c": "Add a local workspace repository first to run an Agent thread.",
+  "5be066e2bb600ed0": "Open on GitHub",
+  "ff0257997c46be6e": "Close pull request panel",
+  "a1f8800c74ae3ba2": "Human Approved",
+  "2d9b675e7b9ad0ca": "Changes Requested",
+  "39d68861ce8b6bf0": "Awaiting Review",
+  "74947ab5b4fd0b15": "High Risk",
+  "ba9976aefa15a821": "Medium Risk",
+  "6e85dbd602211b5a": "Low Risk",
+  "a6fd277111c7cd66": "Unbekannt",
+  "901e31add5842c65": "Approved",
+  "4242c58cab6be30e": "Commented",
+  "e448900b0dbd582b": "Open review finding",
+  "5b2c7575706ae996": "Unlink work item",
+  "83fe60cb5e4b3e26": "Select work item...",
+  "efab95b90a32fda2": "Triage & Agent",
+  "2ed9323a06db47b3": "Diff & Review",
+  "e7f676ddc68be09d": "Workspace repository",
+  "bbdc7d4888516e1e": "No local project linked",
+  "0fa9c5cda6f833e8": "Add this repository folder to U3 Code to inspect native code diffs, inline comments, and merge actions directly inside the client.",
+  "79e255a6e3064d87": "Back to Triage",
+  "61568abcf1b48038": "Open on GitHub",
   "6bdaa140890d5bb3": [
     "CI: ",
     {
@@ -5420,7 +5502,30 @@
       "v": "v"
     }
   ],
-  "23a899df3d776ed6": "Verknüpfen",
+  "b5fcc94920c9bd0e": "Oversized",
+  "9a5dc4d55bdbf68f": "Handle Directly in U3 Code",
+  "db813b401670037e": "Starting Fix Thread...",
+  "d5daa3b0410188cd": "Fix Findings with Agent",
+  "a29315333eda3626": "Starting Review Thread...",
+  "e229ac5d7848775f": "Review PR with Agent",
+  "261cd163d43a7923": "Review with Agent",
+  "a886c94040108b81": "Open Native Diff & Actions",
+  "805dd007ab6a2fd9": "Add this repository as a local project in the sidebar to launch Agent fix/review threads or inspect native diffs here.",
+  "d443fc41428843c1": "Automated Review Signals",
+  "51ae57722d249bfe": "No automated bot findings recorded on this PR.",
+  "15a6af92619f0a51": "Quality Signals",
+  "356dda4c7efd8b3c": "Linked Work Item",
+  "93ef88899dcc2317": "Open Item",
+  "17ca3c63cd312f8f": "Link Work Item",
+  "a78e9c96a7c509e5": "No work items in this project yet to link.",
+  "7bed7d3fbf638c3e": "Planning",
+  "d45caff1bb8c308f": "Staging",
+  "a553be36e93303cd": "Ready",
+  "312a0584fb0267f3": "Released",
+  "ffd2b08e80e894f6": "Rolled Back",
+  "11d8d12204ff290f": "QA Sign-off",
+  "3cff75d104ab4861": "Security Sign-off",
+  "af827f6ecf816851": "Production Go/No-Go",
   "48c59f685ebaeeab": "Release snapshots and notes generated",
   "86401fff1d2bca58": "Release created",
   "209dac3fbf56aba0": "Failed to create release.",
@@ -5429,16 +5534,57 @@
   "2899a1808114f158": "Release gate approved",
   "e034335f09420994": "Release gate rejected",
   "04394059670238eb": "Failed to update release gate.",
-  "11d8d12204ff290f": "QA Sign-off",
-  "3cff75d104ab4861": "Security Sign-off",
-  "af827f6ecf816851": "Production Go/No-Go",
+  "b9b3644c0f404990": "Rejection reason (notifies owners)...",
   "411b6c54896cbbfa": "e.g. v2.4.0",
   "c546ca46d5af3c86": "org/backend=main@abc123\norg/admin=main@def456",
   "bf975e99c84e6a8e": "How to roll back safely if canary alerts trigger",
-  "b9b3644c0f404990": "Rejection reason (notifies owners)...",
+  "95d06584824a7554": "Highlights, breaking changes, and verification summary...",
+  "80b23f7f0f29ac9d": "No project selected",
   "01314c3df196865a": "Select or create a project to coordinate cross-repository releases.",
+  "b901d8a75fdd232b": "In Progress",
+  "2fcaba58023037ad": "Shipped",
+  "56e1d4fadb83a020": "Plan Release",
+  "c63c828746d641de": "No releases planned yet",
+  "bc432c90cd31d745": "Coordinate cross-repository snapshots, rollback plans, and QA, Security, and Production Go/No-Go sign-offs in one release train.",
+  "5b309c8f9778c0f3": "Plan First Release",
+  "eb620b39cf05c673": "No releases match this filter",
+  "55f7807ea2971bf4": "Switch back to All to inspect planned or shipped release trains.",
+  "b404d85bca0709c9": "Show All Releases",
+  "191c1f9eba718240": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " sign-offs"
+  ],
+  "4b71740b7a9e891c": [
+    "Move to ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "c74396c377fe4c88": "Mark Rolled Back",
+  "a647e12237e460c9": "Release Sign-off Gates",
+  "f6a91589456cca50": "Genehmigt",
+  "da048c35113aca82": "Rejected",
+  "374dac09151d4578": "Ausstehend",
+  "f1e5c1be1ac92361": "Genehmigen",
+  "b8cdfff5c128f754": "Reject",
+  "02ebb9d477b4b86f": "Included Work Items",
+  "c9c9a0e6e914d8b5": "Repository Snapshots",
+  "e12cdd8347c2574b": "Release Notes",
+  "93b357f027337511": "Rollback Plan",
   "1e6dcd9abc1293bd": "Plan Cross-Repo Release",
-  "f9a12e24ddd39a47": "Coordinate multi-repository deployments with explicit rollback plans and QA, Security, and Production Go/No-Go sign-offs.",
+  "6dd9e4f0371d430c": "Select work items to include, auto-generate repository snapshots and release notes, and define the rollback plan.",
   "ff80756f16cf2ab8": "Version Label",
   "e2c14b6899e4a450": [
     "Included Work Items (",
@@ -5450,37 +5596,11 @@
     ")"
   ],
   "6e06a52bf9c7e487": "Pick Ready",
-  "123abe7f8019687c": "Auto-fill",
-  "c7e8c7cac07a02c3": "Repository Snapshots (repo=ref, one per line)",
-  "93b357f027337511": "Rollback Plan",
-  "e12cdd8347c2574b": "Release Notes",
+  "1df3d1fda0846a74": "Auto-fill Snapshots & Notes",
+  "ee80efc7441cc041": "Repository Snapshots (repo=ref)",
   "aa17c79a8d5828fa": "Create Release",
-  "44b20e155727ce5a": "No releases planned yet for this project.",
-  "f24d1286fdd4e343": [
-    "Released",
-    " ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    }
-  ],
-  "c74396c377fe4c88": "Mark Rolled Back",
-  "6f3d1278c39d32f7": "Rollback plan:",
-  "f6a91589456cca50": "Genehmigt",
-  "da048c35113aca82": "Rejected",
-  "374dac09151d4578": "Ausstehend",
-  "f1e5c1be1ac92361": "Genehmigen",
-  "b8cdfff5c128f754": "Reject",
-  "e4c374b2541c77b4": [
-    "Note: ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    }
-  ],
-  "02d7a7ffb7fd1807": "Confirm Reject",
+  "04ba993d1fb6528e": "Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)",
+  "5dc0780fddf4bccd": "Lean (Backlog → In Progress → Review → Done)",
   "12013d6a4efb8f2f": "Workspace created",
   "ed24ba9479808acc": "Failed to create workspace.",
   "36595932eaff87f0": "Failed to create project.",
@@ -5507,20 +5627,32 @@
   "019881de3d534094": "Failed to update notification channel.",
   "1964ca8dbd166895": "Notification channel deleted",
   "784c5ba9afddbede": "Failed to delete notification channel.",
+  "d447c231ae2d256e": "Setup sections",
+  "4b76598c981612ff": "user",
+  "2f70fd4d57051bbd": "Owner",
+  "48e4a20ced414fd8": "PM",
+  "14b4439b4cc897db": "QA",
+  "a6b69d4e75aab0b5": "Ops",
+  "a598bb83a0eca215": "Security",
+  "f8b96c6e4c59a74a": "Dev",
+  "d3b47745facc7f52": "integration",
+  "0b06e41a45b8b603": "release",
+  "d24ecd236589f9db": "Remove repository",
   "f31ce60f3f118c0d": "Anzeigename",
   "beb93fe9c64f3721": "GitHub / VCS login",
   "15c77f570305ba66": "Lark open_id (for @mentions)",
   "b126ac4c6e0d8b6f": "Slack member ID (optional)",
-  "ec9bfbe9927e861f": "GitHub login or email of existing Hub user",
-  "4acbdd9a6cbcfa10": "Initial role",
+  "1928b2febd44676e": "Lark / Feishu",
+  "26c0a2940015eb00": "Generic Webhook",
+  "3a2f1cc0b79c6e6d": "Slack",
+  "67799c2f5695a1b1": "Discord",
+  "ebffe4dabf52835f": "{name} aktivieren",
+  "1163ee57613a7d1d": "Delete notification channel",
   "021866887401ae66": "Workspace name (e.g. Engineering)",
   "8a7b4641730e8650": "Slug (e.g. eng)",
   "b9c1e5ebfdf316f4": "Key (e.g. CORE)",
   "116e5ce2e8bfcb50": "Short description (optional)",
   "77314fedefbb274c": "Workflow Preset",
-  "04ba993d1fb6528e": "Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)",
-  "5dc0780fddf4bccd": "Lean (Backlog → In Progress → Review → Done)",
-  "d24ecd236589f9db": "Remove repository",
   "026c73c285bc0b56": "Forge",
   "577d6df309b55d70": "org/repository",
   "895d891a5f139f5a": "Integration branch (dev)",
@@ -5528,24 +5660,88 @@
   "1fb613a4dfff8d4c": "Max PR lines (500)",
   "08f08e9a39875e01": "Automated reviewer name (optional)",
   "fa4b9d64b2af8399": "Bot logins comma-separated (optional)",
-  "1163ee57613a7d1d": "Delete notification channel",
+  "ec9bfbe9927e861f": "GitHub login or email of existing Hub user",
+  "4acbdd9a6cbcfa10": "Initial role",
   "c4259b13b7ae05ea": "Notification Driver",
-  "1928b2febd44676e": "Lark / Feishu",
-  "26c0a2940015eb00": "Generic Webhook",
-  "3a2f1cc0b79c6e6d": "Slack",
-  "67799c2f5695a1b1": "Discord",
   "6ec7e2023604a9e6": "Channel name (e.g. Engineering Alerts)",
   "b922f4a5b6f53dff": "Webhook-URL",
   "ed8b514cb51336b7": "Signing secret (optional, stored AES-256-GCM encrypted)",
-  "2ea68c37feee78dc": "My Profile & Notification Handles",
-  "603437f6aa810e46": "Bind your GitHub login and Lark or Slack user ID so Hub cards can @mention you when PRs or blockers need attention.",
+  "34399e75054dd2a3": "Overview & Repos",
+  "4a7e19e8f0c26034": "Team & Profile",
+  "87ff2a59e13f8485": "Notifications",
+  "178659e33eb47277": "Plugins & Packs",
+  "7e6ae762268f6b0c": "New Workspace",
+  "0ad9b34be4db040e": "New Project",
+  "29bf6dffded56b11": "Workspace & Project",
+  "cdc03a99acfb33bd": "Hub Connection",
+  "166a500d91121bd0": [
+    "Signed in as ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "6f07262f55e55748": "Verbunden",
+  "1c91a7ddb742e016": "Active Workspace",
+  "cfa2fda8f2588c55": "Create or select a workspace to organize projects and team roles.",
+  "657de25b14c5e4f7": "Active Project",
+  "00b8787e441dfac2": "Select or create a project to configure repositories and workflows.",
+  "69780aa3ee6301db": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " stages"
+  ],
+  "4150249c01c55cfe": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " gates"
+  ],
+  "7779146aba5b2107": "Link Repository",
+  "88d97863dafd33f7": "Linked Repositories & Policy",
+  "892bc62763b687b5": "Select a project first",
+  "3a544f05fb8226c5": "Create or select a project to link repositories, branch merge rules, and automated review bots.",
+  "36c6d18bec27e95f": "No linked repositories",
+  "a39761c7d155baae": "Link a GitHub or GitLab repository to sync open pull requests, enforce PR line thresholds, and track automated reviewers.",
+  "9de44b3799ea4df4": [
+    "Max ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " lines"
+  ],
+  "0cfe8ac078c94f55": [
+    "Bot: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "c7ed959c913764d6": "Syncing...",
+  "9293ed91d8c8e1a1": "Sync PRs",
   "ece5e10bd5b5769d": "Wird gespeichert...",
   "30311ef808403506": "Save Profile",
-  "0eddf0dceeece20d": "Team Members & Roles",
-  "9b596f1b189b06e0": "Select or create a workspace to manage member roles.",
-  "52c51be58fb768ec": "Adding...",
+  "2ea68c37feee78dc": "My Profile & Notification Handles",
+  "603437f6aa810e46": "Bind your GitHub login and Lark or Slack user ID so Hub cards can @mention you when PRs or blockers need attention.",
+  "ee21fef822c4f18b": "Anzeigename",
+  "a91898472a0ae555": "GitHub / VCS login",
+  "2147f8fe0b9822e6": "Lark open_id",
+  "a2e05fd596c8868b": "Slack member ID",
   "5920eb7ff63e4355": "Add Member",
-  "e1ac1ddc7506007e": "No members loaded yet.",
+  "0eddf0dceeece20d": "Team Members & Roles",
+  "33de683af4dde3e3": "Select a workspace first",
+  "350969be72940d3f": "Select or create a workspace to manage member roles and gate sign-offs.",
+  "9260a61cb2858a20": "No members loaded yet",
+  "3d40276b03d7cad4": "Add existing Hub users by GitHub login or email and assign roles for review and release gates.",
   "55a341be5cf6ecb5": [
     "Lark: ",
     {
@@ -5554,25 +5750,19 @@
       "v": "v"
     }
   ],
-  "37f68033d0ce22a8": "Create Workspace",
-  "e388c774dcfdfcf9": [
-    "Signed in as ",
+  "dcb0679c6d67f01d": [
+    "Slack: ",
     {
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
-    },
-    ". Create a workspace to organize projects, repositories, and team roles."
+    }
   ],
-  "8fc67dea7142ee03": "Create Project",
-  "738788131b46617b": "Create or select a workspace first.",
-  "88d97863dafd33f7": "Linked Repositories & Policy",
-  "c7ed959c913764d6": "Syncing...",
-  "9293ed91d8c8e1a1": "Sync PRs",
-  "691f4cc8eba0ca77": "Select or create a project to link repositories.",
-  "a621ba6acc673990": "Linking...",
-  "7779146aba5b2107": "Link Repository",
+  "79b34ae18da4a777": "Add Channel",
   "06c19778bfed6f9f": "Notification Channels",
+  "5af43d8916d92945": "Select or create a workspace to add notification channels.",
+  "8be08bcae3df1926": "No notification channels",
+  "551b587fcfeed0fa": "Connect Lark, Slack, Discord, or a custom webhook to receive PR triage alerts, blocker @mentions, and release updates.",
   "ab17a324be1e51aa": [
     {
       "i": 1,
@@ -5583,17 +5773,7 @@
   ],
   "dac3b2d38c7afd2f": "Sending...",
   "f7c3ae7a79ede728": "Testen",
-  "5af43d8916d92945": "Select or create a workspace to add notification channels.",
-  "79b34ae18da4a777": "Add Channel",
   "d565d9f608a4b67d": "Hub Plugins & Playbook Packs",
-  "4c9ef7d385b54e20": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " loaded"
-  ],
   "0c6ece51f5e856c1": [
     "Server-side Hub plugins extend notification drivers, workflow presets, lifecycle hooks, and callback routes. Load external plugins via",
     " ",
@@ -5611,9 +5791,106 @@
     },
     "."
   ],
+  "7bf9e5a0fae1a4ce": "No plugins reported",
   "6cfa5d1ea252f5f6": "No plugins reported by the connected Hub.",
   "e69e34d4f44d4136": "Integriert",
   "2857641618ceea05": "External",
+  "d5a942034cb14124": [
+    "Notifier: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "1419d5bb4c109bbb": [
+    "Preset: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "56e37cc2f8e4fcc7": [
+    "Hook: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "751f9fc67ccfaf1d": [
+    "Route: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "b73739b620951e53": "Registered Workflow Presets",
+  "37f68033d0ce22a8": "Create Workspace",
+  "e388c774dcfdfcf9": [
+    "Signed in as ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ". Create a workspace to organize projects, repositories, and team roles."
+  ],
+  "135f0709b8df3c56": "Workspace name",
+  "05fee01450a2c460": "Slug",
+  "8fc67dea7142ee03": "Create Project",
+  "9b9c6526c24a65a2": "Configure a project key, name, and delivery workflow preset for this workspace.",
+  "001559c3f0b9ef75": "Project key",
+  "8645583332ec940f": "Project name",
+  "ab8222ce9132da09": "Beschreibung",
+  "28b7ac035bab5c5c": "Workflow preset",
+  "1d7ba8ccbfa9b496": "Bind a repository and define its integration branch, release branch, PR size guardrail, and automated reviewer bots.",
+  "a2a76d4cc8125ccd": "Forge",
+  "a84f97cf765de3f2": "Integration branch",
+  "b7fec4e1b68c9b83": "Release branch",
+  "f9d02334b10d9182": "Max PR lines",
+  "836c9a9786611146": "Automated reviewer name",
+  "bd7d4bab8d55dc96": "Bot logins",
+  "a621ba6acc673990": "Linking...",
+  "30dc3a1a6704c605": "Add Team Member",
+  "80436e68b412752a": "Add an existing Hub user by GitHub login or email and pick their initial workspace role.",
+  "5e6cfb569bb90a7e": "GitHub login or email",
+  "34138bdb0f9bad4d": "Initial role",
+  "52c51be58fb768ec": "Adding...",
+  "afe149a7cdf078cb": "Add Notification Channel",
+  "dd45c63f76e66367": "Deliver digest summaries, blocked PR alerts, and release updates to your team chat or webhook endpoint.",
+  "cc15b7b57ca5ac4f": "Driver",
+  "8f1f7654d0d546fc": "Channel name",
+  "57bdde28b383bf5b": "Webhook URL",
+  "9754a49edfa9553b": "Signing secret",
+  "5284202836f9ade1": [
+    "Subscribes to ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " core events by default (digest ready, bot-blocked PR, ready for human review, blocker attention, and release ready)."
+  ],
+  "484cd83bb303bab8": "Pull Requests durchsuchen",
+  "aa06ab58f10f5d47": "Search PR, repo, author, branch...",
+  "7d7a761d5c5e2009": "Bot-Blocked Review",
+  "40f2dcaaddd3b811": "Ready for Human Review",
+  "080f5e6fa843da53": "CI / Quality Blocked",
+  "1713f84cd41cf8cd": "Orphan PRs (No Work Item)",
+  "e967616b6ecbe8b0": "Auto-Merged (Integration)",
+  "e0b196715ec7a4a6": "Entwurf",
+  "b82defc09325891a": "Review queue is clear",
+  "953a241963e6ae08": "No open pull requests require triage right now. Sync a repository in Setup or open a PR to see live review signals here.",
+  "b82cc4e5617a53a5": "Unlinked",
+  "e24487e2ca305dba": "No matching pull requests",
+  "a24ef44427ce9b5b": "Try clearing your search query or switching to a different triage filter.",
+  "4fd68d8059dd880a": "Reset Filters",
+  "23a899df3d776ed6": "Verknüpfen",
+  "e40786aa5298b8be": "Inspect & Fix",
+  "cc9615f3844912e7": "Review in App",
   "208ff31f188c2c74": "Unable to check Team Hub status.",
   "396bb873421cfc15": "Failed to load work items from Team Hub.",
   "a30ac1913d52c101": "Select a work item first.",
@@ -5624,6 +5901,7 @@
   "f484cf6b1093f642": "Extract a structured progress pulse from this thread and sync to Team Hub",
   "7acd5fe8d20c5bcd": "On track",
   "9cba77685cbe4174": "At risk",
+  "4dccb48528cb04d2": "Blocked",
   "796dad01602903c5": "e.g. Use transactional outbox instead of pubsub",
   "fa9cce8a49cbf6b7": "e.g. Need owner decision on retention policy",
   "63c0828e7dfb3ae6": "Sync Pulse",
@@ -5654,7 +5932,7 @@
   "7f9e4c3b895db2eb": "Edit specification, acceptance criteria, workflow stage, gates, linked PRs, and pulse history.",
   "0f63393085912ff2": "Loading work item details...",
   "bfe14722f3c27286": "Start Coding Thread with Context",
-  "b07f64bde08e4e8a": "Pre-fills a new thread with spec, acceptance criteria, and locked directives.",
+  "978ebf869c5ada19": "Pre-fills a new U3 Code thread with spec, acceptance criteria, and locked directives.",
   "e05f828b4ca93e88": "Opening...",
   "7dc3b6f88dbc7cfb": "Start Thread",
   "517ee0a8bdff25d7": "Add a local repository in the sidebar first.",
@@ -5665,6 +5943,15 @@
   "7cf44008bfa855e3": "Add AC",
   "613681f88af50fae": "Workflow Gates",
   "d2ad3addcd3c666b": "Approving...",
+  "e4c374b2541c77b4": [
+    "Note: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "02d7a7ffb7fd1807": "Confirm Reject",
   "ed88afd43e747c66": "Linked Pull Requests",
   "aa5bec48bb6e7d58": "No PRs linked yet. Mention the work item code in a PR title or branch, or link an orphan PR from Review Triage.",
   "8c9afee3d7bfdf37": "Pulse History",
@@ -5893,7 +6180,6 @@
   "1e3375e17e0b0704": "Erforderlich",
   "a7f7db481296601d": "Installiert",
   "010a240f0d18e933": "Die Versionen wurden nicht geprüft.",
-  "f86d1b3defd75cea": "Keine",
   "a1c433ed68afa03e": "Graustufen",
   "29ae38749c912213": "Rot / Grün (Protanopie)",
   "ab6d391ce2ab64c1": "Grün / Rot (Deuteranopie)",
@@ -5944,7 +6230,6 @@
   "bd0502ceae54b102": "Push-Benachrichtigung",
   "c68506d804242d0d": "Hinweistext",
   "53fdd00e15059635": "Senden",
-  "a6fd277111c7cd66": "Unbekannt",
   "d5b8f058834daf10": "Breitengrad",
   "b3d9901f19172c03": "Längengrad",
   "d3c8665c6a4dbc0a": "Standortvorlage",
@@ -7318,7 +7603,6 @@
   "926cdb56e2dde92a": "Zeitleiste wird geladen",
   "4e50ba4cf49db170": "{term, select, mr {Unterhaltung des Merge Requests wird geladen} cr {Unterhaltung der Änderungsanfrage wird geladen} other {Unterhaltung des Pull Requests wird geladen}}",
   "17d60a07476eb42f": "Reviewer",
-  "ab8222ce9132da09": "Beschreibung",
   "f0317add16046282": "Prüfe das Modell für den Review-Leitfaden unter Einstellungen → Versionskontrolle & Issues.",
   "d6695ad018acf06f": "Die Änderung wird gelesen...",
   "df06e4551efa7020": "Review-Leitfaden wird geschrieben",
@@ -7655,7 +7939,6 @@
   "0b9686c6a3ca676e": "Der Titel konnte nicht gespeichert werden",
   "149fb36a60f2e402": "Der Host hat den neuen Titel abgelehnt.",
   "fa36079d02635ef0": "{term, select, mr {Titel des Merge Requests} cr {Titel der Änderungsanfrage} other {Titel des Pull Requests}}",
-  "484cd83bb303bab8": "Pull Requests durchsuchen",
   "8e408e57057c569d": "Umfang der Pull Requests",
   "4df7e2ef5ba0996e": "Nach Status filtern",
   "aa438f6db9597d39": "Nach Beteiligung filtern",
@@ -7888,6 +8171,7 @@
   "349cc4acb6ba8cfe": "Nur-Schreib-Header-JSON, z. B. {example}",
   "357990deea2bcf58": "Agentenanbieter",
   "615119bd425385a3": "Nicht geheimes Routing konfigurieren. Header sind nur schreibbar.",
+  "ab5a2a5731282a75": "Deaktivieren",
   "17c50db750d640db": "Privat",
   "22e8bf3295350a28": "ChatGPT-Konto hinzufügen",
   "e5369507fca05c04": "Jedes Konto hat eine eigene Codex-Instanz und Anmeldung. Wähle auf der Anmeldeseite das andere Konto.",
@@ -8741,7 +9025,6 @@
   "d4703b165d6e7c97": "Benutzerdefiniert…",
   "a3ff891f04a7a07f": "Auswahlmöglichkeiten",
   "0eef76cf8ecee457": "Auswahl hinzufügen",
-  "ee21fef822c4f18b": "Anzeigename",
   "7ea2b2ddea55aa92": "Im Eingabefeld angezeigte Optionen",
   "b1137657751dd7f0": "Kopieren von…",
   "5bcce79726ce6ad8": "Keine benutzerdefinierten Optionen. Das Eingabefeld verwendet die Standardoptionen des Anbieters.",
@@ -8808,7 +9091,6 @@
   "314f73e9224b0f02": "Optional. Wird in jeder Umgebung separat aufgelöst.",
   "3c19380bfa6b6f38": "Verbindung testen",
   "0b94a344e96fcd76": "Lokal bereits verfügbar",
-  "6f07262f55e55748": "Verbunden",
   "d0ff3301635f91ab": "Fehler anzeigen",
   "22ae7f418a124cfb": "Host speichern",
   "223e8a81c5d812b3": "Geräteliste ist möglicherweise unvollständig",
@@ -10558,7 +10840,6 @@
   "99ed1c4d021ae372": "Jeder Absatz oder Codeblock erscheint, sobald er vollständig ist.",
   "c0b0406e0cafa1d1": "Letzte eigene Nachricht",
   "cb0775162a9b6419": "Erstellungsdatum",
-  "62570d4bfe4ab517": "Manuell",
   "7fa9414ef5e9dd6c": "12-Stunden-Format",
   "2f42917064c97f09": "24-Stunden-Format",
   "dcc08eacff8bd0bc": "Untereinander",
@@ -10748,7 +11029,6 @@
   "e39a57514be028e9": "Prüfen",
   "7c0512387c3a42ea": "Stable",
   "3476687eaa175b32": "Nightly",
-  "0dde92a0e2d0258a": "Neueste",
   "cbf6a6bbc17e75e1": "Einen Hinweis anzeigen, wenn ein anderer Thread fertig ist, fehlschlägt oder auf Eingabe oder Genehmigung wartet, während die App aktiv ist.",
   "83ca942c7163904f": "Gleiche Repositorys aus verschiedenen Umgebungen zusammenfassen.",
   "609da998ca13521e": "Reihenfolge der Projekte in der Projektauswahl der Seitenleiste und in der Befehlspalette.",
@@ -11702,7 +11982,6 @@
   "85eb2d15da7d016f": "Füge eine Modell-API hinzu, um Thread-Titel, Commit-Nachrichten und andere kurze Texte zu schreiben, ohne einen Coding-Agenten zu starten.",
   "1d32dad13ca765db": "Aus · ",
   "1ece6e9c15a13601": "Weitere Aktionen für {name}",
-  "ebffe4dabf52835f": "{name} aktivieren",
   "b663e2e129c61493": "Textgenerator hinzufügen",
   "149ffa363168a419": "Schreibt Thread-Titel, Commit-Nachrichten und andere kurze Texte, ohne einen Coding-Agenten zu starten. Dein API-Schlüssel wird in dieser Umgebung gespeichert.",
   "1e0a645ef3661af3": "Dienst",
@@ -12573,7 +12852,6 @@
   "37ffec8201f153c1": "Fehlgeschlagen",
   "984b361806ce8d25": "Aufgeweckt",
   "c6e8abc00ae470d2": "Fertig",
-  "353b08f4363dbb2c": "Ausstehend",
   "f31a95961de19433": "Issue {key}: {title}, {state}",
   "2dd9d295c882ef65": "{count, plural, one {{count} verknüpftes Issue} other {{count} verknüpfte Issues}}",
   "8cf699ae75fd8067": "Angeheftet",
