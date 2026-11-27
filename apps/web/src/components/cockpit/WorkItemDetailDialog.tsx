@@ -20,7 +20,7 @@ import {
   type WorkItem,
   type WorkspaceMember,
 } from "@u3code/hub-contracts";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useLocale, Var } from "gt-react";
 import {
   ActivityIcon,
   BotIcon,
@@ -108,6 +108,7 @@ interface WorkItemDetailDialogProps {
   readonly onClose: () => void;
   readonly onUpdated: () => void;
   readonly onOpenChangeRequest?: (cr: ChangeRequestAudit) => void;
+  readonly onOpenPromptSettings?: () => void;
 }
 
 type PipelineActionKind = "prd" | "prototype" | "issue" | "dev";
@@ -289,8 +290,10 @@ export function WorkItemDetailDialog({
   onClose,
   onUpdated,
   onOpenChangeRequest,
+  onOpenPromptSettings,
 }: WorkItemDetailDialogProps) {
   const gt = useGT();
+  const locale = useLocale();
   const localProjects = useProjects();
   const handleNewThread = useNewThreadHandler();
 
@@ -394,7 +397,7 @@ export function WorkItemDetailDialog({
   const loading = workItemId !== null && loadedWorkItemId !== workItemId;
   const activeDetail = workItemId !== null && detail?.workItem.id === workItemId ? detail : null;
 
-  const matchedProject = pickMatchingWorkspaceProject(localProjects, repos);
+  const matchedProject = pickMatchingWorkspaceProject(localProjects, repos, project);
   const selectedLocalProject =
     localProjects.find((p) => `${p.environmentId}:${p.id}` === chosenLocalProjectId) ??
     matchedProject;
@@ -727,6 +730,7 @@ export function WorkItemDetailDialog({
           project,
           memory,
           repoFullName: primaryRepoFullName,
+          locale,
         });
         break;
       case "prototype":
@@ -735,6 +739,7 @@ export function WorkItemDetailDialog({
           project,
           memory,
           repoFullName: primaryRepoFullName,
+          locale,
         });
         break;
       case "issue":
@@ -745,6 +750,7 @@ export function WorkItemDetailDialog({
           repoFullName: primaryRepoFullName,
           assigneeHandle: resolvedAssigneeHandle,
           assigneeDisplayName: resolvedAssigneeDisplayName,
+          locale,
         });
         break;
       case "dev":
@@ -755,6 +761,7 @@ export function WorkItemDetailDialog({
           changeRequests: activeDetail.changeRequests,
           repoFullName: primaryRepoFullName,
           topology: branchTopology,
+          locale,
         });
         break;
     }
@@ -873,34 +880,51 @@ export function WorkItemDetailDialog({
                         </T>
                       </p>
                     </div>
-                    {localProjects.length > 0 && selectedLocalProject ? (
-                      <div className="w-48">
-                        <Select
-                          value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
-                          onValueChange={(value) => {
-                            if (value) setChosenLocalProjectId(value);
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onOpenPromptSettings ? (
+                        <Button
+                          size="xs"
+                          variant="ghost-muted"
+                          onClick={() => {
+                            onClose();
+                            onOpenPromptSettings();
                           }}
                         >
-                          <SelectTrigger aria-label={gt("Local workspace project")} size="compact">
-                            <SelectValue>{selectedLocalProject.title}</SelectValue>
-                          </SelectTrigger>
-                          <SelectPopup>
-                            {localProjects.map((proj) => (
-                              <SelectItem
-                                key={`${proj.environmentId}:${proj.id}`}
-                                value={`${proj.environmentId}:${proj.id}`}
-                              >
-                                {proj.title}
-                              </SelectItem>
-                            ))}
-                          </SelectPopup>
-                        </Select>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        <T>Add a local repository in the sidebar first.</T>
-                      </span>
-                    )}
+                          <T>Manage Prompts</T>
+                        </Button>
+                      ) : null}
+                      {localProjects.length > 0 && selectedLocalProject ? (
+                        <div className="w-48">
+                          <Select
+                            value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
+                            onValueChange={(value) => {
+                              if (value) setChosenLocalProjectId(value);
+                            }}
+                          >
+                            <SelectTrigger
+                              aria-label={gt("Local workspace project")}
+                              size="compact"
+                            >
+                              <SelectValue>{selectedLocalProject.title}</SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup>
+                              {localProjects.map((proj) => (
+                                <SelectItem
+                                  key={`${proj.environmentId}:${proj.id}`}
+                                  value={`${proj.environmentId}:${proj.id}`}
+                                >
+                                  {proj.title}
+                                </SelectItem>
+                              ))}
+                            </SelectPopup>
+                          </Select>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          <T>Add a local repository in the sidebar first.</T>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-2.5">

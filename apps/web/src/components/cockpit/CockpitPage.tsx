@@ -27,7 +27,7 @@ import {
   type WorkspaceMember,
 } from "@u3code/hub-contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { T, useGT, useMessages, Var } from "gt-react";
+import { T, useGT, useLocale, useMessages, Var } from "gt-react";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -112,7 +112,7 @@ import {
 } from "./CockpitPrimitives";
 import { CockpitPullRequestPane } from "./CockpitPullRequestPane";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
-import { CockpitSettingsTab } from "./CockpitSettingsTab";
+import { CockpitSettingsTab, type SetupSection } from "./CockpitSettingsTab";
 import { CockpitSwarmAvatar, deriveTeamRoster, type CockpitTeamMember } from "./CockpitSwarmAvatar";
 import { CockpitTriageTab } from "./CockpitTriageTab";
 import { WorkItemDetailDialog } from "./WorkItemDetailDialog";
@@ -289,11 +289,15 @@ function matchesBoardFilter(card: CockpitWorkItemCard, filter: BoardFilter): boo
 
 export function CockpitPage() {
   const gt = useGT();
+  const locale = useLocale();
   const resolveMessage = useMessages();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
   const localProjects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const [activeTab, setActiveTab] = useState<CockpitTab>("overview");
+  const [setupInitialSection, setSetupInitialSection] = useState<SetupSection>("overview");
+  const [setupSectionVersion, setSetupSectionVersion] = useState(0);
+  const [chosenIntakeLocalProjectKey, setChosenIntakeLocalProjectKey] = useState("");
   const [deliverySubTab, setDeliverySubTab] = useState<DeliverySubTab>("kanban");
   const [boardView, setBoardView] = useState<BoardViewMode>("board");
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
@@ -688,18 +692,17 @@ export function CockpitPage() {
       void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
 
       if (mode === "prd") {
-        const matchedLocalProject = pickMatchingWorkspaceProject(
-          localProjects,
-          overview?.repos ?? [],
-        );
-        if (matchedLocalProject) {
+        const targetLocalProject = selectedIntakeProject;
+        if (targetLocalProject) {
           const prompt = buildPrdGenerationPrompt({
             workItem: createdWorkItem,
             project: overview?.project ?? null,
             memory,
+            repoFullName: overview?.repos[0]?.repoFullName ?? null,
+            locale,
           });
           await handleNewThread(
-            scopeProjectRef(matchedLocalProject.environmentId, matchedLocalProject.id),
+            scopeProjectRef(targetLocalProject.environmentId, targetLocalProject.id),
             { prompt },
           );
           return;
@@ -900,7 +903,15 @@ export function CockpitPage() {
   const isWideDeliveryView =
     activeTab === "delivery" &&
     (deliverySubTab === "gantt" || (deliverySubTab === "kanban" && boardView === "board"));
-  const matchedIntakeProject = pickMatchingWorkspaceProject(localProjects, overview?.repos ?? []);
+  const matchedIntakeProject = pickMatchingWorkspaceProject(
+    localProjects,
+    overview?.repos ?? [],
+    activeProject,
+  );
+  const selectedIntakeProject =
+    localProjects.find(
+      (proj) => `${proj.environmentId}:${proj.id}` === chosenIntakeLocalProjectKey,
+    ) ?? matchedIntakeProject;
   const memberSelectOptions = members.map((member) => ({
     value: `human:${member.userId}`,
     handle: resolveMemberHandle(member, roster),
@@ -1584,7 +1595,10 @@ export function CockpitPage() {
                     </Button>
                   </div>
                   <CockpitSettingsTab
+                    key={setupSectionVersion}
                     environmentId={primaryEnvironmentId}
+                    initialSection={setupInitialSection}
+                    memory={memory}
                     overview={overview}
                     selectedProjectId={selectedProjectId}
                     selectedWorkspaceId={selectedWorkspaceId}
@@ -1833,6 +1847,34 @@ export function CockpitPage() {
                 </div>
               </div>
 
+              {localProjects.length > 0 && selectedIntakeProject ? (
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-local-repo">
+                    <T>Target Local Repository (for AI PRD)</T>
+                  </CockpitFieldLabel>
+                  <Select
+                    value={`${selectedIntakeProject.environmentId}:${selectedIntakeProject.id}`}
+                    onValueChange={(value) => {
+                      if (value) setChosenIntakeLocalProjectKey(value);
+                    }}
+                  >
+                    <SelectTrigger id="wi-local-repo" size="sm">
+                      <SelectValue>{selectedIntakeProject.title}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {localProjects.map((proj) => (
+                        <SelectItem
+                          key={`${proj.environmentId}:${proj.id}`}
+                          value={`${proj.environmentId}:${proj.id}`}
+                        >
+                          {proj.title}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+              ) : null}
+
               <div>
                 <CockpitFieldLabel htmlFor="wi-spec">
                   <T>Requirement Brief / Problem Statement</T>
@@ -1852,7 +1894,7 @@ export function CockpitPage() {
               <T>Cancel</T>
             </DialogClose>
             <Button
-              disabled={creatingMode !== null || !newTitle.trim() || !matchedIntakeProject}
+              disabled={creatingMode !== null || !newTitle.trim() || !selectedIntakeProject}
               variant="outline"
               onClick={() => void handleCreateWorkItem("prd")}
             >
@@ -1887,6 +1929,11 @@ export function CockpitPage() {
           workItemId={selectedWorkItemId}
           onClose={() => setSelectedWorkItemId(null)}
           onOpenChangeRequest={handleOpenChangeRequest}
+          onOpenPromptSettings={() => {
+            setSetupInitialSection("prompts");
+            setSetupSectionVersion((v) => v + 1);
+            setActiveTab("setup");
+          }}
           onUpdated={() => {
             if (primaryEnvironmentId && selectedWorkspaceId) {
               void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);

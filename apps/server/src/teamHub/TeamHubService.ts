@@ -27,6 +27,7 @@ import {
   TeamHubTestNotificationChannelResult,
   TeamHubUpdateMemberRolesResult,
   TeamHubUpdateProfileResult,
+  TeamHubUpdateProjectPromptsResult,
   TeamHubWorkItemResult,
   WorkItemDetail,
   type TeamHubAddMemberInput,
@@ -61,6 +62,7 @@ import {
   type TeamHubUpdateDirectivesInput,
   type TeamHubUpdateMemberRolesInput,
   type TeamHubUpdateProfileInput,
+  type TeamHubUpdateProjectPromptsInput,
   type TeamHubUpdateReleaseInput,
   type TeamHubUpdateWorkItemInput,
   type TeamHubWorkItemDetailInput,
@@ -122,6 +124,7 @@ const decodeApproveGate = Schema.decodeUnknownEffect(TeamHubApproveGateResult);
 const decodePublishPulse = Schema.decodeUnknownEffect(TeamHubPublishPulseResult);
 const decodeCreateWorkspace = Schema.decodeUnknownEffect(TeamHubCreateWorkspaceResult);
 const decodeCreateProject = Schema.decodeUnknownEffect(TeamHubCreateProjectResult);
+const decodeUpdateProjectPrompts = Schema.decodeUnknownEffect(TeamHubUpdateProjectPromptsResult);
 const decodeAddProjectRepo = Schema.decodeUnknownEffect(TeamHubAddProjectRepoResult);
 const decodeListChannels = Schema.decodeUnknownEffect(TeamHubListNotificationChannelsResult);
 const decodeCreateChannel = Schema.decodeUnknownEffect(TeamHubCreateNotificationChannelResult);
@@ -202,6 +205,9 @@ export class TeamHubService extends Context.Service<
     readonly createProject: (
       input: TeamHubCreateProjectInput,
     ) => Effect.Effect<TeamHubCreateProjectResult, TeamHubError>;
+    readonly updateProjectPrompts: (
+      input: TeamHubUpdateProjectPromptsInput,
+    ) => Effect.Effect<TeamHubUpdateProjectPromptsResult, TeamHubError>;
     readonly addProjectRepo: (
       input: TeamHubAddProjectRepoInput,
     ) => Effect.Effect<TeamHubAddProjectRepoResult, TeamHubError>;
@@ -619,6 +625,17 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const updateProjectPrompts = Effect.fn("TeamHubService.updateProjectPrompts")(function* (
+    input: TeamHubUpdateProjectPromptsInput,
+  ) {
+    return yield* authedRequest({
+      method: "PUT",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/prompts`,
+      body: { promptTemplates: input.promptTemplates },
+      decode: decodeUpdateProjectPrompts,
+    });
+  });
+
   const addProjectRepo = Effect.fn("TeamHubService.addProjectRepo")(function* (
     input: TeamHubAddProjectRepoInput,
   ) {
@@ -977,6 +994,7 @@ const make = Effect.gen(function* () {
     extractPulseDraft,
     createWorkspace,
     createProject,
+    updateProjectPrompts,
     addProjectRepo,
     listNotificationChannels,
     createNotificationChannel,

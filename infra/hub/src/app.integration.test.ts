@@ -150,6 +150,25 @@ describe("u3code-hub integration (PGlite)", () => {
     });
     expect(secondProjRes.status).toBe(201);
 
+    // Save & clear team-shared prompt templates on project
+    const promptPutRes = await app.request(`/api/v1/projects/${project.id}/prompts`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        promptTemplates: {
+          prd: "请使用中文撰写 {{code}} 的 PRD：{{title}}",
+          pr_audit: "   ",
+        },
+      }),
+    });
+    expect(promptPutRes.status).toBe(200);
+    const promptPutJson = (await promptPutRes.json()) as {
+      project: { workflowConfig: { promptTemplates?: Record<string, string> } };
+    };
+    expect(promptPutJson.project.workflowConfig.promptTemplates).toEqual({
+      prd: "请使用中文撰写 {{code}} 的 PRD：{{title}}",
+    });
+
     const repoRes = await app.request(`/api/v1/projects/${project.id}/repos`, {
       method: "POST",
       headers: ownerHeaders,

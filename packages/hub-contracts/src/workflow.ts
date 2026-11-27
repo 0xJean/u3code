@@ -26,11 +26,33 @@ export const ProgressLedgerRef = Schema.Struct({
 });
 export type ProgressLedgerRef = typeof ProgressLedgerRef.Type;
 
+export const CockpitPromptSlot = Schema.Literals([
+  "prd",
+  "prototype",
+  "issue_dispatch",
+  "dev_branch",
+  "pr_audit",
+  "pr_fix",
+  "repo_governance",
+]);
+export type CockpitPromptSlot = typeof CockpitPromptSlot.Type;
+
+export const COCKPIT_PROMPT_SLOTS: ReadonlyArray<CockpitPromptSlot> = [
+  "prd",
+  "prototype",
+  "issue_dispatch",
+  "dev_branch",
+  "pr_audit",
+  "pr_fix",
+  "repo_governance",
+];
+
 export const WorkflowConfig = Schema.Struct({
   preset: WorkflowPresetKind,
   stages: Schema.Array(WorkflowStage),
   gates: Schema.Array(GateRule),
   progressLedgers: Schema.optional(Schema.Array(ProgressLedgerRef)),
+  promptTemplates: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 });
 export type WorkflowConfig = typeof WorkflowConfig.Type;
 
@@ -159,5 +181,6 @@ export function createWorkflowConfigFromPreset(
     progressLedgers: overrides?.progressLedgers
       ? [...overrides.progressLedgers]
       : [...(base.progressLedgers ?? [])],
+    ...(overrides?.promptTemplates ? { promptTemplates: { ...overrides.promptTemplates } } : {}),
   };
 }

@@ -9,7 +9,7 @@ import {
   type ProjectMemory,
   type ProjectRepo,
 } from "@u3code/hub-contracts";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useLocale, Var } from "gt-react";
 import {
   AlertTriangleIcon,
   BotIcon,
@@ -177,6 +177,7 @@ export function CockpitPullRequestPane({
   onLinkChangeRequest,
 }: CockpitPullRequestPaneProps) {
   const gt = useGT();
+  const locale = useLocale();
   const localProjects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const [paneView, setPaneView] = useState<PaneView>("triage");
@@ -192,7 +193,7 @@ export function CockpitPullRequestPane({
     { repoFullName: changeRequest.repoFullName },
   ]);
   const fallbackMatchedProject =
-    exactMatchedProject ?? pickMatchingWorkspaceProject(candidateProjects, repos);
+    exactMatchedProject ?? pickMatchingWorkspaceProject(candidateProjects, repos, project);
   const chosenKeyForRepo = chosenLocalProjectByRepo[changeRequest.repoFullName] ?? "";
   const selectedLocalProject =
     localProjects.find((p) => `${p.environmentId}:${p.id}` === chosenKeyForRepo) ??
@@ -235,6 +236,7 @@ export function CockpitPullRequestPane({
       linkedWorkItem: linkedCard?.workItem ?? null,
       project,
       memory,
+      locale,
     });
     await handleNewThread(
       scopeProjectRef(selectedLocalProject.environmentId, selectedLocalProject.id),

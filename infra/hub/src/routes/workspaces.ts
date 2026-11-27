@@ -290,6 +290,52 @@ export function createWorkspaceRoutes(deps: {
     return c.json({ projects: rows });
   });
 
+  app.put("/projects/:projectId/prompts", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (!hasAnyRole(roles, ["owner", "pm", "dev"])) {
+      return c.json({ error: "Requires owner, pm, or dev role to manage prompt templates." }, 403);
+    }
+
+    const body = (await c.req.json()) as {
+      readonly promptTemplates?: Record<string, string>;
+    };
+    const nextTemplates: Record<string, string> = {};
+    for (const [slot, value] of Object.entries(body.promptTemplates ?? {})) {
+      const key = slot.trim();
+      if (!key || typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        nextTemplates[key] = trimmed;
+      }
+    }
+
+    const nextWorkflowConfig: WorkflowConfig = {
+      ...project.workflowConfig,
+      promptTemplates: nextTemplates,
+    };
+
+    const updated = await deps.db
+      .update(projects)
+      .set({
+        workflowConfig: nextWorkflowConfig,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projects.id, projectId))
+      .returning();
+
+    return c.json({ project: updated[0] });
+  });
+
   app.post("/projects/:projectId/repos", async (c) => {
     const user = getAuthUser(c);
     const projectId = c.req.param("projectId");

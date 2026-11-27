@@ -79,6 +79,10 @@ export function createTeamHubEnvironmentAtoms<R, E>(
       label: "environment-data:team-hub:create-project",
       tag: WS_METHODS.teamHubCreateProject,
     }),
+    updateProjectPrompts: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:update-project-prompts",
+      tag: WS_METHODS.teamHubUpdateProjectPrompts,
+    }),
     addProjectRepo: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:team-hub:add-project-repo",
       tag: WS_METHODS.teamHubAddProjectRepo,

@@ -5,6 +5,7 @@ import {
   ChecklistItem,
   CockpitDigest,
   CockpitOverview,
+  CockpitPromptSlot,
   DigestTriggerType,
   ForgeKind,
   GateApproval,
@@ -225,6 +226,17 @@ export const TeamHubCreateProjectResult = Schema.Struct({
   project: Project,
 });
 export type TeamHubCreateProjectResult = typeof TeamHubCreateProjectResult.Type;
+
+export const TeamHubUpdateProjectPromptsInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  promptTemplates: Schema.Record(Schema.String, Schema.String),
+});
+export type TeamHubUpdateProjectPromptsInput = typeof TeamHubUpdateProjectPromptsInput.Type;
+
+export const TeamHubUpdateProjectPromptsResult = Schema.Struct({
+  project: Project,
+});
+export type TeamHubUpdateProjectPromptsResult = typeof TeamHubUpdateProjectPromptsResult.Type;
 
 export const TeamHubAddProjectRepoInput = Schema.Struct({
   projectId: TrimmedNonEmptyString,
@@ -459,6 +471,7 @@ export type TeamHubPostBoardMessageResult = typeof TeamHubPostBoardMessageResult
 export {
   AssigneeType,
   CockpitOverview,
+  CockpitPromptSlot,
   HubWsEvent,
   PulseDraft,
   TeamBoardAuthorType,

@@ -7,12 +7,13 @@ import {
   type NotificationChannelSummary,
   type NotificationEventKind,
   type NotifierDriverKind,
+  type ProjectMemory,
   type RegisteredWorkflowPreset,
   type RepoPolicy,
   type WorkspaceMember,
 } from "@u3code/hub-contracts";
 import * as Schema from "effect/Schema";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useLocale, Var } from "gt-react";
 import {
   BellIcon,
   BotIcon,
@@ -77,8 +78,17 @@ import {
   CockpitSurface,
   CockpitSurfaceRow,
 } from "./CockpitPrimitives";
+import { CockpitPromptsSection } from "./CockpitPromptsSection";
 import { formatCockpitCommandError } from "./cockpitError";
 import { buildRepoGovernanceBootstrapPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
+
+export type SetupSection =
+  | "overview"
+  | "prompts"
+  | "team"
+  | "notifications"
+  | "plugins"
+  | "governance";
 
 interface CockpitSettingsTabProps {
   readonly environmentId: EnvironmentId;
@@ -86,10 +96,10 @@ interface CockpitSettingsTabProps {
   readonly selectedWorkspaceId: string;
   readonly selectedProjectId: string;
   readonly overview: CockpitOverview | null;
+  readonly memory?: ProjectMemory | null | undefined;
+  readonly initialSection?: SetupSection | undefined;
   readonly onRefreshAll: (nextWorkspaceId?: string, nextProjectId?: string) => void;
 }
-
-type SetupSection = "overview" | "team" | "notifications" | "plugins" | "governance";
 
 const BRANCH_TOPOLOGY_STORAGE_KEY = "u3code:cockpit-branch-topology:v1";
 const branchTopologyStorageSchema = Schema.Record(Schema.String, BranchTopology);
@@ -254,12 +264,15 @@ export function CockpitSettingsTab({
   selectedWorkspaceId,
   selectedProjectId,
   overview,
+  memory,
+  initialSection = "overview",
   onRefreshAll,
 }: CockpitSettingsTabProps) {
   const gt = useGT();
+  const locale = useLocale();
   const localProjects = useProjects();
   const handleNewThread = useNewThreadHandler();
-  const [activeSection, setActiveSection] = useState<SetupSection>("overview");
+  const [activeSection, setActiveSection] = useState<SetupSection>(initialSection);
   const [topologyByScope, setTopologyByScope] = useLocalStorage(
     BRANCH_TOPOLOGY_STORAGE_KEY,
     {},
@@ -430,7 +443,11 @@ export function CockpitSettingsTab({
 
   const envLocalProjects = localProjects.filter((proj) => proj.environmentId === environmentId);
   const candidateLocalProjects = envLocalProjects.length > 0 ? envLocalProjects : localProjects;
-  const fallbackBootstrapProject = pickMatchingWorkspaceProject(candidateLocalProjects, repos);
+  const fallbackBootstrapProject = pickMatchingWorkspaceProject(
+    candidateLocalProjects,
+    repos,
+    activeProject,
+  );
   const selectedBootstrapProject =
     localProjects.find(
       (proj) => `${proj.environmentId}:${proj.id}` === chosenBootstrapProjectKey,
@@ -451,6 +468,8 @@ export function CockpitSettingsTab({
       project: activeProject,
       repoFullName: bootstrapRepoFullName,
       topology: activeTopology,
+      memory,
+      locale,
     });
     await handleNewThread(
       scopeProjectRef(selectedBootstrapProject.environmentId, selectedBootstrapProject.id),
@@ -868,6 +887,7 @@ export function CockpitSettingsTab({
             const value = next[0];
             if (
               value === "overview" ||
+              value === "prompts" ||
               value === "team" ||
               value === "notifications" ||
               value === "plugins" ||
@@ -879,6 +899,9 @@ export function CockpitSettingsTab({
         >
           <Toggle value="overview">
             <T>Overview & Repos</T>
+          </Toggle>
+          <Toggle value="prompts">
+            <T>Prompts</T>
           </Toggle>
           <Toggle value="team">
             <T>Team & Profile</T>
@@ -894,6 +917,17 @@ export function CockpitSettingsTab({
           </Toggle>
         </ToggleGroup>
       </div>
+
+      {/* Section 1b: Team Prompt Templates */}
+      {activeSection === "prompts" ? (
+        <CockpitPromptsSection
+          environmentId={environmentId}
+          memory={memory}
+          project={activeProject}
+          repos={repos}
+          onSaved={() => onRefreshAll(selectedWorkspaceId, selectedProjectId)}
+        />
+      ) : null}
 
       {/* Section 1: Overview & Repos */}
       {activeSection === "overview" ? (

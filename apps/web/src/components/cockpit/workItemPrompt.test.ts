@@ -390,4 +390,45 @@ describe("workItemPrompt", () => {
     expect(prompt).toContain("hub_board_post");
     expect(prompt).toContain("@alice");
   });
+
+  it("matches local workspace project by Hub project name when no repo is linked yet", () => {
+    const localProjects = [
+      { id: "p1", title: "server", workspaceRoot: "/repo/u3code/apps/server" },
+      { id: "p2", title: "tabula", workspaceRoot: "/repo/tabula" },
+    ];
+    expect(
+      pickMatchingWorkspaceProject(localProjects, [], { key: "JEAN1", name: "Tabula" })?.id,
+    ).toBe("p2");
+  });
+
+  it("generates Simplified Chinese prompts when locale is zh and respects project custom prompt templates", () => {
+    const zhPrd = buildPrdGenerationPrompt({
+      workItem: sampleWorkItem,
+      project: sampleProject,
+      memory: sampleMemory,
+      locale: "zh",
+    });
+    expect(zhPrd).toContain("撰写产品需求文档（PRD）");
+    expect(zhPrd).toContain("简体中文");
+    expect(zhPrd).toContain("同步回 Team Hub");
+
+    const customProject: Project = {
+      ...sampleProject,
+      workflowConfig: {
+        ...sampleProject.workflowConfig,
+        promptTemplates: {
+          prd: "【团队定制 PRD】任务 {{code}}：{{title}}（输出语言：{{responseLanguage}}）\n{{directives}}",
+        },
+      },
+    };
+    const customPrompt = buildPrdGenerationPrompt({
+      workItem: sampleWorkItem,
+      project: customProject,
+      memory: sampleMemory,
+      locale: "zh",
+    });
+    expect(customPrompt).toBe(
+      "【团队定制 PRD】任务 CORE-42：Idempotent settlement outbox（输出语言：简体中文）\n- Never auto-merge main.",
+    );
+  });
 });
