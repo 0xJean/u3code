@@ -3,14 +3,29 @@
 FROM node:24-alpine AS base
 
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@12.14.0 --activate
 
-# Copy minimal workspace manifests + hub packages only
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Minimal standalone workspace manifest so Docker installs only Hub runtime deps (no mobile/desktop patches).
+RUN printf '%s\n' \
+  '{"private":true,"packageManager":"pnpm@12.14.0"}' \
+  > package.json && \
+  printf '%s\n' \
+  'packages:' \
+  '  - packages/hub-contracts' \
+  '  - infra/hub' \
+  'catalog:' \
+  '  "@types/node": 24.12.4' \
+  '  "@types/ws": 8.18.2' \
+  '  effect: 4.1.5' \
+  '  jose: 6.2.2' \
+  '  vite-plus: 1.8.0' \
+  '  ws: 8.22.0' \
+  > pnpm-workspace.yaml
+
 COPY packages/hub-contracts/package.json ./packages/hub-contracts/package.json
 COPY infra/hub/package.json ./infra/hub/package.json
 
-RUN pnpm install --filter @u3code/hub... --prod --no-frozen-lockfile
+RUN pnpm install --filter @u3code/hub... --prod --no-frozen-lockfile --ignore-scripts
 
 COPY packages/hub-contracts/src ./packages/hub-contracts/src
 COPY infra/hub/src ./infra/hub/src
