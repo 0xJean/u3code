@@ -31,6 +31,16 @@ import { encryptSecretJson, newId } from "../utils/crypto.ts";
 import { syncGitHubOpenPullRequests } from "../webhooks/syncGithub.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
 
+function isPgUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { readonly code?: unknown; readonly cause?: unknown };
+  if (candidate.code === "23505") return true;
+  if (candidate.cause && typeof candidate.cause === "object") {
+    return (candidate.cause as { readonly code?: unknown }).code === "23505";
+  }
+  return false;
+}
+
 export function createWorkspaceRoutes(deps: {
   readonly db: HubDatabase;
   readonly config: HubConfig;
@@ -56,15 +66,26 @@ export function createWorkspaceRoutes(deps: {
     }
 
     const id = newId("ws");
-    const inserted = await deps.db
-      .insert(workspaces)
-      .values({
-        id,
-        slug,
-        name,
-        settings: body.settings ?? {},
-      })
-      .returning();
+    let inserted: Array<typeof workspaces.$inferSelect>;
+    try {
+      inserted = await deps.db
+        .insert(workspaces)
+        .values({
+          id,
+          slug,
+          name,
+          settings: body.settings ?? {},
+        })
+        .returning();
+    } catch (error) {
+      if (isPgUniqueViolation(error)) {
+        return c.json(
+          { error: `Workspace slug '${slug}' already exists. Choose a different slug.` },
+          409,
+        );
+      }
+      throw error;
+    }
 
     await deps.db.insert(workspaceMemberships).values({
       workspaceId: id,
@@ -223,17 +244,30 @@ export function createWorkspaceRoutes(deps: {
       createWorkflowConfigFromPreset(presetName === "full-delivery" ? "full-delivery" : "lean");
     const projectId = newId("prj");
 
-    const inserted = await deps.db
-      .insert(projects)
-      .values({
-        id: projectId,
-        workspaceId,
-        key,
-        name,
-        description: body.description?.trim() ?? "",
-        workflowConfig,
-      })
-      .returning();
+    let inserted: Array<typeof projects.$inferSelect>;
+    try {
+      inserted = await deps.db
+        .insert(projects)
+        .values({
+          id: projectId,
+          workspaceId,
+          key,
+          name,
+          description: body.description?.trim() ?? "",
+          workflowConfig,
+        })
+        .returning();
+    } catch (error) {
+      if (isPgUniqueViolation(error)) {
+        return c.json(
+          {
+            error: `Project key '${key}' already exists in this workspace. Choose a unique short key (for example, TAB, WEB, or API).`,
+          },
+          409,
+        );
+      }
+      throw error;
+    }
 
     await deps.db.insert(projectMemories).values({
       id: newId("mem"),
@@ -283,17 +317,28 @@ export function createWorkspaceRoutes(deps: {
       return c.json({ error: "repoFullName is required (e.g. org/repo)." }, 400);
     }
 
-    const inserted = await deps.db
-      .insert(projectRepos)
-      .values({
-        id: newId("rep"),
-        projectId,
-        forgeKind: body.forgeKind ?? "github",
-        repoFullName,
-        tags: body.tags ?? [],
-        repoPolicy: body.repoPolicy ?? DEFAULT_REPO_POLICY,
-      })
-      .returning();
+    let inserted: Array<typeof projectRepos.$inferSelect>;
+    try {
+      inserted = await deps.db
+        .insert(projectRepos)
+        .values({
+          id: newId("rep"),
+          projectId,
+          forgeKind: body.forgeKind ?? "github",
+          repoFullName,
+          tags: body.tags ?? [],
+          repoPolicy: body.repoPolicy ?? DEFAULT_REPO_POLICY,
+        })
+        .returning();
+    } catch (error) {
+      if (isPgUniqueViolation(error)) {
+        return c.json(
+          { error: `Repository '${repoFullName}' is already linked to this project.` },
+          409,
+        );
+      }
+      throw error;
+    }
 
     return c.json({ repo: inserted[0] }, 201);
   });

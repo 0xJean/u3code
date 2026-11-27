@@ -133,6 +133,23 @@ describe("u3code-hub integration (PGlite)", () => {
     expect(projRes.status).toBe(201);
     const { project } = (await projRes.json()) as { project: { id: string } };
 
+    // Duplicate project key in same workspace returns 409 (not 500), while a unique key succeeds
+    const dupProjRes = await app.request(`/api/v1/workspaces/${workspace.id}/projects`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ key: "nex", name: "Duplicate Key Project", preset: "lean" }),
+    });
+    expect(dupProjRes.status).toBe(409);
+    const dupProjJson = (await dupProjRes.json()) as { error: string };
+    expect(dupProjJson.error).toContain("NEX");
+
+    const secondProjRes = await app.request(`/api/v1/workspaces/${workspace.id}/projects`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ key: "TAB", name: "Tabula", preset: "dual-branch-bot-gated" }),
+    });
+    expect(secondProjRes.status).toBe(201);
+
     const repoRes = await app.request(`/api/v1/projects/${project.id}/repos`, {
       method: "POST",
       headers: ownerHeaders,

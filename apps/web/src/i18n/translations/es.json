@@ -6067,6 +6067,7 @@
   "aa17c79a8d5828fa": "Create Release",
   "04ba993d1fb6528e": "Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)",
   "5dc0780fddf4bccd": "Lean (Backlog → In Progress → Review → Done)",
+  "039befae93b35add": "Dual-Branch Bot-Gated (Scoping → Dev → Review → Staging → Done)",
   "12013d6a4efb8f2f": "Workspace created",
   "ed24ba9479808acc": "Failed to create workspace.",
   "36595932eaff87f0": "Failed to create project.",
@@ -6101,6 +6102,9 @@
   "a6b69d4e75aab0b5": "Ops",
   "a598bb83a0eca215": "Security",
   "f8b96c6e4c59a74a": "Dev",
+  "bacdd15aec092aeb": "Full Delivery",
+  "26320239d4f004be": "Lean",
+  "1069e7fe163016f6": "Dual-Branch Bot-Gated",
   "d3b47745facc7f52": "integration",
   "0b06e41a45b8b603": "release",
   "d24ecd236589f9db": "Remove repository",
@@ -6114,11 +6118,15 @@
   "67799c2f5695a1b1": "Discord",
   "ebffe4dabf52835f": "Activar {name}",
   "1163ee57613a7d1d": "Delete notification channel",
+  "f6067c5939c6cf31": "Multi-stage cross-repository delivery with Spec Freeze, QA AC, Security, and Production Go/No-Go gates.",
+  "183d14af8bdf8b53": "Minimal 4-stage board without mandatory gate approvals.",
+  "256e46f695980a76": "Streamlined multi-repo preset suited for integration-branch auto-merge with automated bot review and QA + Go/No-Go gates.",
   "37356b9a4d0203a9": "Branch topology",
   "18ed3e1af363c529": "Workspace repository",
   "021866887401ae66": "Workspace name (e.g. Engineering)",
   "8a7b4641730e8650": "Slug (e.g. eng)",
-  "b9c1e5ebfdf316f4": "Key (e.g. CORE)",
+  "5dc516e7e31a4ac2": "Project name (e.g. Tabula)",
+  "9e8eb9bc21d86104": "e.g. TAB",
   "116e5ce2e8bfcb50": "Short description (optional)",
   "77314fedefbb274c": "Workflow Preset",
   "026c73c285bc0b56": "Forge",
@@ -6485,9 +6493,34 @@
   "135f0709b8df3c56": "Workspace name",
   "05fee01450a2c460": "Slug",
   "8fc67dea7142ee03": "Create Project",
-  "9b9c6526c24a65a2": "Configure a project key, name, and delivery workflow preset for this workspace.",
-  "001559c3f0b9ef75": "Project key",
+  "5924fd7c2012c095": "Configure a project name, unique ticket key, and delivery workflow preset for this workspace.",
   "8645583332ec940f": "Project name",
+  "001559c3f0b9ef75": "Project key",
+  "4f753fe9f0c0eb5a": [
+    "Key ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " is already used by",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " in this workspace. Choose a unique short prefix."
+  ],
+  "9dc7e8cc8dac500c": "Unique ticket prefix in this workspace (e.g. TAB → TAB-1).",
+  "9a5a5fa1ff331cf3": [
+    "In use: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "ab8222ce9132da09": "Descripción",
   "28b7ac035bab5c5c": "Workflow preset",
   "1d7ba8ccbfa9b496": "Bind a repository and define its integration branch, release branch, PR size guardrail, and automated reviewer bots.",

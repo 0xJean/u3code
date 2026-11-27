@@ -241,6 +241,19 @@ function workItemTypeLabel(itemType: WorkItemType, gt: ReturnType<typeof useGT>)
   }
 }
 
+function workflowPresetLabel(presetId: string, gt: ReturnType<typeof useGT>): string {
+  switch (presetId) {
+    case "full-delivery":
+      return gt("Full Delivery");
+    case "lean":
+      return gt("Lean");
+    case "dual-branch-bot-gated":
+      return gt("Dual-Branch Bot-Gated");
+    default:
+      return presetId;
+  }
+}
+
 function reviewStatusTone(status: string): CockpitTone {
   if (status === "blocking") return "error";
   if (status === "pass" || status === "auto_merged") return "success";
@@ -1259,7 +1272,7 @@ export function CockpitPage() {
                     {(deliverySubTab === "kanban" || deliverySubTab === "gantt") &&
                     activeProject ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{activeProject.workflowConfig.preset}</span>
+                        <span>{workflowPresetLabel(activeProject.workflowConfig.preset, gt)}</span>
                         <span aria-hidden className="opacity-40">
                           ·
                         </span>

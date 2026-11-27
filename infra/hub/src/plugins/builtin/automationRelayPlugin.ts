@@ -24,7 +24,7 @@ export const automationRelayPlugin = defineHubPlugin({
   name: "Workflow Automation Relay",
   version: "1.0.0",
   description:
-    "Forwards actionable Hub lifecycle events (bot-blocked PRs, gate rejections, blockers) to T3 Code Workflows or external automation webhooks, and provides a dual-branch bot-gated preset.",
+    "Forwards actionable Hub lifecycle events (bot-blocked PRs, gate rejections, blockers) to U3 Code Workflows or external automation webhooks, and provides a dual-branch bot-gated preset.",
   builtin: true,
   register(ctx) {
     let relayedCount = 0;

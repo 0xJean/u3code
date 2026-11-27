@@ -175,6 +175,79 @@ function getBranchRoleLabel(role: string, gt: ReturnType<typeof useGT>): string 
   }
 }
 
+function getWorkflowPresetLabel(
+  presetId: string,
+  fallbackLabel: string,
+  gt: ReturnType<typeof useGT>,
+): string {
+  switch (presetId) {
+    case "full-delivery":
+      return gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)");
+    case "lean":
+      return gt("Lean (Backlog → In Progress → Review → Done)");
+    case "dual-branch-bot-gated":
+      return gt("Dual-Branch Bot-Gated (Scoping → Dev → Review → Staging → Done)");
+    default:
+      return fallbackLabel;
+  }
+}
+
+function getWorkflowPresetShortLabel(presetId: string, gt: ReturnType<typeof useGT>): string {
+  switch (presetId) {
+    case "full-delivery":
+      return gt("Full Delivery");
+    case "lean":
+      return gt("Lean");
+    case "dual-branch-bot-gated":
+      return gt("Dual-Branch Bot-Gated");
+    default:
+      return presetId;
+  }
+}
+
+function getWorkflowPresetDescription(
+  presetId: string,
+  fallbackDescription: string,
+  gt: ReturnType<typeof useGT>,
+): string {
+  switch (presetId) {
+    case "full-delivery":
+      return gt(
+        "Multi-stage cross-repository delivery with Spec Freeze, QA AC, Security, and Production Go/No-Go gates.",
+      );
+    case "lean":
+      return gt("Minimal 4-stage board without mandatory gate approvals.");
+    case "dual-branch-bot-gated":
+      return gt(
+        "Streamlined multi-repo preset suited for integration-branch auto-merge with automated bot review and QA + Go/No-Go gates.",
+      );
+    default:
+      return fallbackDescription;
+  }
+}
+
+function suggestProjectKeyFromName(name: string, existingKeys: ReadonlySet<string>): string {
+  const words = name
+    .trim()
+    .split(/[^a-zA-Z0-9]+/)
+    .filter((word) => word.length > 0);
+  const raw =
+    words.length >= 2
+      ? words
+          .slice(0, 4)
+          .map((w) => w[0] ?? "")
+          .join("")
+      : (words[0]?.slice(0, 4) ?? "");
+  const base = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!base) return "";
+  if (!existingKeys.has(base)) return base;
+  for (let suffix = 2; suffix <= 99; suffix += 1) {
+    const candidate = `${base.slice(0, 4)}${suffix}`;
+    if (!existingKeys.has(candidate)) return candidate;
+  }
+  return base;
+}
+
 export function CockpitSettingsTab({
   environmentId,
   status,
@@ -209,6 +282,7 @@ export function CockpitSettingsTab({
 
   // Project creation
   const [projKey, setProjKey] = useState("");
+  const [projKeyTouched, setProjKeyTouched] = useState(false);
   const [projName, setProjName] = useState("");
   const [projDesc, setProjDesc] = useState("");
   const [projPreset, setProjPreset] = useState<string>("full-delivery");
@@ -391,22 +465,35 @@ export function CockpitSettingsTab({
   const fallbackPresets: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
     {
       id: "full-delivery",
-      label: gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)"),
+      label: getWorkflowPresetLabel("full-delivery", "Full Delivery", gt),
     },
     {
       id: "lean",
-      label: gt("Lean (Backlog → In Progress → Review → Done)"),
+      label: getWorkflowPresetLabel("lean", "Lean", gt),
+    },
+    {
+      id: "dual-branch-bot-gated",
+      label: getWorkflowPresetLabel("dual-branch-bot-gated", "Dual-Branch Bot-Gated", gt),
     },
   ];
   const presetOptions =
     workflowPresets.length > 0
-      ? workflowPresets.map((preset) => ({ id: preset.id, label: preset.label }))
+      ? workflowPresets.map((preset) => ({
+          id: preset.id,
+          label: getWorkflowPresetLabel(preset.id, preset.label, gt),
+        }))
       : fallbackPresets;
   const effectiveProjPreset = presetOptions.some((option) => option.id === projPreset)
     ? projPreset
     : (presetOptions[0]?.id ?? "full-delivery");
   const selectedPresetLabel =
     presetOptions.find((option) => option.id === effectiveProjPreset)?.label ?? effectiveProjPreset;
+  const existingProjects = overview?.projects ?? [];
+  const existingProjectKeys = new Set(existingProjects.map((p) => p.key.toUpperCase()));
+  const normalizedProjKey = projKey.trim().toUpperCase();
+  const conflictingProject = normalizedProjKey
+    ? (existingProjects.find((p) => p.key.toUpperCase() === normalizedProjKey) ?? null)
+    : null;
 
   const handleCreateWorkspace = async () => {
     const slug = wsSlug.trim().toLowerCase() || wsName.trim().toLowerCase().replace(/\s+/g, "-");
@@ -432,13 +519,15 @@ export function CockpitSettingsTab({
   };
 
   const handleCreateProject = async () => {
-    if (!selectedWorkspaceId || !projKey.trim() || !projName.trim()) return;
+    if (!selectedWorkspaceId || !normalizedProjKey || !projName.trim() || conflictingProject) {
+      return;
+    }
     setCreatingProj(true);
     const res = await createProject({
       environmentId,
       input: {
         workspaceId: selectedWorkspaceId,
-        key: projKey.trim().toUpperCase(),
+        key: normalizedProjKey,
         name: projName.trim(),
         ...(projDesc.trim() ? { description: projDesc.trim() } : {}),
         preset: effectiveProjPreset,
@@ -447,6 +536,7 @@ export function CockpitSettingsTab({
     setCreatingProj(false);
     if (res._tag === "Success") {
       setProjKey("");
+      setProjKeyTouched(false);
       setProjName("");
       setProjDesc("");
       setProjectDialogOpen(false);
@@ -908,7 +998,7 @@ export function CockpitSettingsTab({
                 {activeProject ? (
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge size="sm" variant="secondary">
-                      {activeProject.workflowConfig.preset}
+                      {getWorkflowPresetShortLabel(activeProject.workflowConfig.preset, gt)}
                     </Badge>
                     <Badge size="sm" variant="outline">
                       <T>
@@ -1529,11 +1619,15 @@ export function CockpitSettingsTab({
                   >
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">{preset.label}</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {getWorkflowPresetLabel(preset.id, preset.label, gt)}
+                        </span>
                         <span className="font-mono text-xs text-muted-foreground">{preset.id}</span>
                       </div>
                       {preset.description ? (
-                        <p className="text-xs text-muted-foreground">{preset.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {getWorkflowPresetDescription(preset.id, preset.description, gt)}
+                        </p>
                       ) : null}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
@@ -1858,7 +1952,15 @@ export function CockpitSettingsTab({
       </Dialog>
 
       {/* Dialog 2: Create Project */}
-      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+      <Dialog
+        open={projectDialogOpen}
+        onOpenChange={(open) => {
+          setProjectDialogOpen(open);
+          if (!open) {
+            setProjKeyTouched(false);
+          }
+        }}
+      >
         <DialogPopup>
           <form
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1873,13 +1975,32 @@ export function CockpitSettingsTab({
               </DialogTitle>
               <DialogDescription>
                 <T>
-                  Configure a project key, name, and delivery workflow preset for this workspace.
+                  Configure a project name, unique ticket key, and delivery workflow preset for this
+                  workspace.
                 </T>
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
               <div className="space-y-3">
                 <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="sm:col-span-2">
+                    <CockpitFieldLabel htmlFor="cockpit-proj-name">
+                      <T>Project name</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="cockpit-proj-name"
+                      placeholder={gt("Project name (e.g. Tabula)")}
+                      size="sm"
+                      value={projName}
+                      onChange={(event) => {
+                        const nextName = event.target.value;
+                        setProjName(nextName);
+                        if (!projKeyTouched) {
+                          setProjKey(suggestProjectKeyFromName(nextName, existingProjectKeys));
+                        }
+                      }}
+                    />
+                  </div>
                   <div>
                     <CockpitFieldLabel htmlFor="cockpit-proj-key">
                       <T>Project key</T>
@@ -1887,25 +2008,37 @@ export function CockpitSettingsTab({
                     <Input
                       font="mono"
                       id="cockpit-proj-key"
-                      placeholder={gt("Key (e.g. CORE)")}
+                      placeholder={gt("e.g. TAB")}
                       size="sm"
                       value={projKey}
-                      onChange={(event) => setProjKey(event.target.value)}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <CockpitFieldLabel htmlFor="cockpit-proj-name">
-                      <T>Project name</T>
-                    </CockpitFieldLabel>
-                    <Input
-                      id="cockpit-proj-name"
-                      placeholder={gt("Project name")}
-                      size="sm"
-                      value={projName}
-                      onChange={(event) => setProjName(event.target.value)}
+                      onChange={(event) => {
+                        setProjKeyTouched(true);
+                        setProjKey(event.target.value.toUpperCase());
+                      }}
                     />
                   </div>
                 </div>
+                {conflictingProject ? (
+                  <p className="text-xs text-destructive">
+                    <T>
+                      Key <Var>{normalizedProjKey}</Var> is already used by{" "}
+                      <Var>{conflictingProject.name}</Var> in this workspace. Choose a unique short
+                      prefix.
+                    </T>
+                  </p>
+                ) : (
+                  <p className="text-2xs text-muted-foreground">
+                    <T>Unique ticket prefix in this workspace (e.g. TAB → TAB-1).</T>
+                    {existingProjects.length > 0 ? (
+                      <>
+                        {" "}
+                        <T>
+                          In use: <Var>{existingProjects.map((p) => p.key).join(", ")}</Var>
+                        </T>
+                      </>
+                    ) : null}
+                  </p>
+                )}
                 <div>
                   <CockpitFieldLabel htmlFor="cockpit-proj-desc">
                     <T>Description</T>
@@ -1948,7 +2081,15 @@ export function CockpitSettingsTab({
               <DialogClose render={<Button variant="outline" />}>
                 <T>Cancel</T>
               </DialogClose>
-              <Button disabled={creatingProj || !projKey.trim() || !projName.trim()} type="submit">
+              <Button
+                disabled={
+                  creatingProj ||
+                  !normalizedProjKey ||
+                  !projName.trim() ||
+                  conflictingProject !== null
+                }
+                type="submit"
+              >
                 {creatingProj ? <T>Creating...</T> : <T>Create Project</T>}
               </Button>
             </DialogFooter>
