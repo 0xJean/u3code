@@ -40,8 +40,8 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const names = input.isDevelopment
-      ? { current: "t3code-dev", legacy: "U3 Code (Dev)" }
-      : { current: "t3code-v2", legacy: "U3 Code (Alpha)" };
+      ? { current: "u3code-dev", legacy: "U3 Code (Dev)" }
+      : { current: "u3code-v2", legacy: "U3 Code (Alpha)" };
     const destinationPath = path.join(input.appDataDirectory, names.current);
     const legacyPath = path.join(input.appDataDirectory, names.legacy);
     const inspect = (resourcePath: string) =>
