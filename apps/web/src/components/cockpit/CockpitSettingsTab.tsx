@@ -1,9 +1,11 @@
 import type { CockpitOverview, EnvironmentId, TeamHubStatusResult } from "@t3tools/contracts";
 import type {
   ForgeKind,
+  HubPluginSummary,
   NotificationChannelSummary,
   NotificationEventKind,
   NotifierDriverKind,
+  RegisteredWorkflowPreset,
   RepoPolicy,
   WorkspaceMember,
 } from "@u3code/hub-contracts";
@@ -13,6 +15,7 @@ import {
   FolderPlusIcon,
   GitBranchIcon,
   LayersIcon,
+  PuzzleIcon,
   Trash2Icon,
   UserCogIcon,
   UserPlusIcon,
@@ -66,8 +69,14 @@ export function CockpitSettingsTab({
   const [projKey, setProjKey] = useState("");
   const [projName, setProjName] = useState("");
   const [projDesc, setProjDesc] = useState("");
-  const [projPreset, setProjPreset] = useState<"lean" | "full-delivery">("full-delivery");
+  const [projPreset, setProjPreset] = useState<string>("full-delivery");
   const [creatingProj, setCreatingProj] = useState(false);
+
+  // Hub plugins & dynamic workflow presets
+  const [hubPlugins, setHubPlugins] = useState<ReadonlyArray<HubPluginSummary>>([]);
+  const [workflowPresets, setWorkflowPresets] = useState<ReadonlyArray<RegisteredWorkflowPreset>>(
+    [],
+  );
 
   // Repo + Policy binding
   const [repoFullName, setRepoFullName] = useState("");
@@ -131,6 +140,26 @@ export function CockpitSettingsTab({
   const updateMemberRoles = useAtomCommand(teamHubEnvironment.updateMemberRoles, {
     reportFailure: false,
   });
+  const listPlugins = useAtomCommand(teamHubEnvironment.listPlugins, { reportFailure: false });
+
+  const loadHubPlugins = useEffectEvent((envId: EnvironmentId, cancelled: () => boolean) => {
+    void listPlugins({ environmentId: envId, input: {} }).then((res) => {
+      if (cancelled()) return;
+      if (res._tag === "Success") {
+        setHubPlugins(res.value.plugins);
+        setWorkflowPresets(res.value.workflowPresets);
+      }
+    });
+  });
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Synchronize installed Hub plugins and plugin-registered workflow presets from external Team Hub API.
+  useEffect(() => {
+    let cancelled = false;
+    loadHubPlugins(environmentId, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId]);
 
   const loadWorkspaceMeta = useEffectEvent(
     (envId: EnvironmentId, wsId: string, cancelled: () => boolean) => {
@@ -692,18 +721,26 @@ export function CockpitSettingsTab({
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <select
                     aria-label={gt("Workflow Preset")}
-                    className="h-8 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground"
+                    className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground"
                     value={projPreset}
-                    onChange={(event) =>
-                      setProjPreset(event.target.value as "lean" | "full-delivery")
-                    }
+                    onChange={(event) => setProjPreset(event.target.value)}
                   >
-                    <option value="full-delivery">
-                      {gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)")}
-                    </option>
-                    <option value="lean">
-                      {gt("Lean (Backlog → In Progress → Review → Done)")}
-                    </option>
+                    {workflowPresets.length > 0 ? (
+                      workflowPresets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="full-delivery">
+                          {gt("Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)")}
+                        </option>
+                        <option value="lean">
+                          {gt("Lean (Backlog → In Progress → Review → Done)")}
+                        </option>
+                      </>
+                    )}
                   </select>
                   <Button
                     disabled={creatingProj || !projKey.trim() || !projName.trim()}
@@ -948,6 +985,82 @@ export function CockpitSettingsTab({
           </section>
         </div>
       </div>
+
+      <section className="space-y-3 rounded-xl border border-border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <PuzzleIcon className="size-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold text-foreground">
+              <T>Hub Plugins & Playbook Packs</T>
+            </h3>
+          </div>
+          <Badge size="sm" variant="secondary">
+            <T>
+              <Var>{hubPlugins.length}</Var> loaded
+            </T>
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          <T>
+            Server-side Hub plugins extend notification drivers, workflow presets, lifecycle hooks,
+            and callback routes. Load external plugins via{" "}
+            <code className="font-mono text-foreground">HUB_PLUGINS</code>, or install reusable
+            Workflow & Skill Playbook Packs with{" "}
+            <code className="font-mono text-foreground">
+              node infra/hub/src/packs/cli.ts packs/bot-review-autofix
+            </code>
+            .
+          </T>
+        </p>
+
+        {hubPlugins.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            <T>No plugins reported by the connected Hub.</T>
+          </p>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {hubPlugins.map((plugin) => (
+              <div
+                key={plugin.id}
+                className="space-y-2 rounded-lg border border-border bg-muted/25 p-3.5 text-xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">{plugin.name}</span>
+                    <span className="font-mono text-muted-foreground">v{plugin.version}</span>
+                  </div>
+                  <Badge size="sm" variant={plugin.builtin ? "outline" : "info"}>
+                    {plugin.builtin ? <T>Built-in</T> : <T>External</T>}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">{plugin.description}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {plugin.capabilities.notifiers.map((item) => (
+                    <Badge key={`n:${item}`} size="sm" variant="secondary">
+                      notifier:{item}
+                    </Badge>
+                  ))}
+                  {plugin.capabilities.workflowPresets.map((item) => (
+                    <Badge key={`p:${item}`} size="sm" variant="secondary">
+                      preset:{item}
+                    </Badge>
+                  ))}
+                  {plugin.capabilities.eventHooks.map((item) => (
+                    <Badge key={`e:${item}`} size="sm" variant="outline">
+                      hook:{item}
+                    </Badge>
+                  ))}
+                  {plugin.capabilities.routes.map((item) => (
+                    <Badge key={`r:${item}`} size="sm" variant="outline">
+                      route:{item}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -138,6 +138,18 @@ export class NotificationDispatcher {
     }
   }
 
+  registerDriver(driver: NotifierDriver): void {
+    this.#drivers.set(driver.kind, driver);
+  }
+
+  hasDriver(kind: NotifierDriverKind): boolean {
+    return this.#drivers.has(kind);
+  }
+
+  listDrivers(): readonly NotifierDriverKind[] {
+    return [...this.#drivers.keys()];
+  }
+
   async dispatch(
     workspaceId: string,
     projectId: string | null,

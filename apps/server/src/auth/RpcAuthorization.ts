@@ -172,6 +172,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.teamHubListReleases]: AuthOrchestrationReadScope,
   [WS_METHODS.teamHubSubscribeEvents]: AuthOrchestrationReadScope,
   [WS_METHODS.teamHubGetWorkItemDetail]: AuthOrchestrationReadScope,
+  [WS_METHODS.teamHubListPlugins]: AuthOrchestrationReadScope,
   [WS_METHODS.pullRequestsPreview]: AuthOrchestrationReadScope,
   [WS_METHODS.pullRequestsChecks]: AuthOrchestrationReadScope,
   [WS_METHODS.pullRequestsActivity]: AuthOrchestrationReadScope,

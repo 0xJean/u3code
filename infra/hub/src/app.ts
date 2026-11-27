@@ -4,6 +4,7 @@ import { GitHubAuthProvider, type AuthProvider } from "./auth/providers.ts";
 import type { HubConfig } from "./config.ts";
 import type { HubDatabase } from "./db/client.ts";
 import { NotificationDispatcher } from "./notifiers/index.ts";
+import { BUILTIN_HUB_PLUGINS, HubPluginRegistry, type HubPlugin } from "./plugins/index.ts";
 import { createAuthRoutes } from "./routes/auth.ts";
 import { createCockpitRoutes } from "./routes/cockpit.ts";
 import { createReleaseRoutes } from "./routes/releases.ts";
@@ -19,16 +20,33 @@ export interface CreateHubAppOptions {
   readonly broker?: HubSocketBroker;
   readonly notifier?: NotificationDispatcher;
   readonly githubProvider?: AuthProvider;
+  readonly plugins?: readonly HubPlugin[];
+  readonly fetchImpl?: typeof fetch;
 }
 
 export function createHubApp(options: CreateHubAppOptions): {
   readonly app: Hono;
   readonly broker: HubSocketBroker;
   readonly notifier: NotificationDispatcher;
+  readonly pluginRegistry: HubPluginRegistry;
 } {
   const broker = options.broker ?? new HubSocketBroker();
-  const notifier = options.notifier ?? new NotificationDispatcher(options.db, options.config);
+  const notifier = options.notifier ?? new NotificationDispatcher(options.db, options.config, []);
   const githubProvider = options.githubProvider ?? new GitHubAuthProvider(options.config);
+
+  const pluginRegistry = new HubPluginRegistry({
+    db: options.db,
+    config: options.config,
+    broker,
+    notifier,
+    ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+  });
+  for (const builtin of BUILTIN_HUB_PLUGINS) {
+    pluginRegistry.register(builtin);
+  }
+  for (const external of options.plugins ?? []) {
+    pluginRegistry.register(external);
+  }
 
   const app = new Hono();
 
@@ -78,7 +96,10 @@ export function createHubApp(options: CreateHubAppOptions): {
     "/api/v1/auth",
     createAuthRoutes({ db: options.db, config: options.config, githubProvider }),
   );
-  app.route("/api/v1", createWorkspaceRoutes({ db: options.db, config: options.config }));
+  app.route(
+    "/api/v1",
+    createWorkspaceRoutes({ db: options.db, config: options.config, pluginRegistry }),
+  );
   app.route(
     "/api/v1",
     createWorkItemRoutes({ db: options.db, config: options.config, broker, notifier }),
@@ -91,6 +112,7 @@ export function createHubApp(options: CreateHubAppOptions): {
     "/api/v1/cockpit",
     createCockpitRoutes({ db: options.db, config: options.config, broker, notifier }),
   );
+  pluginRegistry.mountRoutes(app);
 
-  return { app, broker, notifier };
+  return { app, broker, notifier, pluginRegistry };
 }

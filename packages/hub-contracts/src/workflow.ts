@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-export const WorkflowPresetKind = Schema.Literals(["lean", "full-delivery", "custom"]);
+export const WorkflowPresetKind = Schema.String;
 export type WorkflowPresetKind = typeof WorkflowPresetKind.Type;
 
 export const WorkflowStage = Schema.Struct({

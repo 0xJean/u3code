@@ -13,9 +13,19 @@ interface ConnectedClient {
   readonly workspaceId: string;
 }
 
+export type HubEventListener = (event: HubWsEvent) => void | Promise<void>;
+
 export class HubSocketBroker {
   readonly #wss = new WebSocketServer({ noServer: true });
   readonly #clients = new Set<ConnectedClient>();
+  readonly #listeners = new Set<HubEventListener>();
+
+  subscribe(listener: HubEventListener): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
 
   broadcast(event: HubWsEvent): void {
     const payload = JSON.stringify(event);
@@ -23,6 +33,18 @@ export class HubSocketBroker {
       if (client.workspaceId !== event.workspaceId) continue;
       if (client.socket.readyState === WebSocket.OPEN) {
         client.socket.send(payload);
+      }
+    }
+    for (const listener of this.#listeners) {
+      try {
+        const result = listener(event);
+        if (result instanceof Promise) {
+          void result.catch(() => {
+            // Isolate plugin hook failures so broker broadcast never crashes.
+          });
+        }
+      } catch {
+        // Isolate synchronous plugin hook failures.
       }
     }
   }
@@ -35,7 +57,7 @@ export class HubSocketBroker {
     head: Buffer,
   ): Promise<void> {
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname !== "/ws/cockpit") {
+    if (url.pathname !== "/ws/cockpit" && url.pathname !== "/ws") {
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
       socket.destroy();
       return;

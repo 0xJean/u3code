@@ -97,6 +97,7 @@ export class DigestScheduler {
         await generateAndPersistDigest(
           {
             db: this.#db,
+            config: this.#config,
             broker: this.#broker,
             notifier: this.#notifier,
             synthesizer,

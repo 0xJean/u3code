@@ -120,6 +120,7 @@ import {
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsInput,
   TeamHubListNotificationChannelsResult,
+  TeamHubListPluginsResult,
   TeamHubListReleasesInput,
   TeamHubListReleasesResult,
   TeamHubMemoryInput,
@@ -813,6 +814,7 @@ export const WS_METHODS = {
   teamHubDeleteNotificationChannel: "teamHub.deleteNotificationChannel",
   teamHubGetWorkItemDetail: "teamHub.getWorkItemDetail",
   teamHubLinkChangeRequest: "teamHub.linkChangeRequest",
+  teamHubListPlugins: "teamHub.listPlugins",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1838,6 +1840,12 @@ const WsTeamHubGetWorkItemDetailRpc = Rpc.make(WS_METHODS.teamHubGetWorkItemDeta
 const WsTeamHubLinkChangeRequestRpc = Rpc.make(WS_METHODS.teamHubLinkChangeRequest, {
   payload: TeamHubLinkChangeRequestInput,
   success: TeamHubLinkChangeRequestResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubListPluginsRpc = Rpc.make(WS_METHODS.teamHubListPlugins, {
+  payload: Schema.Struct({}),
+  success: TeamHubListPluginsResult,
   error: TeamHubRpcError,
 });
 
@@ -2973,6 +2981,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubDeleteNotificationChannelRpc,
   WsTeamHubGetWorkItemDetailRpc,
   WsTeamHubLinkChangeRequestRpc,
+  WsTeamHubListPluginsRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

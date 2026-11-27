@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "release-readiness",
+  "name": "Cross-Repo Release Readiness Pack",
+  "version": "1.0.0",
+  "description": "Pre-release audit workflow and release checklist skill for multi-repository Go/No-Go sign-offs.",
+  "author": "u3code",
+  "tags": ["release", "qa", "go-no-go", "cockpit"],
+  "hub": {
+    "workflowPresetId": "full-delivery",
+    "defaultDirectives": [
+      "Every production release requires a documented rollback plan and prod_go approval.",
+      "Zero unresolved bot-blocked or CI-blocked PRs on release branches."
+    ],
+    "recommendedPlugins": ["core-workflows", "lark", "automation-relay"]
+  },
+  "workflows": [
+    {
+      "file": "workflows/release-readiness.ts",
+      "name": "release-readiness",
+      "description": "Audits Team Hub work items, unverified ACs, and open PR triage buckets before asking owners for Production Go/No-Go."
+    }
+  ],
+  "skills": [
+    {
+      "dir": "skills/release-checklist",
+      "name": "release-checklist",
+      "description": "Helps engineers compile multi-repo release notes, verify rollback readiness, and inspect unresolved blockers."
+    }
+  ]
+}

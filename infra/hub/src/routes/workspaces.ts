@@ -26,11 +26,13 @@ import {
   workspaces,
 } from "../db/schema.ts";
 import type { NotifierChannelSecretConfig } from "../notifiers/index.ts";
+import type { HubPluginRegistry } from "../plugins/index.ts";
 import { encryptSecretJson, newId } from "../utils/crypto.ts";
 
 export function createWorkspaceRoutes(deps: {
   readonly db: HubDatabase;
   readonly config: HubConfig;
+  readonly pluginRegistry?: HubPluginRegistry;
 }): Hono<{ Variables: HubAuthVariables }> {
   const app = new Hono<{ Variables: HubAuthVariables }>();
   app.use("*", createAuthMiddleware(deps.db, deps.config));
@@ -198,7 +200,7 @@ export function createWorkspaceRoutes(deps: {
       readonly key?: string;
       readonly name?: string;
       readonly description?: string;
-      readonly preset?: "lean" | "full-delivery";
+      readonly preset?: string;
       readonly workflowConfig?: WorkflowConfig;
     };
 
@@ -208,8 +210,12 @@ export function createWorkspaceRoutes(deps: {
       return c.json({ error: "key and name are required." }, 400);
     }
 
+    const presetName = body.preset?.trim() || "lean";
+    const resolvedFromPlugin = deps.pluginRegistry?.resolveWorkflowPreset(presetName) ?? null;
     const workflowConfig =
-      body.workflowConfig ?? createWorkflowConfigFromPreset(body.preset ?? "lean");
+      body.workflowConfig ??
+      resolvedFromPlugin ??
+      createWorkflowConfigFromPreset(presetName === "full-delivery" ? "full-delivery" : "lean");
     const projectId = newId("prj");
 
     const inserted = await deps.db

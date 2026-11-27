@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "bot-review-autofix",
+  "name": "Automated PR Bot Review & WorkItem Delivery Pack",
+  "version": "1.0.0",
+  "description": "End-to-end delivery playbook: reacts to Hub bot-blocked PR events via a durable T3 Workflow and teaches coding agents to verify WorkItem ACs and sync Pulses.",
+  "author": "u3code",
+  "tags": ["pr-review", "autofix", "cockpit", "mcp"],
+  "hub": {
+    "workflowPresetId": "dual-branch-bot-gated",
+    "defaultRepoPolicy": {
+      "branches": [
+        { "name": "dev", "role": "integration", "mergePolicy": "auto_on_low_risk" },
+        { "name": "main", "role": "release", "mergePolicy": "manual" }
+      ],
+      "automatedReviewers": [
+        {
+          "name": "Automated Reviewer",
+          "botLogins": ["dotsbot[bot]", "coderabbitai[bot]"],
+          "blockingStates": ["CHANGES_REQUESTED"]
+        }
+      ],
+      "qualitySignals": [],
+      "maxPrChangedLines": 500,
+      "environments": { "staging": "staging", "production": "production" }
+    },
+    "defaultDirectives": [
+      "Keep PRs focused and under 500 changed lines whenever possible.",
+      "Never auto-merge directly into release branches without human approval.",
+      "Always verify WorkItem acceptance criteria before requesting QA sign-off."
+    ],
+    "recommendedPlugins": ["automation-relay", "lark"]
+  },
+  "workflows": [
+    {
+      "file": "workflows/bot-review-autofix.ts",
+      "name": "bot-review-autofix",
+      "description": "Triggered by Hub automation-relay webhook on pr.bot_blocked; investigates bot findings, runs fixes, asks human approval, and publishes a Team Hub pulse."
+    }
+  ],
+  "skills": [
+    {
+      "dir": "skills/workitem-delivery",
+      "name": "workitem-delivery",
+      "description": "Guides coding agents to read Team Hub WorkItem specs/directives, verify ACs via MCP, and publish concise Pulses."
+    }
+  ]
+}

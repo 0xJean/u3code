@@ -2123,6 +2123,7 @@ export const layerWsRpc = (
           teamHub.deleteNotificationChannel(input),
         [WS_METHODS.teamHubGetWorkItemDetail]: (input) => teamHub.getWorkItemDetail(input),
         [WS_METHODS.teamHubLinkChangeRequest]: (input) => teamHub.linkChangeRequest(input),
+        [WS_METHODS.teamHubListPlugins]: () => teamHub.listPlugins(),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

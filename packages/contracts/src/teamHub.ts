@@ -9,6 +9,7 @@ import {
   GateApproval,
   GateApprovalStatus,
   HubAuthMe,
+  HubPluginsListResponse,
   HubUser,
   HubWsEvent,
   NotificationChannelSummary,
@@ -199,7 +200,7 @@ export const TeamHubCreateProjectInput = Schema.Struct({
   key: TrimmedNonEmptyString,
   name: TrimmedNonEmptyString,
   description: Schema.optional(Schema.String),
-  preset: Schema.optional(Schema.Literals(["lean", "full-delivery"])),
+  preset: Schema.optional(TrimmedNonEmptyString),
 });
 export type TeamHubCreateProjectInput = typeof TeamHubCreateProjectInput.Type;
 
@@ -374,5 +375,8 @@ export const TeamHubLinkChangeRequestResult = Schema.Struct({
   changeRequest: ChangeRequestAudit,
 });
 export type TeamHubLinkChangeRequestResult = typeof TeamHubLinkChangeRequestResult.Type;
+
+export const TeamHubListPluginsResult = HubPluginsListResponse;
+export type TeamHubListPluginsResult = typeof TeamHubListPluginsResult.Type;
 
 export { CockpitOverview, HubWsEvent, PulseDraft, WorkItemDetail };

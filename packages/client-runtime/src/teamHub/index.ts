@@ -143,5 +143,9 @@ export function createTeamHubEnvironmentAtoms<R, E>(
       label: "environment-data:team-hub:link-change-request",
       tag: WS_METHODS.teamHubLinkChangeRequest,
     }),
+    listPlugins: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:list-plugins",
+      tag: WS_METHODS.teamHubListPlugins,
+    }),
   };
 }

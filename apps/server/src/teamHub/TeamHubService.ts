@@ -14,6 +14,7 @@ import {
   TeamHubLinkChangeRequestResult,
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsResult,
+  TeamHubListPluginsResult,
   TeamHubListReleasesResult,
   TeamHubMemoryResult,
   TeamHubPublishPulseResult,
@@ -124,6 +125,7 @@ const decodeRelease = Schema.decodeUnknownEffect(TeamHubReleaseResult);
 const decodeAddMember = Schema.decodeUnknownEffect(TeamHubAddMemberResult);
 const decodeWorkItemDetail = Schema.decodeUnknownEffect(WorkItemDetail);
 const decodeLinkChangeRequest = Schema.decodeUnknownEffect(TeamHubLinkChangeRequestResult);
+const decodeListPlugins = Schema.decodeUnknownEffect(TeamHubListPluginsResult);
 const decodeHubWsEventJson = Schema.decodeUnknownSync(Schema.fromJsonString(HubWsEvent));
 
 function normalizeHubUrl(raw: string): string {
@@ -234,6 +236,7 @@ export class TeamHubService extends Context.Service<
     readonly linkChangeRequest: (
       input: TeamHubLinkChangeRequestInput,
     ) => Effect.Effect<TeamHubLinkChangeRequestResult, TeamHubError>;
+    readonly listPlugins: () => Effect.Effect<TeamHubListPluginsResult, TeamHubError>;
   }
 >()("t3/teamHub/TeamHubService") {}
 
@@ -763,6 +766,14 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const listPlugins = Effect.fn("TeamHubService.listPlugins")(function* () {
+    return yield* authedRequest({
+      method: "GET",
+      pathAndQuery: "/api/v1/plugins",
+      decode: decodeListPlugins,
+    });
+  });
+
   const refreshStoredCredentials = Effect.fnUntraced(function* (creds: StoredTeamHubCredentials) {
     const refreshed = yield* executeJsonRequest({
       method: "POST",
@@ -824,7 +835,7 @@ const make = Effect.gen(function* () {
               workspaceId: input.workspaceId,
               token: creds.accessToken,
             });
-            const wsUrl = `${wsOrigin}/ws?${params.toString()}`;
+            const wsUrl = `${wsOrigin}/ws/cockpit?${params.toString()}`;
 
             const opened = yield* Effect.callback<boolean>((resume) => {
               let settled = false;
@@ -910,6 +921,7 @@ const make = Effect.gen(function* () {
     deleteNotificationChannel,
     getWorkItemDetail,
     linkChangeRequest,
+    listPlugins,
   });
 });
 

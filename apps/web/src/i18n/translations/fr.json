@@ -5569,6 +5569,35 @@
   ],
   "5af43d8916d92945": "Select or create a workspace to add notification channels.",
   "79b34ae18da4a777": "Add Channel",
+  "d565d9f608a4b67d": "Hub Plugins & Playbook Packs",
+  "4c9ef7d385b54e20": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " loaded"
+  ],
+  "0c6ece51f5e856c1": [
+    "Server-side Hub plugins extend notification drivers, workflow presets, lifecycle hooks, and callback routes. Load external plugins via",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "HUB_PLUGINS"
+    },
+    ", or install reusable Workflow & Skill Playbook Packs with",
+    " ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": "node infra/hub/src/packs/cli.ts packs/bot-review-autofix"
+    },
+    "."
+  ],
+  "6cfa5d1ea252f5f6": "No plugins reported by the connected Hub.",
+  "e69e34d4f44d4136": "Intégrées",
+  "2857641618ceea05": "External",
   "208ff31f188c2c74": "Unable to check Team Hub status.",
   "396bb873421cfc15": "Failed to load work items from Team Hub.",
   "a30ac1913d52c101": "Select a work item first.",
@@ -12139,7 +12168,6 @@
     }
   ],
   "625f25278bc683ba": "Environnement choisi (indisponible)",
-  "e69e34d4f44d4136": "Intégrées",
   "ae0b91ed52736998": "Utilise le dernier commit de la branche distante suivie par la branche de base, même si son nom diffère. Sinon, utilise la branche du même nom sur origin. Utilise votre branche locale si cette branche distante n’existe pas.",
   "81f82840d9589bc9": "Réinitialiser le démarrage des nouveaux worktrees depuis le remote à la valeur par défaut",
   "f68e05c50f67ab91": "Faire partir les nouveaux worktrees du distant par défaut",

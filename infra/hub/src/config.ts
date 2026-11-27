@@ -19,13 +19,21 @@ export interface HubConfig {
   readonly digestScheduleTimes: readonly string[];
   /** Timezone offset from UTC in minutes (e.g. 480 for UTC+8). */
   readonly digestTimezoneOffsetMinutes: number;
+  /** Optional comma-separated ESM module paths/specifiers of external Hub plugins to load at startup. */
+  readonly pluginModules: readonly string[];
+  /** Optional Lark card callback verification token for interactive gate approval callbacks. */
+  readonly larkVerificationToken: string | null;
+  /** Optional downstream automation webhook (e.g. T3 Code Workflow hook URL) receiving signed Hub events. */
+  readonly automationWebhookUrl: string | null;
+  /** Optional HMAC-SHA256 secret for signing automation relay webhook payloads. */
+  readonly automationWebhookSecret: string | null;
 }
 
-function parseList(raw: string | undefined): string[] {
+function parseList(raw: string | undefined, lowercase = true): string[] {
   if (!raw) return [];
   return raw
     .split(",")
-    .map((entry) => entry.trim().toLowerCase())
+    .map((entry) => (lowercase ? entry.trim().toLowerCase() : entry.trim()))
     .filter((entry) => entry.length > 0);
 }
 
@@ -52,5 +60,9 @@ export function loadHubConfig(env: NodeJS.ProcessEnv = process.env): HubConfig {
     llmModel: env.HUB_LLM_MODEL?.trim() || "gpt-4.1-mini",
     digestScheduleTimes: parseList(env.HUB_DIGEST_SCHEDULE_TIMES),
     digestTimezoneOffsetMinutes: Number.parseInt(env.HUB_DIGEST_TZ_OFFSET_MINUTES ?? "0", 10) || 0,
+    pluginModules: parseList(env.HUB_PLUGINS, false),
+    larkVerificationToken: env.HUB_LARK_VERIFICATION_TOKEN?.trim() || null,
+    automationWebhookUrl: env.HUB_AUTOMATION_WEBHOOK_URL?.trim() || null,
+    automationWebhookSecret: env.HUB_AUTOMATION_WEBHOOK_SECRET?.trim() || null,
   };
 }
