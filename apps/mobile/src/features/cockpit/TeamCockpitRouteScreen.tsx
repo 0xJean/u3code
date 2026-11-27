@@ -231,7 +231,7 @@ export function TeamCockpitRouteScreen() {
       >
         {!activeEnvironmentId ? (
           <Text className="text-sm text-muted">
-            {gt("Connect to a T3 Code server environment first to use Team Cockpit.")}
+            {gt("Connect to a U3 Code server environment first to use Team Cockpit.")}
           </Text>
         ) : loading ? (
           <View className="items-center py-10">

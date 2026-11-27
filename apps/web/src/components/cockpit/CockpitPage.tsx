@@ -567,7 +567,7 @@ export function CockpitPage() {
         <WorkspacePageContainer width="expanded">
           {!primaryEnvironmentId ? (
             <p className="text-sm text-muted-foreground">
-              <T>Connect to a T3 Code server environment first to use Team Cockpit.</T>
+              <T>Connect to a U3 Code server environment first to use Team Cockpit.</T>
             </p>
           ) : loadingStatus ? (
             <p className="text-sm text-muted-foreground">

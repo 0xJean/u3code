@@ -1,31 +1,24 @@
 <p align="center">
-  <a href="https://t3.codes">
-    <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="T3 Code logo" />
+  <a href="https://github.com/0xJean/u3code">
+    <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="U3 Code logo" />
   </a>
 </p>
 
-<h1 align="center">T3 Code</h1>
+<h1 align="center">U3 Code</h1>
 
-<p align="center">The open-source control plane for coding agents.</p>
-
-<p align="center">
-  <a href="https://t3.codes/download"><strong>Download</strong></a> ·
-  <a href="https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824">iOS</a> ·
-  <a href="https://play.google.com/store/apps/details?id=com.t3tools.t3code">Android</a> ·
-  <a href="https://app.t3.codes">Web</a> ·
-  <a href="./docs/README.md">Docs</a> ·
-  <a href="https://discord.gg/jn4EGJjrvv">Discord</a>
-</p>
+<p align="center">The open-source control plane and Team Cockpit for coding agents.</p>
 
 <p align="center">
-  <a href="https://t3.codes">
-    <img src="./.github/readme/hero.webp" width="100%" alt="T3 Code on desktop with a finished Claude thread, next to the phone app asking to approve a command from Codex" />
-  </a>
+  <a href="https://github.com/0xJean/u3code"><strong>GitHub</strong></a> ·
+  <a href="./infra/hub/README.md">Team Hub (Docker)</a> ·
+  <a href="./docs/README.md">Docs</a>
 </p>
 
-T3 Code runs the coding agents on your machine and gives them one fast interface. Start a thread at your desk, then approve the next step from your phone.
+> **Fork notice:** U3 Code is an unofficial open-source fork based on the T3 Code source code (MIT License). It is maintained independently and is not affiliated with, endorsed by, or sponsored by T3 Tools, Inc.
 
-It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If an agent is set up on your computer, T3 Code can control it.
+U3 Code runs the coding agents on your machine and gives teams one fast interface — combining local/remote coding threads with a self-hosted **Team Cockpit** (`u3code-hub`), WorkItems, Review Gates, Releases, Living Memory, and extensible Hub Plugins & Playbook Packs.
+
+It works with Claude Code, Codex, Cursor, OpenCode, Grok Build, Antigravity, Kiro, Pi, Muse Code, fx, and any [ACP](./docs/user/providers-acp.md) agent. If an agent is set up on your computer, U3 Code can control it.
 
 ## What you get
 
