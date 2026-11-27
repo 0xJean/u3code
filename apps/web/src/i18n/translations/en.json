@@ -5396,6 +5396,14 @@
   "1bef2b0960294d41": "Spec / Acceptance Criteria (Markdown)",
   "479c50cef585f907": "Creating...",
   "baaf07d893736ec8": "Create",
+  "0daa5529b1062c17": [
+    "Rejected: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "e86b5bf0922116dd": "All caught up: no open pull requests require triage.",
   "b5fcc94920c9bd0e": "Oversized",
   "6bdaa140890d5bb3": [
@@ -5407,22 +5415,36 @@
     }
   ],
   "23a899df3d776ed6": "Link",
+  "48c59f685ebaeeab": "Release snapshots and notes generated",
   "86401fff1d2bca58": "Release created",
   "209dac3fbf56aba0": "Failed to create release.",
   "625e84a606db11d8": "Release status updated",
   "ecbc6cf833fbd3b9": "Failed to update release status.",
   "2899a1808114f158": "Release gate approved",
-  "6113b9c711e22c17": "Failed to approve release gate.",
+  "e034335f09420994": "Release gate rejected",
+  "04394059670238eb": "Failed to update release gate.",
   "11d8d12204ff290f": "QA Sign-off",
   "3cff75d104ab4861": "Security Sign-off",
   "af827f6ecf816851": "Production Go/No-Go",
   "411b6c54896cbbfa": "e.g. v2.4.0",
   "c546ca46d5af3c86": "org/backend=main@abc123\norg/admin=main@def456",
   "bf975e99c84e6a8e": "How to roll back safely if canary alerts trigger",
+  "b9b3644c0f404990": "Rejection reason (notifies owners)...",
   "01314c3df196865a": "Select or create a project to coordinate cross-repository releases.",
   "1e6dcd9abc1293bd": "Plan Cross-Repo Release",
   "f9a12e24ddd39a47": "Coordinate multi-repository deployments with explicit rollback plans and QA, Security, and Production Go/No-Go sign-offs.",
   "ff80756f16cf2ab8": "Version Label",
+  "e2c14b6899e4a450": [
+    "Included Work Items (",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ")"
+  ],
+  "6e06a52bf9c7e487": "Pick Ready",
+  "123abe7f8019687c": "Auto-fill",
   "c7e8c7cac07a02c3": "Repository Snapshots (repo=ref, one per line)",
   "93b357f027337511": "Rollback Plan",
   "e12cdd8347c2574b": "Release Notes",
@@ -5439,6 +5461,20 @@
   ],
   "c74396c377fe4c88": "Mark Rolled Back",
   "6f3d1278c39d32f7": "Rollback plan:",
+  "f6a91589456cca50": "Approved",
+  "da048c35113aca82": "Rejected",
+  "374dac09151d4578": "Pending",
+  "f1e5c1be1ac92361": "Approve",
+  "b8cdfff5c128f754": "Reject",
+  "e4c374b2541c77b4": [
+    "Note: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "02d7a7ffb7fd1807": "Confirm Reject",
   "12013d6a4efb8f2f": "Workspace created",
   "ed24ba9479808acc": "Failed to create workspace.",
   "36595932eaff87f0": "Failed to create project.",
@@ -5563,7 +5599,10 @@
   "95f9260d1f06a412": "Failed to load work item details.",
   "ce7d5c5cd2973e7f": "Work item saved",
   "b14e6d205ce83e0d": "Failed to save work item.",
+  "71ec0937c18b45db": "Gate rejected",
+  "650def2cfc176d5f": "Failed to update gate decision.",
   "d5c2de5215f5bfd7": "Failed to unlink pull request.",
+  "b2f4b17059941d63": "Local workspace project",
   "ff716dff9590a946": "Write requirements, architecture notes, or rollout constraints",
   "52fdae1bb4491760": "Remove acceptance criterion",
   "43eba4224e5f7cc2": "Add acceptance criterion...",
@@ -5571,6 +5610,11 @@
   "d1db72238bd4afe7": "Work Item Details",
   "7f9e4c3b895db2eb": "Edit specification, acceptance criteria, workflow stage, gates, linked PRs, and pulse history.",
   "0f63393085912ff2": "Loading work item details...",
+  "bfe14722f3c27286": "Start Coding Thread with Context",
+  "b07f64bde08e4e8a": "Pre-fills a new thread with spec, acceptance criteria, and locked directives.",
+  "e05f828b4ca93e88": "Opening...",
+  "7dc3b6f88dbc7cfb": "Start Thread",
+  "517ee0a8bdff25d7": "Add a local repository in the sidebar first.",
   "5692b3d251f7d53a": "Stage",
   "7ccba740603a10df": "Specification (Markdown)",
   "e38499a71bad2434": "Acceptance Criteria",
@@ -9674,9 +9718,7 @@
     " sets up worktree threads with its own commands. They run on this environment's machine with your permissions, and only as approved here: a command whose text changes needs approval again."
   ],
   "8e73b883d41d4102": "Off",
-  "f6a91589456cca50": "Approved",
   "c92657bb7f2293ff": "Needs approval",
-  "f1e5c1be1ac92361": "Approve",
   "fcb5f3c4d4753326": "This connection cannot approve commands. Use a client that can use the terminal.",
   "65ccf4f8e049003e": "Choose a project to manage its name, icon, checkouts and actions.",
   "067beea7d8f6e2c9": "Show all environments",
@@ -12505,7 +12547,6 @@
   "be451f475c514b37": "Dismiss Woke notification",
   "e9ced65134f2f36c": "Wake thread now",
   "a8f30f631e2b010e": "Waiting to sync with its environment",
-  "374dac09151d4578": "Pending",
   "aca5896600bf173e": "You're currently checked out on another branch.",
   "f665b5be60d8c144": [
     "Handed off from ",

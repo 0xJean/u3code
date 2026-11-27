@@ -466,7 +466,7 @@ describe("u3code-hub integration (PGlite)", () => {
     });
     expect(blockedReleaseRes.status).toBe(409);
 
-    // Approve prod_go gate on release
+    // Approve prod_go gate on release, then reject it to verify rejection blocks release again, then re-approve
     const approveProdGoRes = await app.request("/api/v1/gates/approve", {
       method: "POST",
       headers: ownerHeaders,
@@ -475,10 +475,43 @@ describe("u3code-hub integration (PGlite)", () => {
         targetId: createdRel.release.id,
         gateKey: "prod_go",
         status: "approved",
-        note: "Staging canary green.",
+        note: "Initial canary green.",
       }),
     });
     expect(approveProdGoRes.status).toBe(201);
+
+    const rejectProdGoRes = await app.request("/api/v1/gates/approve", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        targetType: "release",
+        targetId: createdRel.release.id,
+        gateKey: "prod_go",
+        status: "rejected",
+        note: "Latency spike detected in staging.",
+      }),
+    });
+    expect(rejectProdGoRes.status).toBe(201);
+
+    const blockedAfterRejectRes = await app.request(`/api/v1/releases/${createdRel.release.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({ status: "released" }),
+    });
+    expect(blockedAfterRejectRes.status).toBe(409);
+
+    const reapproveProdGoRes = await app.request("/api/v1/gates/approve", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        targetType: "release",
+        targetId: createdRel.release.id,
+        gateKey: "prod_go",
+        status: "approved",
+        note: "Staging canary green after hotfix.",
+      }),
+    });
+    expect(reapproveProdGoRes.status).toBe(201);
 
     const releasedRes = await app.request(`/api/v1/releases/${createdRel.release.id}`, {
       method: "PATCH",
@@ -491,7 +524,7 @@ describe("u3code-hub integration (PGlite)", () => {
     };
     expect(finalRel.release.status).toBe("released");
     expect(finalRel.release.releasedAt).not.toBeNull();
-    expect(finalRel.gateApprovals).toHaveLength(1);
+    expect(finalRel.gateApprovals).toHaveLength(3);
 
     // 11. Add teammate by GitHub/VCS login, fetch WorkItem detail, and link orphan PR
     const bobLoginRes = await app.request("/api/v1/auth/local/login", {

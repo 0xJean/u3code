@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import type {
   CockpitOverview,
@@ -102,6 +102,7 @@ export function createCockpitRoutes(deps: {
             .select()
             .from(gateApprovals)
             .where(inArray(gateApprovals.targetId, workItemIds))
+            .orderBy(asc(gateApprovals.createdAt))
         : [];
 
     const latestPulseByItem = new Map<string, (typeof allPulses)[number]>();

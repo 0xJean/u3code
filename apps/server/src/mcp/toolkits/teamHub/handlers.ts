@@ -70,6 +70,45 @@ export const layer = McpToolAccess.toLayer(TeamHubToolkit, {
     }),
   ),
 
+  team_hub_get_work_item: McpToolAccess.reads(({ workItemId }) =>
+    Effect.gen(function* () {
+      const teamHub = yield* TeamHubService.TeamHubService;
+      return yield* teamHub
+        .getWorkItemDetail({ workItemId })
+        .pipe(Effect.mapError(mapTeamHubError));
+    }),
+  ),
+
+  team_hub_update_work_item: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const teamHub = yield* TeamHubService.TeamHubService;
+      let checklistItems = input.checklistItems;
+
+      if (checklistItems === undefined && input.verifyAcIds && input.verifyAcIds.length > 0) {
+        const detail = yield* teamHub
+          .getWorkItemDetail({ workItemId: input.workItemId })
+          .pipe(Effect.mapError(mapTeamHubError));
+        const verifySet = new Set(input.verifyAcIds.map((id) => id.trim().toUpperCase()));
+        const verifiedAt = new Date().toISOString();
+        checklistItems = detail.workItem.checklistItems.map((item) =>
+          verifySet.has(item.id.trim().toUpperCase())
+            ? { ...item, verified: true, verifiedAt }
+            : item,
+        );
+      }
+
+      return yield* teamHub
+        .updateWorkItem({
+          workItemId: input.workItemId,
+          ...(input.stage !== undefined ? { stage: input.stage } : {}),
+          ...(input.health !== undefined ? { health: input.health } : {}),
+          ...(input.specMarkdown !== undefined ? { specMarkdown: input.specMarkdown } : {}),
+          ...(checklistItems !== undefined ? { checklistItems } : {}),
+        })
+        .pipe(Effect.mapError(mapTeamHubError));
+    }),
+  ),
+
   team_hub_publish_pulse: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const teamHub = yield* TeamHubService.TeamHubService;

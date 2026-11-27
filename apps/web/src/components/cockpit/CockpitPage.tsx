@@ -8,12 +8,13 @@ import type {
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
 } from "@t3tools/contracts";
-import type {
-  ChangeRequestAudit,
-  CockpitWorkItemCard,
-  ProjectDirective,
-  WorkItemPriority,
-  WorkItemType,
+import {
+  resolveLatestGateApprovals,
+  type ChangeRequestAudit,
+  type CockpitWorkItemCard,
+  type ProjectDirective,
+  type WorkItemPriority,
+  type WorkItemType,
 } from "@u3code/hub-contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import { T, useGT, Var } from "gt-react";
@@ -31,6 +32,7 @@ import {
   PlusIcon,
   RadioIcon,
   RefreshCwIcon,
+  ShieldAlertIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -744,9 +746,12 @@ export function CockpitPage() {
 
               {activeTab === "releases" ? (
                 <CockpitReleasesTab
+                  cards={overview?.cards ?? []}
                   environmentId={primaryEnvironmentId}
                   refreshSignal={liveRefreshCount}
+                  repos={overview?.repos ?? []}
                   selectedProjectId={selectedProjectId}
+                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
                 />
               ) : null}
 
@@ -1055,6 +1060,9 @@ export function CockpitPage() {
         <WorkItemDetailDialog
           environmentId={primaryEnvironmentId}
           gates={gates}
+          memory={memory}
+          project={activeProject}
+          repos={overview?.repos ?? []}
           stages={stages}
           workItemId={selectedWorkItemId}
           onClose={() => setSelectedWorkItemId(null)}
@@ -1140,14 +1148,18 @@ function WorkItemCardView({
   readonly onApproveGate: (gateKey: string) => void;
   readonly onOpenDetail: () => void;
 }) {
-  const approvedKeys = new Set(
-    card.gateApprovals.filter((g) => g.status === "approved").map((g) => g.gateKey),
-  );
+  const latestGates = resolveLatestGateApprovals(card.gateApprovals);
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
   const pendingGatesForNext = nextStage
-    ? gates.filter((g) => g.beforeStage === nextStage.id && !g.optional && !approvedKeys.has(g.key))
+    ? gates.filter(
+        (g) =>
+          g.beforeStage === nextStage.id &&
+          !g.optional &&
+          latestGates.get(g.key)?.status !== "approved",
+      )
     : [];
+  const rejectedGates = gates.filter((g) => latestGates.get(g.key)?.status === "rejected");
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border bg-card p-3 shadow-2xs">
@@ -1221,6 +1233,19 @@ function WorkItemCardView({
         <p className="line-clamp-2 rounded-md bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
           {card.latestPulse.doneSummary}
         </p>
+      ) : null}
+
+      {rejectedGates.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {rejectedGates.map((gate) => (
+            <Badge key={gate.key} size="sm" variant="error">
+              <ShieldAlertIcon />
+              <T>
+                Rejected: <Var>{gate.label}</Var>
+              </T>
+            </Badge>
+          ))}
+        </div>
       ) : null}
 
       {pendingGatesForNext.length > 0 ? (

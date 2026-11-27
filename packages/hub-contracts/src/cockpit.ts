@@ -178,6 +178,26 @@ export const GateApproval = Schema.Struct({
 });
 export type GateApproval = typeof GateApproval.Type;
 
+export function resolveLatestGateApprovals(
+  approvals: ReadonlyArray<GateApproval>,
+): Map<string, GateApproval> {
+  const latest = new Map<string, GateApproval>();
+  for (const approval of approvals) {
+    const prev = latest.get(approval.gateKey);
+    if (!prev || approval.createdAt >= prev.createdAt) {
+      latest.set(approval.gateKey, approval);
+    }
+  }
+  return latest;
+}
+
+export function isGateCurrentlyApproved(
+  approvals: ReadonlyArray<GateApproval>,
+  gateKey: string,
+): boolean {
+  return resolveLatestGateApprovals(approvals).get(gateKey)?.status === "approved";
+}
+
 export const ReleaseStatus = Schema.Literals([
   "planning",
   "staging",

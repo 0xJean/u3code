@@ -8,6 +8,8 @@ import {
   WORKFLOW_PRESETS,
   WorkflowConfig,
   createWorkflowConfigFromPreset,
+  isGateCurrentlyApproved,
+  resolveLatestGateApprovals,
 } from "./index.ts";
 
 describe("hub-contracts schemas and presets", () => {
@@ -86,5 +88,52 @@ describe("hub-contracts schemas and presets", () => {
       blockingCount: 1,
     });
     expect(event.type).toBe("change_request.updated");
+  });
+
+  it("resolves latest gate approval status chronologically (rejection revokes earlier approval)", () => {
+    const history = [
+      {
+        id: "gat_1",
+        targetType: "work_item" as const,
+        targetId: "wi_1",
+        gateKey: "qa_ac_pass",
+        status: "approved" as const,
+        approvedBy: "usr_qa",
+        note: "Initial pass",
+        evidenceUrls: [],
+        createdAt: "2026-11-27T01:00:00.000Z",
+      },
+      {
+        id: "gat_2",
+        targetType: "work_item" as const,
+        targetId: "wi_1",
+        gateKey: "qa_ac_pass",
+        status: "rejected" as const,
+        approvedBy: "usr_qa",
+        note: "Regression on retry path",
+        evidenceUrls: [],
+        createdAt: "2026-11-27T02:00:00.000Z",
+      },
+    ];
+    expect(isGateCurrentlyApproved(history, "qa_ac_pass")).toBe(false);
+    expect(resolveLatestGateApprovals(history).get("qa_ac_pass")?.note).toBe(
+      "Regression on retry path",
+    );
+
+    const reapproved = [
+      ...history,
+      {
+        id: "gat_3",
+        targetType: "work_item" as const,
+        targetId: "wi_1",
+        gateKey: "qa_ac_pass",
+        status: "approved" as const,
+        approvedBy: "usr_qa",
+        note: "Fix verified",
+        evidenceUrls: [],
+        createdAt: "2026-11-27T03:00:00.000Z",
+      },
+    ];
+    expect(isGateCurrentlyApproved(reapproved, "qa_ac_pass")).toBe(true);
   });
 });

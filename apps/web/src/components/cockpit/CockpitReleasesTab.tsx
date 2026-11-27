@@ -1,7 +1,20 @@
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ReleaseCard, ReleaseStatus } from "@u3code/hub-contracts";
+import {
+  resolveLatestGateApprovals,
+  type CockpitWorkItemCard,
+  type ProjectRepo,
+  type ReleaseCard,
+  type ReleaseStatus,
+} from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
-import { CheckCircle2Icon, PackageCheckIcon, RotateCcwIcon, ShieldCheckIcon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  FileTextIcon,
+  PackageCheckIcon,
+  RotateCcwIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
@@ -12,11 +25,15 @@ import { toastManager } from "~/components/ui/toast";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatCockpitCommandError } from "./cockpitError";
+import { buildReleaseDraftFromWorkItems } from "./releaseDraft";
 
 interface CockpitReleasesTabProps {
   readonly environmentId: EnvironmentId;
   readonly selectedProjectId: string;
   readonly refreshSignal: number;
+  readonly cards: ReadonlyArray<CockpitWorkItemCard>;
+  readonly repos: ReadonlyArray<ProjectRepo>;
+  readonly onOpenWorkItem?: (workItemId: string) => void;
 }
 
 const RELEASE_GATES = [
@@ -59,14 +76,25 @@ export function CockpitReleasesTab({
   environmentId,
   selectedProjectId,
   refreshSignal,
+  cards,
+  repos,
+  onOpenWorkItem,
 }: CockpitReleasesTabProps) {
   const gt = useGT();
   const [releases, setReleases] = useState<ReadonlyArray<ReleaseCard>>([]);
   const [versionLabel, setVersionLabel] = useState("");
+  const [selectedWorkItemIds, setSelectedWorkItemIds] = useState<ReadonlyArray<string>>([]);
   const [snapshotsText, setSnapshotsText] = useState("");
   const [rollbackPlan, setRollbackPlan] = useState("");
   const [releaseNotes, setReleaseNotes] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const [busyGateTarget, setBusyGateTarget] = useState<string | null>(null);
+  const [rejectingGateTarget, setRejectingGateTarget] = useState<{
+    readonly releaseId: string;
+    readonly gateKey: string;
+  } | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
 
   const listReleases = useAtomCommand(teamHubEnvironment.listReleases, { reportFailure: false });
   const createRelease = useAtomCommand(teamHubEnvironment.createRelease, { reportFailure: false });
@@ -95,6 +123,42 @@ export function CockpitReleasesTab({
   }, [environmentId, selectedProjectId, refreshSignal]);
 
   const visibleReleases = selectedProjectId ? releases : [];
+  const cardById = new Map(cards.map((c) => [c.workItem.id, c] as const));
+  const validSelectedIds = selectedWorkItemIds.filter((id) => cardById.has(id));
+  const selectedIdSet = new Set(validSelectedIds);
+
+  const handleToggleWorkItem = (workItemId: string) => {
+    setSelectedWorkItemIds((prev) =>
+      prev.includes(workItemId) ? prev.filter((id) => id !== workItemId) : [...prev, workItemId],
+    );
+  };
+
+  const handleSelectCandidates = () => {
+    const candidateIds = cards
+      .filter(
+        (c) =>
+          c.workItem.stage === "staging" ||
+          c.workItem.stage === "review" ||
+          c.workItem.stage === "qa",
+      )
+      .map((c) => c.workItem.id);
+    setSelectedWorkItemIds(
+      candidateIds.length > 0 ? candidateIds : cards.map((c) => c.workItem.id),
+    );
+  };
+
+  const handleAutoFillDraft = () => {
+    const chosenCards = validSelectedIds
+      .map((id) => cardById.get(id))
+      .filter((c): c is CockpitWorkItemCard => c !== undefined);
+    const draft = buildReleaseDraftFromWorkItems({
+      selectedCards: chosenCards,
+      repos,
+    });
+    if (draft.snapshotsText) setSnapshotsText(draft.snapshotsText);
+    if (draft.releaseNotesMd) setReleaseNotes(draft.releaseNotesMd);
+    toastManager.add({ title: gt("Release snapshots and notes generated"), type: "success" });
+  };
 
   const handleCreateRelease = async () => {
     if (!selectedProjectId || !versionLabel.trim()) return;
@@ -119,11 +183,13 @@ export function CockpitReleasesTab({
         repoSnapshots,
         rollbackPlan: rollbackPlan.trim(),
         releaseNotesMd: releaseNotes.trim(),
+        ...(validSelectedIds.length > 0 ? { workItemIds: validSelectedIds } : {}),
       },
     });
     setCreating(false);
     if (res._tag === "Success") {
       setVersionLabel("");
+      setSelectedWorkItemIds([]);
       setSnapshotsText("");
       setRollbackPlan("");
       setReleaseNotes("");
@@ -155,18 +221,32 @@ export function CockpitReleasesTab({
     }
   };
 
-  const handleApproveReleaseGate = async (releaseId: string, gateKey: string) => {
+  const handleReleaseGateDecision = async (
+    releaseId: string,
+    gateKey: string,
+    status: "approved" | "rejected",
+    note?: string,
+  ) => {
+    const targetKey = `${releaseId}:${gateKey}`;
+    setBusyGateTarget(targetKey);
     const res = await approveGate({
       environmentId,
       input: {
         targetType: "release",
         targetId: releaseId,
         gateKey,
-        status: "approved",
+        status,
+        ...(note?.trim() ? { note: note.trim() } : {}),
       },
     });
+    setBusyGateTarget(null);
     if (res._tag === "Success") {
-      toastManager.add({ title: gt("Release gate approved"), type: "success" });
+      setRejectingGateTarget(null);
+      setRejectNote("");
+      toastManager.add({
+        title: status === "approved" ? gt("Release gate approved") : gt("Release gate rejected"),
+        type: status === "approved" ? "success" : "warning",
+      });
       if (selectedProjectId) {
         const listRes = await listReleases({
           environmentId,
@@ -178,7 +258,7 @@ export function CockpitReleasesTab({
       }
     } else {
       toastManager.add({
-        title: formatCockpitCommandError(res, gt("Failed to approve release gate.")),
+        title: formatCockpitCommandError(res, gt("Failed to update release gate.")),
         type: "error",
       });
     }
@@ -237,6 +317,51 @@ export function CockpitReleasesTab({
               onChange={(event) => setVersionLabel(event.target.value)}
             />
           </div>
+
+          {cards.length > 0 ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  <T>
+                    Included Work Items (<Var>{validSelectedIds.length}</Var>)
+                  </T>
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button size="micro" variant="ghost" onClick={handleSelectCandidates}>
+                    <T>Pick Ready</T>
+                  </Button>
+                  <Button size="micro" variant="outline" onClick={handleAutoFillDraft}>
+                    <FileTextIcon />
+                    <T>Auto-fill</T>
+                  </Button>
+                </div>
+              </div>
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border bg-muted/20 p-2">
+                {cards.map((card) => {
+                  const checked = selectedIdSet.has(card.workItem.id);
+                  return (
+                    <label
+                      key={card.workItem.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40"
+                    >
+                      <input
+                        checked={checked}
+                        type="checkbox"
+                        onChange={() => handleToggleWorkItem(card.workItem.id)}
+                      />
+                      <span className="font-mono text-muted-foreground">{card.workItem.code}</span>
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        {card.workItem.title}
+                      </span>
+                      <Badge size="sm" variant="outline">
+                        {card.workItem.stage}
+                      </Badge>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label
@@ -304,9 +429,7 @@ export function CockpitReleasesTab({
           </div>
         ) : (
           visibleReleases.map((card) => {
-            const approvedKeys = new Set(
-              card.gateApprovals.filter((g) => g.status === "approved").map((g) => g.gateKey),
-            );
+            const latestGates = resolveLatestGateApprovals(card.gateApprovals);
             const snapshots = Object.entries(card.release.repoSnapshots);
             const nextStatus = nextReleaseStatus(card.release.status);
 
@@ -356,6 +479,31 @@ export function CockpitReleasesTab({
                   </div>
                 </div>
 
+                {card.workItemIds.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {card.workItemIds.map((wiId) => {
+                      const matched = cardById.get(wiId);
+                      const label = matched
+                        ? `${matched.workItem.code} · ${matched.workItem.title}`
+                        : wiId;
+                      return onOpenWorkItem ? (
+                        <Button
+                          key={wiId}
+                          size="micro"
+                          variant="outline"
+                          onClick={() => onOpenWorkItem(wiId)}
+                        >
+                          {label}
+                        </Button>
+                      ) : (
+                        <Badge key={wiId} size="sm" variant="secondary">
+                          {label}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
                 {snapshots.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {snapshots.map(([repo, ref]) => (
@@ -381,24 +529,128 @@ export function CockpitReleasesTab({
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap items-center gap-2 pt-1">
+                <div className="space-y-1.5 pt-1">
                   {RELEASE_GATES.map((gate) => {
-                    const isApproved = approvedKeys.has(gate.key);
-                    return isApproved ? (
-                      <Badge key={gate.key} size="sm" variant="success">
-                        <CheckCircle2Icon />
-                        {gateLabel(gate.key)}
-                      </Badge>
-                    ) : (
-                      <Button
+                    const latest = latestGates.get(gate.key);
+                    const status = latest?.status ?? null;
+                    const busyKey = `${card.release.id}:${gate.key}`;
+                    const isRejectingThis =
+                      rejectingGateTarget?.releaseId === card.release.id &&
+                      rejectingGateTarget.gateKey === gate.key;
+
+                    return (
+                      <div
                         key={gate.key}
-                        size="micro"
-                        variant="warning-outline"
-                        onClick={() => void handleApproveReleaseGate(card.release.id, gate.key)}
+                        className="space-y-1.5 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
                       >
-                        <ShieldCheckIcon />
-                        {gateLabel(gate.key)}
-                      </Button>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">
+                              {gateLabel(gate.key)}
+                            </span>
+                            {status === "approved" ? (
+                              <Badge size="sm" variant="success">
+                                <CheckCircle2Icon />
+                                <T>Approved</T>
+                              </Badge>
+                            ) : status === "rejected" ? (
+                              <Badge size="sm" variant="error">
+                                <ShieldAlertIcon />
+                                <T>Rejected</T>
+                              </Badge>
+                            ) : (
+                              <Badge size="sm" variant="secondary">
+                                <T>Pending</T>
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {status !== "approved" ? (
+                              <Button
+                                disabled={busyGateTarget === busyKey}
+                                size="micro"
+                                variant="warning-outline"
+                                onClick={() =>
+                                  void handleReleaseGateDecision(
+                                    card.release.id,
+                                    gate.key,
+                                    "approved",
+                                  )
+                                }
+                              >
+                                <ShieldCheckIcon />
+                                <T>Approve</T>
+                              </Button>
+                            ) : null}
+                            <Button
+                              disabled={busyGateTarget === busyKey}
+                              size="micro"
+                              variant="destructive-outline"
+                              onClick={() => {
+                                setRejectingGateTarget(
+                                  isRejectingThis
+                                    ? null
+                                    : { releaseId: card.release.id, gateKey: gate.key },
+                                );
+                                setRejectNote("");
+                              }}
+                            >
+                              <ShieldAlertIcon />
+                              <T>Reject</T>
+                            </Button>
+                          </div>
+                        </div>
+
+                        {latest?.note ? (
+                          <p
+                            className={
+                              status === "rejected" ? "text-destructive" : "text-muted-foreground"
+                            }
+                          >
+                            <T>
+                              Note: <Var>{latest.note}</Var>
+                            </T>
+                          </p>
+                        ) : null}
+
+                        {isRejectingThis ? (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <div className="min-w-44 flex-1">
+                              <Input
+                                placeholder={gt("Rejection reason (notifies owners)...")}
+                                size="sm"
+                                value={rejectNote}
+                                onChange={(event) => setRejectNote(event.target.value)}
+                              />
+                            </div>
+                            <Button
+                              disabled={busyGateTarget === busyKey}
+                              size="xs"
+                              variant="destructive"
+                              onClick={() =>
+                                void handleReleaseGateDecision(
+                                  card.release.id,
+                                  gate.key,
+                                  "rejected",
+                                  rejectNote,
+                                )
+                              }
+                            >
+                              <T>Confirm Reject</T>
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => {
+                                setRejectingGateTarget(null);
+                                setRejectNote("");
+                              }}
+                            >
+                              <T>Cancel</T>
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </div>

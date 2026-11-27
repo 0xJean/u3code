@@ -1,6 +1,12 @@
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, asc, desc, eq, max } from "drizzle-orm";
 import { Hono } from "hono";
-import type { ChecklistItem, ProjectDirective, PulseCreateInput } from "@u3code/hub-contracts";
+import {
+  resolveLatestGateApprovals,
+  type ChecklistItem,
+  type GateApproval,
+  type ProjectDirective,
+  type PulseCreateInput,
+} from "@u3code/hub-contracts";
 import {
   createAuthMiddleware,
   getAuthUser,
@@ -133,7 +139,7 @@ export function createWorkItemRoutes(deps: {
       readonly assigneeRunnerId?: string | null;
     };
 
-    // Enforce required gates configured before entering the target stage.
+    // Enforce required gates configured before entering the target stage (latest status per gate wins).
     if (body.stage && body.stage !== found.item.stage) {
       const requiredGates = found.project.workflowConfig.gates.filter(
         (g) => g.beforeStage === body.stage && !g.optional,
@@ -143,14 +149,11 @@ export function createWorkItemRoutes(deps: {
           .select()
           .from(gateApprovals)
           .where(
-            and(
-              eq(gateApprovals.targetType, "work_item"),
-              eq(gateApprovals.targetId, workItemId),
-              eq(gateApprovals.status, "approved"),
-            ),
-          );
-        const approvedKeys = new Set(approvals.map((a) => a.gateKey));
-        const missing = requiredGates.filter((g) => !approvedKeys.has(g.key));
+            and(eq(gateApprovals.targetType, "work_item"), eq(gateApprovals.targetId, workItemId)),
+          )
+          .orderBy(asc(gateApprovals.createdAt));
+        const latestByGate = resolveLatestGateApprovals(approvals as ReadonlyArray<GateApproval>);
+        const missing = requiredGates.filter((g) => latestByGate.get(g.key)?.status !== "approved");
         if (missing.length > 0) {
           return c.json(
             {
@@ -311,7 +314,8 @@ export function createWorkItemRoutes(deps: {
         .from(gateApprovals)
         .where(
           and(eq(gateApprovals.targetType, "work_item"), eq(gateApprovals.targetId, workItemId)),
-        ),
+        )
+        .orderBy(asc(gateApprovals.createdAt)),
     ]);
 
     return c.json({
@@ -427,22 +431,25 @@ export function createWorkItemRoutes(deps: {
     }
 
     let project: typeof projects.$inferSelect | undefined;
+    let targetLabel = body.targetId;
     if (body.targetType === "work_item") {
       const r = await deps.db
-        .select({ project: projects })
+        .select({ item: workItems, project: projects })
         .from(workItems)
         .innerJoin(projects, eq(workItems.projectId, projects.id))
         .where(eq(workItems.id, body.targetId))
         .limit(1);
       project = r[0]?.project;
+      if (r[0]?.item) targetLabel = `[${r[0].item.code}] ${r[0].item.title}`;
     } else {
       const r = await deps.db
-        .select({ project: projects })
+        .select({ release: releases, project: projects })
         .from(releases)
         .innerJoin(projects, eq(releases.projectId, projects.id))
         .where(eq(releases.id, body.targetId))
         .limit(1);
       project = r[0]?.project;
+      if (r[0]?.release) targetLabel = `Release ${r[0].release.versionLabel}`;
     }
 
     if (!project) return c.json({ error: "Gate target not found." }, 404);
@@ -458,6 +465,7 @@ export function createWorkItemRoutes(deps: {
       );
     }
 
+    const noteText = body.note?.trim() ?? "";
     const inserted = await deps.db
       .insert(gateApprovals)
       .values({
@@ -467,7 +475,7 @@ export function createWorkItemRoutes(deps: {
         gateKey: body.gateKey,
         status: body.status,
         approvedBy: user.id,
-        note: body.note?.trim() ?? "",
+        note: noteText,
         evidenceUrls: body.evidenceUrls ?? [],
       })
       .returning();
@@ -480,6 +488,22 @@ export function createWorkItemRoutes(deps: {
       gateKey: body.gateKey,
       status: body.status,
     });
+
+    if (body.status === "rejected") {
+      const gateLabel = gateRule?.label ?? body.gateKey;
+      await deps.notifier.dispatch(
+        project.workspaceId,
+        project.id,
+        {
+          event: "blocker.needs_attention",
+          title: `Gate Rejected (${gateLabel}): ${targetLabel}`,
+          severity: "warning",
+          summary: `${user.displayName} rejected gate '${gateLabel}' on ${targetLabel}.`,
+          bullets: [noteText ? `Reason: ${noteText}` : "No rejection note provided."],
+        },
+        { roles: ["owner"] },
+      );
+    }
 
     return c.json({ approval: inserted[0] }, 201);
   });

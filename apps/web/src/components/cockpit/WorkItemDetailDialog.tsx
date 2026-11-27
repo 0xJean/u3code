@@ -1,12 +1,22 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, WorkItemDetail } from "@t3tools/contracts";
-import type { ChecklistItem, WorkHealth } from "@u3code/hub-contracts";
+import {
+  resolveLatestGateApprovals,
+  type ChecklistItem,
+  type Project,
+  type ProjectMemory,
+  type ProjectRepo,
+  type WorkHealth,
+} from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
 import {
   ActivityIcon,
   CheckCircle2Icon,
   CircleIcon,
   ExternalLinkIcon,
+  MessageSquarePlusIcon,
   PlusIcon,
+  ShieldAlertIcon,
   ShieldCheckIcon,
   Trash2Icon,
   UnlinkIcon,
@@ -28,13 +38,19 @@ import {
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useProjects } from "~/state/entities";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatCockpitCommandError } from "./cockpitError";
+import { buildWorkItemThreadPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
 
 interface WorkItemDetailDialogProps {
   readonly environmentId: EnvironmentId;
   readonly workItemId: string | null;
+  readonly project?: Project | null | undefined;
+  readonly memory?: ProjectMemory | null | undefined;
+  readonly repos?: ReadonlyArray<ProjectRepo> | undefined;
   readonly stages: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly gates: ReadonlyArray<{
     readonly key: string;
@@ -49,12 +65,17 @@ interface WorkItemDetailDialogProps {
 export function WorkItemDetailDialog({
   environmentId,
   workItemId,
+  project,
+  memory,
+  repos = [],
   stages,
   gates,
   onClose,
   onUpdated,
 }: WorkItemDetailDialogProps) {
   const gt = useGT();
+  const localProjects = useProjects();
+  const handleNewThread = useNewThreadHandler();
 
   const [detail, setDetail] = useState<WorkItemDetail | null>(null);
   const [loadedWorkItemId, setLoadedWorkItemId] = useState<string | null>(null);
@@ -67,8 +88,14 @@ export function WorkItemDetailDialog({
   const [checklistItems, setChecklistItems] = useState<ReadonlyArray<ChecklistItem>>([]);
   const [newAcText, setNewAcText] = useState("");
   const [saving, setSaving] = useState(false);
-  const [approvingGateKey, setApprovingGateKey] = useState<string | null>(null);
+
+  const [busyGateKey, setBusyGateKey] = useState<string | null>(null);
+  const [rejectingGateKey, setRejectingGateKey] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   const [unlinkingCrId, setUnlinkingCrId] = useState<string | null>(null);
+
+  const [chosenLocalProjectId, setChosenLocalProjectId] = useState<string>("");
+  const [startingThread, setStartingThread] = useState(false);
 
   const getDetail = useAtomCommand(teamHubEnvironment.getWorkItemDetail, { reportFailure: false });
   const updateWorkItem = useAtomCommand(teamHubEnvironment.updateWorkItem, {
@@ -115,6 +142,11 @@ export function WorkItemDetailDialog({
 
   const loading = workItemId !== null && loadedWorkItemId !== workItemId;
   const activeDetail = workItemId !== null && detail?.workItem.id === workItemId ? detail : null;
+
+  const matchedProject = pickMatchingWorkspaceProject(localProjects, repos);
+  const selectedLocalProject =
+    localProjects.find((p) => `${p.environmentId}:${p.id}` === chosenLocalProjectId) ??
+    matchedProject;
 
   const handleToggleChecklist = (itemId: string) => {
     setChecklistItems((prev) =>
@@ -168,21 +200,31 @@ export function WorkItemDetailDialog({
     }
   };
 
-  const handleApproveGate = async (gateKey: string) => {
+  const handleGateDecision = async (
+    gateKey: string,
+    status: "approved" | "rejected",
+    note?: string,
+  ) => {
     if (!workItemId) return;
-    setApprovingGateKey(gateKey);
+    setBusyGateKey(gateKey);
     const res = await approveGate({
       environmentId,
       input: {
         targetType: "work_item",
         targetId: workItemId,
         gateKey,
-        status: "approved",
+        status,
+        ...(note?.trim() ? { note: note.trim() } : {}),
       },
     });
-    setApprovingGateKey(null);
+    setBusyGateKey(null);
     if (res._tag === "Success") {
-      toastManager.add({ title: gt("Gate approved"), type: "success" });
+      setRejectingGateKey(null);
+      setRejectNote("");
+      toastManager.add({
+        title: status === "approved" ? gt("Gate approved") : gt("Gate rejected"),
+        type: status === "approved" ? "success" : "warning",
+      });
       onUpdated();
       const refreshed = await getDetail({ environmentId, input: { workItemId } });
       if (refreshed._tag === "Success") {
@@ -190,7 +232,7 @@ export function WorkItemDetailDialog({
       }
     } else {
       toastManager.add({
-        title: formatCockpitCommandError(res, gt("Failed to approve gate.")),
+        title: formatCockpitCommandError(res, gt("Failed to update gate decision.")),
         type: "error",
       });
     }
@@ -223,17 +265,43 @@ export function WorkItemDetailDialog({
     }
   };
 
-  const approvedGateKeys = new Set(
-    (activeDetail?.gateApprovals ?? [])
-      .filter((g) => g.status === "approved")
-      .map((g) => g.gateKey),
-  );
+  const handleStartCodingThread = async () => {
+    if (!activeDetail || !selectedLocalProject) return;
+    setStartingThread(true);
+    const prompt = buildWorkItemThreadPrompt({
+      workItem: {
+        ...activeDetail.workItem,
+        title: title.trim() || activeDetail.workItem.title,
+        stage,
+        health,
+        specMarkdown,
+        checklistItems: [...checklistItems],
+      },
+      project,
+      memory,
+      changeRequests: activeDetail.changeRequests,
+    });
+    await handleNewThread(
+      scopeProjectRef(selectedLocalProject.environmentId, selectedLocalProject.id),
+      {
+        prompt,
+      },
+    );
+    setStartingThread(false);
+    onClose();
+  };
+
+  const latestGates = resolveLatestGateApprovals(activeDetail?.gateApprovals ?? []);
 
   return (
     <Dialog
       open={workItemId !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) {
+          setRejectingGateKey(null);
+          setRejectNote("");
+          onClose();
+        }
       }}
     >
       <DialogPopup className="max-w-3xl">
@@ -269,6 +337,50 @@ export function WorkItemDetailDialog({
             </div>
           ) : activeDetail ? (
             <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-foreground">
+                    <T>Start Coding Thread with Context</T>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    <T>
+                      Pre-fills a new thread with spec, acceptance criteria, and locked directives.
+                    </T>
+                  </p>
+                </div>
+                {localProjects.length > 0 && selectedLocalProject ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label={gt("Local workspace project")}
+                      className="h-7 max-w-52 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                      value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
+                      onChange={(event) => setChosenLocalProjectId(event.target.value)}
+                    >
+                      {localProjects.map((proj) => (
+                        <option
+                          key={`${proj.environmentId}:${proj.id}`}
+                          value={`${proj.environmentId}:${proj.id}`}
+                        >
+                          {proj.title}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      disabled={startingThread}
+                      size="xs"
+                      onClick={() => void handleStartCodingThread()}
+                    >
+                      <MessageSquarePlusIcon />
+                      {startingThread ? <T>Opening...</T> : <T>Start Thread</T>}
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    <T>Add a local repository in the sidebar first.</T>
+                  </span>
+                )}
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="sm:col-span-2">
                   <label
@@ -426,25 +538,107 @@ export function WorkItemDetailDialog({
                   <span className="text-xs font-semibold text-muted-foreground uppercase">
                     <T>Workflow Gates</T>
                   </span>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-1.5">
                     {gates.map((gate) => {
-                      const approved = approvedGateKeys.has(gate.key);
-                      return approved ? (
-                        <Badge key={gate.key} size="sm" variant="success">
-                          <ShieldCheckIcon />
-                          {gate.label}
-                        </Badge>
-                      ) : (
-                        <Button
+                      const latest = latestGates.get(gate.key);
+                      const status = latest?.status ?? null;
+                      const isRejectingThis = rejectingGateKey === gate.key;
+                      return (
+                        <div
                           key={gate.key}
-                          disabled={approvingGateKey === gate.key}
-                          size="micro"
-                          variant="warning-outline"
-                          onClick={() => void handleApproveGate(gate.key)}
+                          className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
                         >
-                          <ShieldCheckIcon />
-                          {approvingGateKey === gate.key ? <T>Approving...</T> : gate.label}
-                        </Button>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground">{gate.label}</span>
+                              {status === "approved" ? (
+                                <Badge size="sm" variant="success">
+                                  <ShieldCheckIcon />
+                                  <T>Approved</T>
+                                </Badge>
+                              ) : status === "rejected" ? (
+                                <Badge size="sm" variant="error">
+                                  <ShieldAlertIcon />
+                                  <T>Rejected</T>
+                                </Badge>
+                              ) : (
+                                <Badge size="sm" variant="secondary">
+                                  <T>Pending</T>
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {status !== "approved" ? (
+                                <Button
+                                  disabled={busyGateKey === gate.key}
+                                  size="micro"
+                                  variant="warning-outline"
+                                  onClick={() => void handleGateDecision(gate.key, "approved")}
+                                >
+                                  <ShieldCheckIcon />
+                                  {busyGateKey === gate.key ? <T>Approving...</T> : <T>Approve</T>}
+                                </Button>
+                              ) : null}
+                              <Button
+                                disabled={busyGateKey === gate.key}
+                                size="micro"
+                                variant="destructive-outline"
+                                onClick={() => {
+                                  setRejectingGateKey(isRejectingThis ? null : gate.key);
+                                  setRejectNote("");
+                                }}
+                              >
+                                <ShieldAlertIcon />
+                                <T>Reject</T>
+                              </Button>
+                            </div>
+                          </div>
+
+                          {latest?.note ? (
+                            <p
+                              className={
+                                status === "rejected" ? "text-destructive" : "text-muted-foreground"
+                              }
+                            >
+                              <T>
+                                Note: <Var>{latest.note}</Var>
+                              </T>
+                            </p>
+                          ) : null}
+
+                          {isRejectingThis ? (
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              <div className="min-w-48 flex-1">
+                                <Input
+                                  placeholder={gt("Rejection reason (notifies owners)...")}
+                                  size="sm"
+                                  value={rejectNote}
+                                  onChange={(event) => setRejectNote(event.target.value)}
+                                />
+                              </div>
+                              <Button
+                                disabled={busyGateKey === gate.key}
+                                size="xs"
+                                variant="destructive"
+                                onClick={() =>
+                                  void handleGateDecision(gate.key, "rejected", rejectNote)
+                                }
+                              >
+                                <T>Confirm Reject</T>
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRejectingGateKey(null);
+                                  setRejectNote("");
+                                }}
+                              >
+                                <T>Cancel</T>
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>

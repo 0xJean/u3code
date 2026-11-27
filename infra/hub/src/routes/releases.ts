@@ -1,6 +1,10 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import type { ReleaseStatus } from "@u3code/hub-contracts";
+import {
+  isGateCurrentlyApproved,
+  type GateApproval,
+  type ReleaseStatus,
+} from "@u3code/hub-contracts";
 import {
   createAuthMiddleware,
   getAuthUser,
@@ -56,7 +60,8 @@ export function createReleaseRoutes(deps: {
                   eq(gateApprovals.targetType, "release"),
                   inArray(gateApprovals.targetId, releaseIds),
                 ),
-              ),
+              )
+              .orderBy(asc(gateApprovals.createdAt)),
             deps.db.select().from(releaseItems).where(inArray(releaseItems.releaseId, releaseIds)),
           ])
         : [[], []];
@@ -179,8 +184,12 @@ export function createReleaseRoutes(deps: {
               eq(gateApprovals.targetId, releaseId),
               eq(gateApprovals.gateKey, "prod_go"),
             ),
-          );
-        const approved = approvals.some((a) => a.status === "approved");
+          )
+          .orderBy(asc(gateApprovals.createdAt));
+        const approved = isGateCurrentlyApproved(
+          approvals as ReadonlyArray<GateApproval>,
+          "prod_go",
+        );
         if (!approved) {
           return c.json(
             {
@@ -212,7 +221,8 @@ export function createReleaseRoutes(deps: {
       deps.db
         .select()
         .from(gateApprovals)
-        .where(and(eq(gateApprovals.targetType, "release"), eq(gateApprovals.targetId, releaseId))),
+        .where(and(eq(gateApprovals.targetType, "release"), eq(gateApprovals.targetId, releaseId)))
+        .orderBy(asc(gateApprovals.createdAt)),
       deps.db.select().from(releaseItems).where(eq(releaseItems.releaseId, releaseId)),
     ]);
 

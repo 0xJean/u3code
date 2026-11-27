@@ -133,6 +133,62 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
             },
           });
         },
+        getWorkItemDetail: ({ workItemId }) =>
+          Effect.succeed({
+            workItem: {
+              id: workItemId,
+              projectId: "prj_1",
+              seqNo: 1,
+              code: "CORE-1",
+              title: "Idempotent outbox",
+              itemType: "feature",
+              priority: "p1",
+              stage: "dev",
+              health: "on_track",
+              assigneeType: "unassigned",
+              assigneeUserId: null,
+              assigneeRunnerId: null,
+              specMarkdown: "Must retry safely.",
+              specUrl: null,
+              previewUrls: [],
+              checklistItems: [
+                { id: "AC-1", text: "Retry handles duplicates", verified: false },
+                { id: "AC-2", text: "Dead-letter metrics emitted", verified: false },
+              ],
+              attributes: {},
+              createdBy: "usr_1",
+              createdAt: "2026-11-26T00:00:00.000Z",
+              updatedAt: "2026-11-26T00:00:00.000Z",
+            },
+            pulses: [],
+            changeRequests: [],
+            gateApprovals: [],
+          }),
+        updateWorkItem: (input) =>
+          Effect.succeed({
+            workItem: {
+              id: input.workItemId,
+              projectId: "prj_1",
+              seqNo: 1,
+              code: "CORE-1",
+              title: input.title ?? "Idempotent outbox",
+              itemType: "feature",
+              priority: "p1",
+              stage: input.stage ?? "dev",
+              health: input.health ?? "on_track",
+              assigneeType: "unassigned",
+              assigneeUserId: null,
+              assigneeRunnerId: null,
+              specMarkdown: input.specMarkdown ?? "Must retry safely.",
+              specUrl: null,
+              previewUrls: [],
+              checklistItems: [...(input.checklistItems ?? [])],
+              attributes: {},
+              createdBy: "usr_1",
+              createdAt: "2026-11-26T00:00:00.000Z",
+              updatedAt: "2026-11-26T00:00:00.000Z",
+            },
+          }),
       }),
     );
 
@@ -150,6 +206,41 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
         memory: {
           version: 3,
           directives: [{ text: "Never auto-merge main." }],
+        },
+      });
+
+      const detail = yield* toolkit.handle("team_hub_get_work_item", { workItemId: "wi_1" }).pipe(
+        Stream.unwrap,
+        Stream.runCollect,
+        Effect.map((parts) => parts.at(-1)?.result),
+      );
+      expect(detail).toMatchObject({
+        workItem: {
+          code: "CORE-1",
+          checklistItems: [
+            { id: "AC-1", verified: false },
+            { id: "AC-2", verified: false },
+          ],
+        },
+      });
+
+      const updated = yield* toolkit
+        .handle("team_hub_update_work_item", {
+          workItemId: "wi_1",
+          verifyAcIds: ["ac-1"],
+        })
+        .pipe(
+          Stream.unwrap,
+          Stream.runCollect,
+          Effect.map((parts) => parts.at(-1)?.result),
+        );
+      expect(updated).toMatchObject({
+        workItem: {
+          id: "wi_1",
+          checklistItems: [
+            { id: "AC-1", verified: true },
+            { id: "AC-2", verified: false },
+          ],
         },
       });
 
