@@ -3271,7 +3271,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "auf dem Computer, der diese Seite geöffnet hat"]
+      "c": [
+        " ",
+        "auf dem Computer, der diese Seite geöffnet hat"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3283,7 +3286,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· wer es ausführt, erhält diesen Zugriff"]
+      "c": [
+        " ",
+        "· wer es ausführt, erhält diesen Zugriff"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Genehmige nur eine Anmeldung, die du gerade selbst gestartet hast.",
@@ -5309,6 +5315,45 @@
   "c752acb0b7088295": "Verbunden",
   "a097631b7acab9d8": "Warte auf Genehmigung…",
   "aabd9632196ee7e5": "Verbinde neu…",
+  "3879b4ed5637afab": "Search board messages",
+  "3e794525d795d726": "Search messages, @mentions, work items...",
+  "7d0f529e34de81de": "Clear member filter",
+  "addf9fac0dabde25": "Team board message",
+  "f2874a399aa99960": "Post an update or @mention a teammate or agent...",
+  "dc692c939d80ed8d": "Link work item",
+  "e7e75911cd852c8e": "Handoff",
+  "fc20ea18dd7c53a2": "Pulse",
+  "4cd3a0ae6907eec5": "Review",
+  "28dc6c374e072782": "Release",
+  "a65ad03dda72be9a": "All",
+  "f102a0c98355596c": "Handoffs",
+  "02cb4de6de9dc38a": "Pulses",
+  "fc9612dad0463e25": "Reviews & Releases",
+  "6e365cf75be39dab": [
+    "Filtering by ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "4f113bb0bc732b3d": "Clear",
+  "8908c7d9e2d7272d": "No work item",
+  "fe548c1d76b71a9a": "Posting...",
+  "c1a31d9f3300b458": "Post",
+  "0ccff79bc9bd5109": "No matching board posts",
+  "02cbfd89765efd69": "Team board is quiet",
+  "37ca5429008cc3aa": "Try clearing your search or filter to see the full team feed.",
+  "ec251d5089cee1aa": "Share a handoff, mention teammates or agents with @handle, or reference a work item above.",
+  "4fd68d8059dd880a": "Reset Filters",
+  "8cc368fdd1ffafa6": [
+    "Reply ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
   "7b5a4152ec1be3dd": "Enter your Team Hub URL first.",
   "1e45117018fe313a": "Enter your Team Hub URL.",
   "c8716ff047dd3d11": "Enter a username to sign in.",
@@ -5329,11 +5374,30 @@
   "0f54651dc9530e62": "Refresh Token",
   "32db31f0dc62bec8": "Verbinde...",
   "90f46dbf8782cfde": "Verbinden",
+  "284ab90dc7687136": "Search members",
+  "c485fbc80200f2ce": "Search members...",
+  "e97e409bef7c68db": "Owner",
+  "8960843720640207": "Coding Agent",
+  "7c199cc23479c21d": "Member",
+  "9e42717e90b27718": "Active members",
+  "7087c088a92060f8": "Standing by members",
+  "d11c275db94d506c": "No matching members",
+  "95cef98ca515cea7": "No team members yet",
+  "db2a407b9a5d6b0a": "Try searching by another handle, role, or activity keyword.",
+  "d8dee4014f2a61b8": "Workspace members, pull request authors, and active AI reviewers appear here automatically.",
+  "06550007ef1d58bc": "Clear Search",
+  "5e0c0354a6c8b204": "Owner",
+  "ff1728d6a7065373": "Working",
+  "ffb4689cc6f7cb20": "No posts yet",
+  "7c17e4fe787ba92a": "Mention",
+  "cfb740b7462fab33": "Posts",
+  "2543655df54b5176": "Active",
+  "066217798e6896ad": "Agent",
+  "3936acf8eb63078c": "Standing By",
   "ac58b04246049bce": "{timestamp} (Latest)",
   "cf23b547672aee09": "Memory & Digests sections",
   "62570d4bfe4ab517": "Manuell",
   "9dad6db998848e83": "Scheduled",
-  "28dc6c374e072782": "Release",
   "077ca0a8bb1aea28": "Daily",
   "526889161cc9be28": "Digest history",
   "e2f6572a891945b4": "Disable directive",
@@ -5378,6 +5442,198 @@
       "v": "v"
     }
   ],
+  "f160e9bb0b0553c8": "Stage: {stage}",
+  "9ba7ae80f789850f": "Active Now",
+  "a40bceccfc3cf83c": "Project progress",
+  "3f37026f18629910": "Tracks",
+  "7bed7d3fbf638c3e": "Planning",
+  "d45caff1bb8c308f": "Staging",
+  "a553be36e93303cd": "Ready",
+  "312a0584fb0267f3": "Released",
+  "ffd2b08e80e894f6": "Rolled Back",
+  "5efca19ac2a8e144": "The team",
+  "38f9779f6603cedd": "Active Now",
+  "6bc7d41e095831d3": "Show all",
+  "7bf1d1f0f6858ca5": [
+    "No active work items or open reviews for ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "e15dff4a2b49b26b": "Nothing active right now. Everything in this project is clear.",
+  "f5a77bf3e629f0e5": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " of ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " items done"
+  ],
+  "7aaefa4d298eae7a": "No work items yet",
+  "272ebba4ad0f907e": [
+    "· ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " ACs verified"
+  ],
+  "dd89fb3a17c06a50": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " open PR"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " open PRs"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "28528345bbdb78fe": "No open pull requests right now.",
+  "3f14ad0e456a91df": "Tracks",
+  "71c021ea74f76e06": "Work Items",
+  "25911e4a4804b73e": "Blocked",
+  "d124d6f60ba0a8e6": "Moving",
+  "a46e8c8722669f88": "All clear",
+  "afe32cf7ce50b9e1": "PR Reviews",
+  "4ceb36b83ab15181": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " bot blocked"
+  ],
+  "383d995b69f670d3": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ready for review"
+  ],
+  "3a6967fc58903633": "Queue clear",
+  "b2a3a914922ecfbc": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " open"
+  ],
+  "55aa729ad58d69f9": "Release Train",
+  "77638b55df17c16d": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ·",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
+  "5df59cbf3fb8d186": "No active release",
+  "0e243f7b0a9b25c0": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/3 signed"
+  ],
+  "0faf657712a9d10a": "Plan",
+  "178e0f62e7514791": "View all",
+  "40a21b333769def6": "The team",
+  "b9b1a8d23fa7a91a": "Standing by",
+  "5fa4384db1054a12": "Filter Board",
+  "ded57ca9c0ecee87": "No board posts yet.",
+  "40f51b1b375c1c1a": "Team Overview",
+  "fb8db6cdd42f8749": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " working ·",
+    " ",
+    {
+      "t": "Plural",
+      "i": 2,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " member"
+            ]
+          },
+          "other": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " members"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    }
+  ],
+  "9ee20f324c48d602": "Open Board",
+  "f122a37ef1ed4e87": "No board updates yet. Post a handoff or status note to coordinate the team.",
   "ea3e950490806ad0": "Failed to load cockpit overview.",
   "5ce06134ebdbd625": "Failed to inspect Team Hub status.",
   "7f7ddce1ce0228dc": "Stage updated",
@@ -5393,9 +5649,13 @@
   "f0bd04cd8f6ddbd6": "Failed to generate digest.",
   "df2dee75c4cdeacb": "Project directives saved",
   "f348cfbe63c2f821": "Failed to save directives.",
+  "412f8246462e73f0": "Failed to post board message.",
   "a251b778c698fb5f": "Team Cockpit",
   "5b37ad9bc5c0a238": "Refresh Cockpit",
+  "4aa5b9019ae1c7d6": "Workspace Setup",
   "83c0c69e5ed0da1a": "Disconnect Team Hub",
+  "6f7365140d6dad78": "Team Cockpit views",
+  "d122625a34387342": "Delivery views",
   "10f1933ed8a99cb0": "e.g. Idempotent settlement outbox",
   "6f02a5ab8c9e794a": "Feature",
   "b579ddd2e1847788": "Refactor",
@@ -5409,14 +5669,17 @@
   "f86d1b3defd75cea": "Keine",
   "5d2cedf4b8b28251": "Team Cockpit",
   "9a06fd459ce858b9": "Live",
-  "8b25153390e240fe": "New Item",
-  "f1f55521bea76543": "Board",
+  "385c7017261a4ef6": "Overview",
+  "c77627970cfeffc8": "Board",
+  "77778bad196b035f": "Members",
+  "181b0dbec742e84d": "Delivery",
+  "675fc3b8f915eff4": "Memory",
+  "d5f7866df2e1fb25": "Bot Blocked",
+  "b21e23bd6421075c": "No server environment connected",
+  "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
+  "daee9e8b51384a85": "Checking Team Hub connection...",
   "50e69de3abc32870": "Review Triage",
   "72d72a452aed7f1d": "Releases",
-  "117f9ddebc9053e6": "Memory & Digests",
-  "143cde2e0b8d2e7c": "Setup",
-  "25911e4a4804b73e": "Blocked",
-  "d5f7866df2e1fb25": "Bot Blocked",
   "013dfe4a2448e211": [
     {
       "i": 1,
@@ -5425,20 +5688,20 @@
     },
     " repos"
   ],
-  "b21e23bd6421075c": "No server environment connected",
-  "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
-  "daee9e8b51384a85": "Checking Team Hub connection...",
   "345b2c797156733f": "No project configured yet",
   "9d1e700b8e32ad9b": "Create or select a project in Setup to track cross-repository work items and workflow gates.",
   "8c03a789a0570c98": "Open Setup",
-  "a65ad03dda72be9a": "All",
   "e18bc1817ce7cafc": "Has PR",
+  "f1f55521bea76543": "Board",
   "dc6de46021f4f9ec": "List",
+  "8b25153390e240fe": "New Item",
   "33f72596bc1c7d2a": "No matching work items",
   "5d6b2d0602ae75d6": "No work items match the active filter. Reset the filter to inspect all stages.",
   "78ecbaa429a6444e": "Show all items",
   "5cde7238fa9d38f0": "No items",
   "48295e8e0480d4de": "No items in this stage",
+  "f4e6c050273cbb75": "Workspace Setup",
+  "a56909d1b4179b31": "Back to Overview",
   "a4a5a19f3650a913": "New Work Item",
   "9c4ec57e543d3dc5": "Create a cross-repository work item tracked in Team Cockpit.",
   "3ac8ed47fe50bd34": "Title",
@@ -5516,11 +5779,6 @@
   "93ef88899dcc2317": "Open Item",
   "17ca3c63cd312f8f": "Link Work Item",
   "a78e9c96a7c509e5": "No work items in this project yet to link.",
-  "7bed7d3fbf638c3e": "Planning",
-  "d45caff1bb8c308f": "Staging",
-  "a553be36e93303cd": "Ready",
-  "312a0584fb0267f3": "Released",
-  "ffd2b08e80e894f6": "Rolled Back",
   "11d8d12204ff290f": "QA Sign-off",
   "3cff75d104ab4861": "Security Sign-off",
   "af827f6ecf816851": "Production Go/No-Go",
@@ -5875,6 +6133,7 @@
     },
     " core events by default (digest ready, bot-blocked PR, ready for human review, blocker attention, and release ready)."
   ],
+  "ab1a69a25ba51db8": "AI Reviewer",
   "484cd83bb303bab8": "Pull Requests durchsuchen",
   "aa06ab58f10f5d47": "Search PR, repo, author, branch...",
   "7d7a761d5c5e2009": "Bot-Blocked Review",
@@ -5889,7 +6148,6 @@
   "b82cc4e5617a53a5": "Unlinked",
   "e24487e2ca305dba": "No matching pull requests",
   "a24ef44427ce9b5b": "Try clearing your search query or switching to a different triage filter.",
-  "4fd68d8059dd880a": "Reset Filters",
   "23a899df3d776ed6": "Verknüpfen",
   "e40786aa5298b8be": "Inspect & Fix",
   "cc9615f3844912e7": "Review in App",

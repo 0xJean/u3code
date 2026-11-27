@@ -116,6 +116,8 @@ import {
   TeamHubGenerateDigestResult,
   TeamHubLinkChangeRequestInput,
   TeamHubLinkChangeRequestResult,
+  TeamHubListBoardMessagesInput,
+  TeamHubListBoardMessagesResult,
   TeamHubListMembersInput,
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsInput,
@@ -126,6 +128,8 @@ import {
   TeamHubMemoryInput,
   TeamHubMemoryResult,
   TeamHubOverviewInput,
+  TeamHubPostBoardMessageInput,
+  TeamHubPostBoardMessageResult,
   TeamHubPublishPulseInput,
   TeamHubPublishPulseResult,
   TeamHubReleaseResult,
@@ -821,6 +825,8 @@ export const WS_METHODS = {
   teamHubListPlugins: "teamHub.listPlugins",
   teamHubSyncProjectRepo: "teamHub.syncProjectRepo",
   teamHubTestNotificationChannel: "teamHub.testNotificationChannel",
+  teamHubListBoardMessages: "teamHub.listBoardMessages",
+  teamHubPostBoardMessage: "teamHub.postBoardMessage",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1864,6 +1870,18 @@ const WsTeamHubSyncProjectRepoRpc = Rpc.make(WS_METHODS.teamHubSyncProjectRepo, 
 const WsTeamHubTestNotificationChannelRpc = Rpc.make(WS_METHODS.teamHubTestNotificationChannel, {
   payload: TeamHubTestNotificationChannelInput,
   success: TeamHubTestNotificationChannelResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubListBoardMessagesRpc = Rpc.make(WS_METHODS.teamHubListBoardMessages, {
+  payload: TeamHubListBoardMessagesInput,
+  success: TeamHubListBoardMessagesResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubPostBoardMessageRpc = Rpc.make(WS_METHODS.teamHubPostBoardMessage, {
+  payload: TeamHubPostBoardMessageInput,
+  success: TeamHubPostBoardMessageResult,
   error: TeamHubRpcError,
 });
 
@@ -3002,6 +3020,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubListPluginsRpc,
   WsTeamHubSyncProjectRepoRpc,
   WsTeamHubTestNotificationChannelRpc,
+  WsTeamHubListBoardMessagesRpc,
+  WsTeamHubPostBoardMessageRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

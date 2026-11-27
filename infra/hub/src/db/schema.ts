@@ -445,3 +445,43 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
     .notNull()
     .defaultNow(),
 });
+
+export const boardMessages = pgTable(
+  "board_messages",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    kind: text("kind").notNull().default("message"),
+    authorType: text("author_type").notNull().default("human"),
+    authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    authorHandle: text("author_handle").notNull(),
+    authorDisplayName: text("author_display_name").notNull(),
+    mentions: text("mentions")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    body: text("body").notNull(),
+    workItemId: text("work_item_id").references(() => workItems.id, { onDelete: "set null" }),
+    workItemCode: text("work_item_code"),
+    changeRequestId: text("change_request_id").references(() => changeRequests.id, {
+      onDelete: "set null",
+    }),
+    changeRequestRef: text("change_request_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("uidx_board_messages_workspace_seq").on(table.workspaceId, table.seq),
+    index("idx_board_messages_workspace_seq").on(table.workspaceId, table.seq),
+    index("idx_board_messages_workspace_project_seq").on(
+      table.workspaceId,
+      table.projectId,
+      table.seq,
+    ),
+  ],
+);

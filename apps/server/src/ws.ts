@@ -2127,6 +2127,8 @@ export const layerWsRpc = (
         [WS_METHODS.teamHubSyncProjectRepo]: (input) => teamHub.syncProjectRepo(input),
         [WS_METHODS.teamHubTestNotificationChannel]: (input) =>
           teamHub.testNotificationChannel(input),
+        [WS_METHODS.teamHubListBoardMessages]: (input) => teamHub.listBoardMessages(input),
+        [WS_METHODS.teamHubPostBoardMessage]: (input) => teamHub.postBoardMessage(input),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

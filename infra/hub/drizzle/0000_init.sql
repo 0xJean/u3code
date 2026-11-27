@@ -238,3 +238,26 @@ CREATE TABLE IF NOT EXISTS webhook_deliveries (
   event_name TEXT NOT NULL,
   received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS board_messages (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'message',
+  author_type TEXT NOT NULL DEFAULT 'human',
+  author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  author_handle TEXT NOT NULL,
+  author_display_name TEXT NOT NULL,
+  mentions TEXT[] NOT NULL DEFAULT ARRAY[]::text[],
+  body TEXT NOT NULL,
+  work_item_id TEXT REFERENCES work_items(id) ON DELETE SET NULL,
+  work_item_code TEXT,
+  change_request_id TEXT REFERENCES change_requests(id) ON DELETE SET NULL,
+  change_request_ref TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (workspace_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_messages_workspace_seq ON board_messages(workspace_id, seq);
+CREATE INDEX IF NOT EXISTS idx_board_messages_workspace_project_seq ON board_messages(workspace_id, project_id, seq);

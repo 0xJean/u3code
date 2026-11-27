@@ -1,4 +1,5 @@
 import { OrchestratorMcpFailure, type TeamHubError } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import * as TeamHubService from "../../../teamHub/TeamHubService.ts";
@@ -89,7 +90,7 @@ export const layer = McpToolAccess.toLayer(TeamHubToolkit, {
           .getWorkItemDetail({ workItemId: input.workItemId })
           .pipe(Effect.mapError(mapTeamHubError));
         const verifySet = new Set(input.verifyAcIds.map((id) => id.trim().toUpperCase()));
-        const verifiedAt = new Date().toISOString();
+        const verifiedAt = DateTime.formatIso(yield* DateTime.now);
         checklistItems = detail.workItem.checklistItems.map((item) =>
           verifySet.has(item.id.trim().toUpperCase())
             ? { ...item, verified: true, verifiedAt }
@@ -128,6 +129,65 @@ export const layer = McpToolAccess.toLayer(TeamHubToolkit, {
               ? { progressedAcIds: input.progressedAcIds }
               : {}),
           },
+        })
+        .pipe(Effect.mapError(mapTeamHubError));
+    }),
+  ),
+
+  hub_board_read: McpToolAccess.reads(({ workspaceId, projectId, since, limit }) =>
+    Effect.gen(function* () {
+      const teamHub = yield* TeamHubService.TeamHubService;
+      const status = yield* teamHub.status().pipe(Effect.mapError(mapTeamHubError));
+      const resolvedWorkspaceId = workspaceId ?? status.me?.workspaces[0]?.id;
+      if (!status.connected || !resolvedWorkspaceId) {
+        return yield* new OrchestratorMcpFailure({
+          code: "orchestration_error",
+          message: "Not connected to a Team Hub workspace.",
+        });
+      }
+      return yield* teamHub
+        .listBoardMessages({
+          workspaceId: resolvedWorkspaceId,
+          ...(projectId !== undefined ? { projectId } : {}),
+          ...(since !== undefined ? { since } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+        })
+        .pipe(Effect.mapError(mapTeamHubError));
+    }),
+  ),
+
+  hub_board_post: McpToolAccess.writesEnvironment((input) =>
+    Effect.gen(function* () {
+      const teamHub = yield* TeamHubService.TeamHubService;
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const status = yield* teamHub.status().pipe(Effect.mapError(mapTeamHubError));
+      const resolvedWorkspaceId = input.workspaceId ?? status.me?.workspaces[0]?.id;
+      if (!status.connected || !resolvedWorkspaceId) {
+        return yield* new OrchestratorMcpFailure({
+          code: "orchestration_error",
+          message: "Not connected to a Team Hub workspace.",
+        });
+      }
+      return yield* teamHub
+        .postBoardMessage({
+          workspaceId: resolvedWorkspaceId,
+          ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+          ...(input.kind !== undefined ? { kind: input.kind } : {}),
+          authorType: input.authorType ?? (scope.thread ? "agent" : "human"),
+          ...(input.authorHandle !== undefined ? { authorHandle: input.authorHandle } : {}),
+          ...(input.authorDisplayName !== undefined
+            ? { authorDisplayName: input.authorDisplayName }
+            : {}),
+          body: input.body,
+          ...(input.mentions !== undefined ? { mentions: input.mentions } : {}),
+          ...(input.workItemId !== undefined ? { workItemId: input.workItemId } : {}),
+          ...(input.workItemCode !== undefined ? { workItemCode: input.workItemCode } : {}),
+          ...(input.changeRequestId !== undefined
+            ? { changeRequestId: input.changeRequestId }
+            : {}),
+          ...(input.changeRequestRef !== undefined
+            ? { changeRequestRef: input.changeRequestRef }
+            : {}),
         })
         .pipe(Effect.mapError(mapTeamHubError));
     }),

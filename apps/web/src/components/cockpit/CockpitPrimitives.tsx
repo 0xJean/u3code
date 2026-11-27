@@ -329,3 +329,74 @@ export function CockpitDiffStat({
     </span>
   );
 }
+
+export function CockpitUnderlineTabs({
+  label,
+  className,
+  children,
+}: {
+  readonly label: string;
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      aria-label={label}
+      className={cn("-mb-px flex min-w-0 items-center gap-5 overflow-x-auto", className)}
+      data-slot="cockpit-underline-tabs"
+      role="tablist"
+    >
+      {children}
+    </div>
+  );
+}
+
+export function CockpitUnderlineTab({
+  active,
+  count,
+  icon,
+  children,
+  onClick,
+  className,
+}: {
+  readonly active: boolean;
+  readonly count?: number | string | undefined;
+  readonly icon?: ReactNode;
+  readonly children: ReactNode;
+  readonly onClick: () => void;
+  readonly className?: string;
+}) {
+  return (
+    <button
+      aria-selected={active}
+      className={cn(
+        "relative inline-flex shrink-0 cursor-pointer items-center gap-1.5 border-b-2 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        active
+          ? "border-foreground font-medium text-foreground"
+          : "border-transparent font-normal text-muted-foreground hover:text-foreground",
+        className,
+      )}
+      data-slot="cockpit-underline-tab"
+      role="tab"
+      type="button"
+      onClick={onClick}
+    >
+      {icon ? (
+        <span aria-hidden className="inline-flex shrink-0 items-center [&_svg]:size-3.5">
+          {icon}
+        </span>
+      ) : null}
+      <span>{children}</span>
+      {count !== undefined ? (
+        <span
+          className={cn(
+            "font-mono text-2xs tabular-nums",
+            active ? "text-foreground/65" : "text-muted-foreground/65",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}

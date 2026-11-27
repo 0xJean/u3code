@@ -77,6 +77,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.teamHubLinkChangeRequest]: AuthOrchestrationOperateScope,
   [WS_METHODS.teamHubSyncProjectRepo]: AuthOrchestrationOperateScope,
   [WS_METHODS.teamHubTestNotificationChannel]: AuthSettingsWriteScope,
+  [WS_METHODS.teamHubPostBoardMessage]: AuthOrchestrationOperateScope,
   // Writing a guide runs a model on this environment's providers, which reading one does not.
   [WS_METHODS.pullRequestsGenerateReviewGuide]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectsCreateFromThread]: AuthOrchestrationOperateScope,

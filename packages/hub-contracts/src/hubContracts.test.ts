@@ -5,9 +5,13 @@ import {
   HubWsEvent,
   PulseCreateInput,
   RepoPolicy,
+  TeamBoardCreateInput,
+  TeamBoardListResponse,
+  TeamBoardMessage,
   WORKFLOW_PRESETS,
   WorkflowConfig,
   createWorkflowConfigFromPreset,
+  extractBoardMentions,
   isGateCurrentlyApproved,
   resolveLatestGateApprovals,
 } from "./index.ts";
@@ -135,5 +139,60 @@ describe("hub-contracts schemas and presets", () => {
       },
     ];
     expect(isGateCurrentlyApproved(reapproved, "qa_ac_pass")).toBe(true);
+  });
+
+  it("extracts deduplicated lowercase board mentions and validates board schemas & ws events", () => {
+    expect(
+      extractBoardMentions(
+        "@Alice please check (@bob_dev) with @dotsbot[bot], foo@bar.com, and @alice. Also @core-lead!",
+      ),
+    ).toEqual(["alice", "bob_dev", "dotsbot[bot]", "core-lead"]);
+
+    const decodeInput = Schema.decodeUnknownSync(TeamBoardCreateInput);
+    const input = decodeInput({
+      workspaceId: "ws_1",
+      projectId: "prj_1",
+      body: "@alice ready for review on CORE-1",
+      workItemId: "wi_1",
+      workItemCode: "CORE-1",
+    });
+    expect(input.workspaceId).toBe("ws_1");
+
+    const decodeMessage = Schema.decodeUnknownSync(TeamBoardMessage);
+    const msg = decodeMessage({
+      id: "bmsg_1",
+      workspaceId: "ws_1",
+      projectId: "prj_1",
+      seq: 1,
+      kind: "handoff",
+      authorType: "human",
+      authorUserId: "usr_1",
+      authorHandle: "boss",
+      authorDisplayName: "Tech Founder",
+      mentions: ["alice"],
+      body: "@alice ready for review on CORE-1",
+      workItemId: "wi_1",
+      workItemCode: "CORE-1",
+      changeRequestId: null,
+      changeRequestRef: null,
+      createdAt: "2026-11-27T10:00:00.000Z",
+    });
+
+    const decodeList = Schema.decodeUnknownSync(TeamBoardListResponse);
+    const list = decodeList({ messages: [msg], head: 1 });
+    expect(list.head).toBe(1);
+    expect(list.messages[0]?.kind).toBe("handoff");
+
+    const decodeEvent = Schema.decodeUnknownSync(HubWsEvent);
+    const boardEvent = decodeEvent({
+      type: "board.message_created",
+      workspaceId: "ws_1",
+      projectId: "prj_1",
+      messageId: "bmsg_1",
+      seq: 1,
+      authorHandle: "boss",
+      mentions: ["alice"],
+    });
+    expect(boardEvent.type).toBe("board.message_created");
   });
 });

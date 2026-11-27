@@ -18,6 +18,8 @@ const threadId = ThreadId.make("thread:team-hub");
 it.effect("reads team hub context + living memory and publishes pulse with threadId", () =>
   Effect.gen(function* () {
     const publishedPayloads: Array<unknown> = [];
+    const boardReadPayloads: Array<unknown> = [];
+    const boardPostPayloads: Array<unknown> = [];
 
     const layerDependencies = Layer.mergeAll(
       Layer.succeed(McpInvocationContext.McpInvocationContext, {
@@ -189,6 +191,55 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
               updatedAt: "2026-11-26T00:00:00.000Z",
             },
           }),
+        listBoardMessages: (input) => {
+          boardReadPayloads.push(input);
+          return Effect.succeed({
+            head: 4,
+            messages: [
+              {
+                id: "bmsg_4",
+                workspaceId: input.workspaceId,
+                projectId: input.projectId ?? "prj_1",
+                seq: 4,
+                kind: "handoff",
+                authorType: "human",
+                authorUserId: "usr_1",
+                authorHandle: "lead",
+                authorDisplayName: "Lead",
+                mentions: ["codex"],
+                body: "@codex verify CORE-1 outbox tests",
+                workItemId: "wi_1",
+                workItemCode: "CORE-1",
+                changeRequestId: null,
+                changeRequestRef: null,
+                createdAt: "2026-11-26T00:00:00.000Z",
+              },
+            ],
+          });
+        },
+        postBoardMessage: (input) => {
+          boardPostPayloads.push(input);
+          return Effect.succeed({
+            message: {
+              id: "bmsg_5",
+              workspaceId: input.workspaceId,
+              projectId: input.projectId ?? null,
+              seq: 5,
+              kind: input.kind ?? "handoff",
+              authorType: input.authorType ?? "agent",
+              authorUserId: "usr_1",
+              authorHandle: input.authorHandle ?? "lead",
+              authorDisplayName: input.authorDisplayName ?? "Lead",
+              mentions: [...(input.mentions ?? ["lead"])],
+              body: input.body,
+              workItemId: input.workItemId ?? null,
+              workItemCode: input.workItemCode ?? null,
+              changeRequestId: input.changeRequestId ?? null,
+              changeRequestRef: input.changeRequestRef ?? null,
+              createdAt: "2026-11-26T00:01:00.000Z",
+            },
+          });
+        },
       }),
     );
 
@@ -262,6 +313,48 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
         },
       });
       expect(publishedPayloads).toHaveLength(1);
+
+      const boardRead = yield* toolkit.handle("hub_board_read", { since: 3, limit: 20 }).pipe(
+        Stream.unwrap,
+        Stream.runCollect,
+        Effect.map((parts) => parts.at(-1)?.result),
+      );
+      expect(boardRead).toMatchObject({
+        head: 4,
+        messages: [{ id: "bmsg_4", seq: 4, workItemCode: "CORE-1" }],
+      });
+      expect(boardReadPayloads).toEqual([{ workspaceId: "ws_1", since: 3, limit: 20 }]);
+
+      const boardPosted = yield* toolkit
+        .handle("hub_board_post", {
+          projectId: "prj_1",
+          body: "@lead CORE-1 outbox tests are green",
+          workItemId: "wi_1",
+          workItemCode: "CORE-1",
+        })
+        .pipe(
+          Stream.unwrap,
+          Stream.runCollect,
+          Effect.map((parts) => parts.at(-1)?.result),
+        );
+      expect(boardPosted).toMatchObject({
+        message: {
+          id: "bmsg_5",
+          seq: 5,
+          authorType: "agent",
+          workItemCode: "CORE-1",
+        },
+      });
+      expect(boardPostPayloads).toMatchObject([
+        {
+          workspaceId: "ws_1",
+          projectId: "prj_1",
+          authorType: "agent",
+          body: "@lead CORE-1 outbox tests are green",
+          workItemId: "wi_1",
+          workItemCode: "CORE-1",
+        },
+      ]);
     }).pipe(
       Effect.provide(
         McpToolAccess.HandlersLayer.layer(TeamHubHandlers.layer).pipe(

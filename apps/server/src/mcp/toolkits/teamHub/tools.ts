@@ -1,13 +1,22 @@
 import {
   CockpitOverview,
   OrchestratorMcpFailure,
+  TeamHubListBoardMessagesResult,
+  TeamHubPostBoardMessageResult,
   TeamHubPublishPulseResult,
   TeamHubReviewQueueResult,
   TeamHubWorkItemResult,
   TrimmedNonEmptyString,
   WorkItemDetail,
 } from "@t3tools/contracts";
-import { ChecklistItem, ProjectMemory, PulseBlocker, WorkHealth } from "@u3code/hub-contracts";
+import {
+  ChecklistItem,
+  ProjectMemory,
+  PulseBlocker,
+  TeamBoardAuthorType,
+  TeamBoardMessageKind,
+  WorkHealth,
+} from "@u3code/hub-contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -129,10 +138,66 @@ const TeamHubUpdateWorkItemTool = Tool.make("team_hub_update_work_item", {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, true);
 
+const HubBoardReadTool = Tool.make("hub_board_read", {
+  ...shared,
+  description:
+    "Read chronological messages from the Team Hub Collaboration Board (supports optional projectId, since sequence cursor, and limit).",
+  parameters: Schema.Struct({
+    workspaceId: Schema.optionalKey(
+      TrimmedNonEmptyString.annotate({ description: "Defaults to the user's first workspace." }),
+    ),
+    projectId: Schema.optionalKey(TrimmedNonEmptyString),
+    since: Schema.optionalKey(
+      Schema.Int.annotate({
+        description: "Return messages with sequence number greater than this value.",
+      }),
+    ),
+    limit: Schema.optionalKey(
+      Schema.Int.annotate({ description: "Maximum number of messages to return (1-200)." }),
+    ),
+  }),
+  success: TeamHubListBoardMessagesResult,
+})
+  .annotate(Tool.Title, "Read Team Hub Collaboration Board")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, true);
+
+const HubBoardPostTool = Tool.make("hub_board_post", {
+  ...shared,
+  description:
+    "Post a message, handoff, or status update to the Team Hub Collaboration Board with optional @mentions and linked work item or pull request metadata.",
+  parameters: Schema.Struct({
+    workspaceId: Schema.optionalKey(
+      TrimmedNonEmptyString.annotate({ description: "Defaults to the user's first workspace." }),
+    ),
+    projectId: Schema.optionalKey(TrimmedNonEmptyString),
+    kind: Schema.optionalKey(TeamBoardMessageKind),
+    authorType: Schema.optionalKey(TeamBoardAuthorType),
+    authorHandle: Schema.optionalKey(TrimmedNonEmptyString),
+    authorDisplayName: Schema.optionalKey(TrimmedNonEmptyString),
+    body: TrimmedNonEmptyString,
+    mentions: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+    workItemId: Schema.optionalKey(TrimmedNonEmptyString),
+    workItemCode: Schema.optionalKey(TrimmedNonEmptyString),
+    changeRequestId: Schema.optionalKey(TrimmedNonEmptyString),
+    changeRequestRef: Schema.optionalKey(TrimmedNonEmptyString),
+  }),
+  success: TeamHubPostBoardMessageResult,
+})
+  .annotate(Tool.Title, "Post to Team Hub Collaboration Board")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, true);
+
 export const TeamHubToolkit = Toolkit.make(
   TeamHubGetContextTool,
   TeamHubGetReviewQueueTool,
   TeamHubGetWorkItemTool,
   TeamHubUpdateWorkItemTool,
   TeamHubPublishPulseTool,
+  HubBoardReadTool,
+  HubBoardPostTool,
 );

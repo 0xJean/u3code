@@ -12,11 +12,13 @@ import {
   TeamHubError,
   TeamHubGenerateDigestResult,
   TeamHubLinkChangeRequestResult,
+  TeamHubListBoardMessagesResult,
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsResult,
   TeamHubListPluginsResult,
   TeamHubListReleasesResult,
   TeamHubMemoryResult,
+  TeamHubPostBoardMessageResult,
   TeamHubPublishPulseResult,
   TeamHubReleaseResult,
   TeamHubReviewQueueResult,
@@ -43,11 +45,13 @@ import {
   type TeamHubExtractPulseDraftInput,
   type TeamHubGenerateDigestInput,
   type TeamHubLinkChangeRequestInput,
+  type TeamHubListBoardMessagesInput,
   type TeamHubListMembersInput,
   type TeamHubListNotificationChannelsInput,
   type TeamHubListReleasesInput,
   type TeamHubMemoryInput,
   type TeamHubOverviewInput,
+  type TeamHubPostBoardMessageInput,
   type TeamHubPublishPulseInput,
   type TeamHubReviewQueueInput,
   type TeamHubSubscribeEventsInput,
@@ -134,6 +138,8 @@ const decodeSyncProjectRepo = Schema.decodeUnknownEffect(TeamHubSyncProjectRepoR
 const decodeTestNotificationChannel = Schema.decodeUnknownEffect(
   TeamHubTestNotificationChannelResult,
 );
+const decodeListBoardMessages = Schema.decodeUnknownEffect(TeamHubListBoardMessagesResult);
+const decodePostBoardMessage = Schema.decodeUnknownEffect(TeamHubPostBoardMessageResult);
 const decodeHubWsEventJson = Schema.decodeUnknownSync(Schema.fromJsonString(HubWsEvent));
 
 function normalizeHubUrl(raw: string): string {
@@ -251,6 +257,12 @@ export class TeamHubService extends Context.Service<
     readonly testNotificationChannel: (
       input: TeamHubTestNotificationChannelInput,
     ) => Effect.Effect<TeamHubTestNotificationChannelResult, TeamHubError>;
+    readonly listBoardMessages: (
+      input: TeamHubListBoardMessagesInput,
+    ) => Effect.Effect<TeamHubListBoardMessagesResult, TeamHubError>;
+    readonly postBoardMessage: (
+      input: TeamHubPostBoardMessageInput,
+    ) => Effect.Effect<TeamHubPostBoardMessageResult, TeamHubError>;
   }
 >()("t3/teamHub/TeamHubService") {}
 
@@ -808,6 +820,31 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const listBoardMessages = Effect.fn("TeamHubService.listBoardMessages")(function* (
+    input: TeamHubListBoardMessagesInput,
+  ) {
+    const params = new URLSearchParams({ workspaceId: input.workspaceId });
+    if (input.projectId) params.set("projectId", input.projectId);
+    if (input.since !== undefined) params.set("since", String(input.since));
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    return yield* authedRequest({
+      method: "GET",
+      pathAndQuery: `/api/v1/cockpit/board?${params.toString()}`,
+      decode: decodeListBoardMessages,
+    });
+  });
+
+  const postBoardMessage = Effect.fn("TeamHubService.postBoardMessage")(function* (
+    input: TeamHubPostBoardMessageInput,
+  ) {
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: "/api/v1/cockpit/board",
+      body: input,
+      decode: decodePostBoardMessage,
+    });
+  });
+
   const refreshStoredCredentials = Effect.fnUntraced(function* (creds: StoredTeamHubCredentials) {
     const refreshed = yield* executeJsonRequest({
       method: "POST",
@@ -958,6 +995,8 @@ const make = Effect.gen(function* () {
     listPlugins,
     syncProjectRepo,
     testNotificationChannel,
+    listBoardMessages,
+    postBoardMessage,
   });
 });
 

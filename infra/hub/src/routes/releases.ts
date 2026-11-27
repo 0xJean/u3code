@@ -18,6 +18,7 @@ import { gateApprovals, projects, releaseItems, releases } from "../db/schema.ts
 import type { NotificationDispatcher } from "../notifiers/index.ts";
 import { newId } from "../utils/crypto.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
+import { appendBoardMessage, deriveUserBoardHandle } from "./board.ts";
 
 export function createReleaseRoutes(deps: {
   readonly db: HubDatabase;
@@ -140,6 +141,20 @@ export function createReleaseRoutes(deps: {
       status: release.status as ReleaseStatus,
     });
 
+    await appendBoardMessage(
+      { db: deps.db, broker: deps.broker },
+      {
+        workspaceId: project.workspaceId,
+        projectId,
+        kind: "release",
+        authorType: "human",
+        authorUserId: user.id,
+        authorHandle: deriveUserBoardHandle(user),
+        authorDisplayName: user.displayName,
+        body: `Planned release ${release.versionLabel} for ${project.name}${workItemIds.length > 0 ? ` (${workItemIds.length} work item${workItemIds.length === 1 ? "" : "s"})` : ""}.`,
+      },
+    );
+
     return c.json({ release: { release, workItemIds, gateApprovals: [] } }, 201);
   });
 
@@ -234,6 +249,22 @@ export function createReleaseRoutes(deps: {
       versionLabel: release.versionLabel,
       status: release.status as ReleaseStatus,
     });
+
+    if (body.status !== undefined && body.status !== existing.status) {
+      await appendBoardMessage(
+        { db: deps.db, broker: deps.broker },
+        {
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          kind: "release",
+          authorType: "human",
+          authorUserId: user.id,
+          authorHandle: deriveUserBoardHandle(user),
+          authorDisplayName: user.displayName,
+          body: `Release ${release.versionLabel} status changed: ${existing.status} -> ${release.status}.`,
+        },
+      );
+    }
 
     if (body.status === "ready") {
       void deps.notifier.dispatch(

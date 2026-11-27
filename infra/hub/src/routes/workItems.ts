@@ -29,6 +29,7 @@ import type { NotificationDispatcher } from "../notifiers/index.ts";
 import { newId } from "../utils/crypto.ts";
 import { computeTriageBucket } from "../webhooks/github.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
+import { appendBoardMessage, deriveUserBoardHandle } from "./board.ts";
 
 export function createWorkItemRoutes(deps: {
   readonly db: HubDatabase;
@@ -262,6 +263,33 @@ export function createWorkItemRoutes(deps: {
       hasBlocker: blockers.length > 0,
     });
 
+    const pulseAuthorType =
+      body.sourceType === "runner"
+        ? "agent"
+        : body.sourceType === "system_merge"
+          ? "system"
+          : "human";
+    const pulseSummaryParts = [
+      `${found.item.code} (${health.replaceAll("_", " ")}): ${body.doneSummary.trim()}`,
+      ...(blockers.length > 0 ? [`Blockers: ${blockers.map((b) => b.text).join("; ")}`] : []),
+      ...(body.nextStep?.trim() ? [`Next: ${body.nextStep.trim()}`] : []),
+    ];
+    await appendBoardMessage(
+      { db: deps.db, broker: deps.broker },
+      {
+        workspaceId: found.project.workspaceId,
+        projectId: found.project.id,
+        kind: "pulse",
+        authorType: pulseAuthorType,
+        authorUserId: user.id,
+        authorHandle: deriveUserBoardHandle(user),
+        authorDisplayName: user.displayName,
+        body: pulseSummaryParts.join(" · "),
+        workItemId: found.item.id,
+        workItemCode: found.item.code,
+      },
+    );
+
     if (blockers.length > 0) {
       const mentionRoles = [
         ...new Set(blockers.flatMap((b) => b.needsAttentionRoles ?? ["owner"])),
@@ -431,6 +459,7 @@ export function createWorkItemRoutes(deps: {
     }
 
     let project: typeof projects.$inferSelect | undefined;
+    let matchedWorkItem: typeof workItems.$inferSelect | undefined;
     let targetLabel = body.targetId;
     if (body.targetType === "work_item") {
       const r = await deps.db
@@ -440,7 +469,8 @@ export function createWorkItemRoutes(deps: {
         .where(eq(workItems.id, body.targetId))
         .limit(1);
       project = r[0]?.project;
-      if (r[0]?.item) targetLabel = `[${r[0].item.code}] ${r[0].item.title}`;
+      matchedWorkItem = r[0]?.item;
+      if (matchedWorkItem) targetLabel = `[${matchedWorkItem.code}] ${matchedWorkItem.title}`;
     } else {
       const r = await deps.db
         .select({ release: releases, project: projects })
@@ -488,6 +518,31 @@ export function createWorkItemRoutes(deps: {
       gateKey: body.gateKey,
       status: body.status,
     });
+
+    if (body.targetType === "work_item" && matchedWorkItem) {
+      const gateLabel = gateRule?.label ?? body.gateKey;
+      const decisionLabel =
+        body.status === "approved"
+          ? "Approved"
+          : body.status === "rejected"
+            ? "Rejected"
+            : "Revoked";
+      await appendBoardMessage(
+        { db: deps.db, broker: deps.broker },
+        {
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          kind: "review",
+          authorType: "human",
+          authorUserId: user.id,
+          authorHandle: deriveUserBoardHandle(user),
+          authorDisplayName: user.displayName,
+          body: `${decisionLabel} gate '${gateLabel}' on ${matchedWorkItem.code} (${matchedWorkItem.title})${noteText ? `: ${noteText}` : ""}`,
+          workItemId: matchedWorkItem.id,
+          workItemCode: matchedWorkItem.code,
+        },
+      );
+    }
 
     if (body.status === "rejected") {
       const gateLabel = gateRule?.label ?? body.gateKey;

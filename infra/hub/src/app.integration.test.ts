@@ -2,7 +2,7 @@ import * as NodeCrypto from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import type { NotificationMessage } from "@u3code/hub-contracts";
+import type { HubWsEvent, NotificationMessage, TeamBoardMessage } from "@u3code/hub-contracts";
 import { createHubApp } from "./app.ts";
 import { loadHubConfig } from "./config.ts";
 import { readInitMigrationSql, type HubDatabase } from "./db/client.ts";
@@ -595,5 +595,239 @@ describe("u3code-hub integration (PGlite)", () => {
       { method: "DELETE", headers: ownerHeaders },
     );
     expect(deleteChRes.status).toBe(200);
+  });
+
+  it("supports Team Collaboration Board: posts, @mentions, seq ordering, WS events, and auto-bridged pulse/gate/release posts", async () => {
+    const { app, broker, pglite } = await createTestHub();
+    cleanups.push(async () => {
+      broker.close();
+      await pglite.close();
+    });
+
+    const boardEvents: Array<Extract<HubWsEvent, { type: "board.message_created" }>> = [];
+    const unsubscribe = broker.subscribe((event) => {
+      if (event.type === "board.message_created") {
+        boardEvents.push(event);
+      }
+    });
+    cleanups.push(async () => {
+      unsubscribe();
+    });
+
+    const ownerLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "boss", displayName: "Tech Founder" }),
+    });
+    const ownerAuth = (await ownerLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+    const devLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice", displayName: "Alice Dev" }),
+    });
+    const devAuth = (await devLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+    const outsiderLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "eve", displayName: "Outsider" }),
+    });
+    const outsiderAuth = (await outsiderLoginRes.json()) as {
+      tokens: { accessToken: string };
+    };
+
+    const ownerHeaders = {
+      Authorization: `Bearer ${ownerAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+    const devHeaders = {
+      Authorization: `Bearer ${devAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+    const outsiderHeaders = {
+      Authorization: `Bearer ${outsiderAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const wsRes = await app.request("/api/v1/workspaces", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ slug: "swarm-team", name: "Swarm Team" }),
+    });
+    const { workspace } = (await wsRes.json()) as { workspace: { id: string } };
+
+    await app.request(`/api/v1/workspaces/${workspace.id}/members/${devAuth.user.id}`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({ roles: ["dev"] }),
+    });
+
+    const projRes = await app.request(`/api/v1/workspaces/${workspace.id}/projects`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ key: "SWM", name: "Swarm Core", preset: "full-delivery" }),
+    });
+    const { project } = (await projRes.json()) as { project: { id: string } };
+
+    // Non-members cannot read or post to the board
+    const forbiddenGet = await app.request(`/api/v1/cockpit/board?workspaceId=${workspace.id}`, {
+      headers: outsiderHeaders,
+    });
+    expect(forbiddenGet.status).toBe(403);
+    const forbiddenPost = await app.request("/api/v1/cockpit/board", {
+      method: "POST",
+      headers: outsiderHeaders,
+      body: JSON.stringify({ workspaceId: workspace.id, body: "sneaky" }),
+    });
+    expect(forbiddenPost.status).toBe(403);
+
+    // 1. Direct board message (no mentions -> kind "message", seq 1)
+    const post1Res = await app.request("/api/v1/cockpit/board", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        workspaceId: workspace.id,
+        projectId: project.id,
+        body: "Kickoff: tracking SWM sprint on this board.",
+      }),
+    });
+    expect(post1Res.status).toBe(201);
+    const { message: msg1 } = (await post1Res.json()) as { message: TeamBoardMessage };
+    expect(msg1.seq).toBe(1);
+    expect(msg1.kind).toBe("message");
+    expect(msg1.authorHandle).toBe("boss");
+    expect(msg1.mentions).toEqual([]);
+
+    // 2. Mention-bearing post auto-infers kind "handoff", deduplicates mentions, increments seq to 2
+    const post2Res = await app.request("/api/v1/cockpit/board", {
+      method: "POST",
+      headers: devHeaders,
+      body: JSON.stringify({
+        workspaceId: workspace.id,
+        projectId: project.id,
+        body: "@Boss ready to verify with (@dotsbot[bot]) and @boss.",
+        mentions: ["qa-lead"],
+      }),
+    });
+    expect(post2Res.status).toBe(201);
+    const { message: msg2 } = (await post2Res.json()) as { message: TeamBoardMessage };
+    expect(msg2.seq).toBe(2);
+    expect(msg2.kind).toBe("handoff");
+    expect(msg2.authorHandle).toBe("alice");
+    expect(msg2.mentions).toEqual(["boss", "dotsbot[bot]", "qa-lead"]);
+
+    // 3. Auto-bridged pulse, gate approval, release creation, and release status update
+    const wiRes = await app.request(`/api/v1/projects/${project.id}/work-items`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ title: "Wire board feed" }),
+    });
+    const { workItem } = (await wiRes.json()) as { workItem: { id: string; code: string } };
+
+    const pulseRes = await app.request(`/api/v1/work-items/${workItem.id}/pulses`, {
+      method: "POST",
+      headers: devHeaders,
+      body: JSON.stringify({
+        doneSummary: "Implemented board routes and mention parser",
+        nextStep: "@boss please sign off spec_freeze",
+      }),
+    });
+    expect(pulseRes.status).toBe(201);
+
+    const gateRes = await app.request("/api/v1/gates/approve", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        targetType: "work_item",
+        targetId: workItem.id,
+        gateKey: "spec_freeze",
+        status: "approved",
+        note: "Looks clean",
+      }),
+    });
+    expect(gateRes.status).toBe(201);
+
+    const relCreateRes = await app.request(`/api/v1/projects/${project.id}/releases`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        versionLabel: "v1.2.0",
+        workItemIds: [workItem.id],
+      }),
+    });
+    expect(relCreateRes.status).toBe(201);
+    const { release: createdRel } = (await relCreateRes.json()) as {
+      release: { release: { id: string } };
+    };
+
+    const relPatchRes = await app.request(`/api/v1/releases/${createdRel.release.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({ status: "staging" }),
+    });
+    expect(relPatchRes.status).toBe(200);
+
+    // Fetch entire board chronologically (seq 1..6)
+    const listAllRes = await app.request(
+      `/api/v1/cockpit/board?workspaceId=${workspace.id}&projectId=${project.id}`,
+      { headers: ownerHeaders },
+    );
+    expect(listAllRes.status).toBe(200);
+    const allBoard = (await listAllRes.json()) as {
+      messages: TeamBoardMessage[];
+      head: number;
+    };
+    expect(allBoard.head).toBe(6);
+    expect(allBoard.messages.map((m) => m.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(allBoard.messages.map((m) => m.kind)).toEqual([
+      "message",
+      "handoff",
+      "pulse",
+      "review",
+      "release",
+      "release",
+    ]);
+    expect(allBoard.messages[2]?.workItemId).toBe(workItem.id);
+    expect(allBoard.messages[2]?.workItemCode).toBe("SWM-1");
+    expect(allBoard.messages[2]?.mentions).toEqual(["boss"]);
+    expect(allBoard.messages[3]?.workItemId).toBe(workItem.id);
+    expect(allBoard.messages[3]?.workItemCode).toBe("SWM-1");
+    expect(allBoard.messages[3]?.body).toContain("Approved gate");
+    expect(allBoard.messages[4]?.body).toContain("v1.2.0");
+    expect(allBoard.messages[5]?.body).toContain("planning -> staging");
+
+    // Verify `since` cursor and `limit` windowing
+    const sinceRes = await app.request(
+      `/api/v1/cockpit/board?workspaceId=${workspace.id}&since=4&limit=10`,
+      { headers: ownerHeaders },
+    );
+    expect(sinceRes.status).toBe(200);
+    const sinceBoard = (await sinceRes.json()) as {
+      messages: TeamBoardMessage[];
+      head: number;
+    };
+    expect(sinceBoard.head).toBe(6);
+    expect(sinceBoard.messages.map((m) => m.seq)).toEqual([5, 6]);
+
+    const latestTwoRes = await app.request(
+      `/api/v1/cockpit/board?workspaceId=${workspace.id}&limit=2`,
+      { headers: ownerHeaders },
+    );
+    expect(latestTwoRes.status).toBe(200);
+    const latestTwo = (await latestTwoRes.json()) as {
+      messages: TeamBoardMessage[];
+      head: number;
+    };
+    expect(latestTwo.head).toBe(6);
+    expect(latestTwo.messages.map((m) => m.seq)).toEqual([5, 6]);
+
+    // Verify WebSocket broker emitted board.message_created for all 6 messages
+    expect(boardEvents.map((e) => e.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(boardEvents[1]?.mentions).toEqual(["boss", "dotsbot[bot]", "qa-lead"]);
   });
 });

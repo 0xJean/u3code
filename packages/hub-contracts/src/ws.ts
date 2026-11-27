@@ -50,5 +50,14 @@ export const HubWsEvent = Schema.Union([
     versionLabel: Schema.String,
     status: Schema.Literals(["planning", "staging", "ready", "released", "rolled_back"]),
   }),
+  Schema.Struct({
+    type: Schema.Literal("board.message_created"),
+    workspaceId: Schema.String,
+    projectId: Schema.NullOr(Schema.String),
+    messageId: Schema.String,
+    seq: Schema.Int,
+    authorHandle: Schema.String,
+    mentions: Schema.Array(Schema.String),
+  }),
 ]);
 export type HubWsEvent = typeof HubWsEvent.Type;

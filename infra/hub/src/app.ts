@@ -6,6 +6,7 @@ import type { HubDatabase } from "./db/client.ts";
 import { NotificationDispatcher } from "./notifiers/index.ts";
 import { BUILTIN_HUB_PLUGINS, HubPluginRegistry, type HubPlugin } from "./plugins/index.ts";
 import { createAuthRoutes } from "./routes/auth.ts";
+import { createBoardRoutes } from "./routes/board.ts";
 import { createCockpitRoutes } from "./routes/cockpit.ts";
 import { createReleaseRoutes } from "./routes/releases.ts";
 import { createWorkItemRoutes } from "./routes/workItems.ts";
@@ -118,6 +119,10 @@ export function createHubApp(options: CreateHubAppOptions): {
   app.route(
     "/api/v1/cockpit",
     createCockpitRoutes({ db: options.db, config: options.config, broker, notifier }),
+  );
+  app.route(
+    "/api/v1/cockpit",
+    createBoardRoutes({ db: options.db, config: options.config, broker }),
   );
   pluginRegistry.mountRoutes(app);
 

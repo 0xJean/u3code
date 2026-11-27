@@ -214,6 +214,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.teamHubListPlugins]: "team-hub",
   [WS_METHODS.teamHubSyncProjectRepo]: "team-hub",
   [WS_METHODS.teamHubTestNotificationChannel]: "team-hub",
+  [WS_METHODS.teamHubListBoardMessages]: "team-hub",
+  [WS_METHODS.teamHubPostBoardMessage]: "team-hub",
   [WS_METHODS.sourceControlLookupRepository]: "source-control",
   [WS_METHODS.sourceControlCloneRepository]: "source-control",
   [WS_METHODS.sourceControlPublishRepository]: "source-control",

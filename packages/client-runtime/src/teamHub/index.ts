@@ -155,5 +155,13 @@ export function createTeamHubEnvironmentAtoms<R, E>(
       label: "environment-data:team-hub:test-notification-channel",
       tag: WS_METHODS.teamHubTestNotificationChannel,
     }),
+    listBoardMessages: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:list-board-messages",
+      tag: WS_METHODS.teamHubListBoardMessages,
+    }),
+    postBoardMessage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:post-board-message",
+      tag: WS_METHODS.teamHubPostBoardMessage,
+    }),
   };
 }

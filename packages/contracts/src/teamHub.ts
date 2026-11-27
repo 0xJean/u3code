@@ -26,6 +26,10 @@ import {
   ReleaseCard,
   ReleaseStatus,
   RepoPolicy,
+  TeamBoardAuthorType,
+  TeamBoardListResponse,
+  TeamBoardMessage,
+  TeamBoardMessageKind,
   WorkHealth,
   WorkItem,
   WorkItemDetail,
@@ -407,4 +411,44 @@ export const TeamHubTestNotificationChannelResult = Schema.Struct({
 });
 export type TeamHubTestNotificationChannelResult = typeof TeamHubTestNotificationChannelResult.Type;
 
-export { CockpitOverview, HubWsEvent, PulseDraft, WorkItemDetail };
+export const TeamHubListBoardMessagesInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  projectId: Schema.optional(Schema.NullOr(Schema.String)),
+  since: Schema.optional(Schema.Int),
+  limit: Schema.optional(Schema.Int),
+});
+export type TeamHubListBoardMessagesInput = typeof TeamHubListBoardMessagesInput.Type;
+
+export const TeamHubListBoardMessagesResult = TeamBoardListResponse;
+export type TeamHubListBoardMessagesResult = typeof TeamHubListBoardMessagesResult.Type;
+
+export const TeamHubPostBoardMessageInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  projectId: Schema.optional(Schema.NullOr(Schema.String)),
+  kind: Schema.optional(TeamBoardMessageKind),
+  authorType: Schema.optional(TeamBoardAuthorType),
+  authorHandle: Schema.optional(TrimmedNonEmptyString),
+  authorDisplayName: Schema.optional(TrimmedNonEmptyString),
+  body: TrimmedNonEmptyString,
+  mentions: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  workItemId: Schema.optional(Schema.NullOr(Schema.String)),
+  workItemCode: Schema.optional(Schema.NullOr(Schema.String)),
+  changeRequestId: Schema.optional(Schema.NullOr(Schema.String)),
+  changeRequestRef: Schema.optional(Schema.NullOr(Schema.String)),
+});
+export type TeamHubPostBoardMessageInput = typeof TeamHubPostBoardMessageInput.Type;
+
+export const TeamHubPostBoardMessageResult = Schema.Struct({
+  message: TeamBoardMessage,
+});
+export type TeamHubPostBoardMessageResult = typeof TeamHubPostBoardMessageResult.Type;
+
+export {
+  CockpitOverview,
+  HubWsEvent,
+  PulseDraft,
+  TeamBoardAuthorType,
+  TeamBoardMessage,
+  TeamBoardMessageKind,
+  WorkItemDetail,
+};

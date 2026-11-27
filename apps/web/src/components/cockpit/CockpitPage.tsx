@@ -13,14 +13,17 @@ import {
   type ChangeRequestAudit,
   type CockpitWorkItemCard,
   type ProjectDirective,
+  type ReleaseCard,
+  type TeamBoardMessage,
   type WorkItemPriority,
   type WorkItemType,
+  type WorkspaceMember,
 } from "@u3code/hub-contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
-import { T, useGT, Var } from "gt-react";
+import { T, useGT, useMessages, Var } from "gt-react";
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
-  BrainIcon,
   KanbanIcon,
   ListIcon,
   LogOutIcon,
@@ -75,8 +78,11 @@ import { cn } from "~/lib/utils";
 import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { CockpitBoardTab } from "./CockpitBoardTab";
 import { CockpitConnectCard } from "./CockpitConnectCard";
+import { CockpitMembersTab } from "./CockpitMembersTab";
 import { CockpitMemoryTab } from "./CockpitMemoryTab";
+import { CockpitOverviewTab } from "./CockpitOverviewTab";
 import {
   CockpitFieldLabel,
   CockpitInlineAlert,
@@ -86,16 +92,20 @@ import {
   CockpitStatusDot,
   CockpitSurface,
   CockpitSurfaceRow,
+  CockpitUnderlineTab,
+  CockpitUnderlineTabs,
   type CockpitTone,
 } from "./CockpitPrimitives";
 import { CockpitPullRequestPane } from "./CockpitPullRequestPane";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
 import { CockpitSettingsTab } from "./CockpitSettingsTab";
+import { deriveTeamRoster } from "./CockpitSwarmAvatar";
 import { CockpitTriageTab } from "./CockpitTriageTab";
 import { WorkItemDetailDialog } from "./WorkItemDetailDialog";
 import { formatCockpitCommandError } from "./cockpitError";
 
-type CockpitTab = "board" | "triage" | "releases" | "memory" | "setup";
+type CockpitTab = "overview" | "board" | "members" | "delivery" | "memory" | "setup";
+type DeliverySubTab = "kanban" | "triage" | "releases";
 type BoardViewMode = "board" | "list";
 type BoardFilter = "all" | "blocked" | "has_pr";
 type TriageFilter = "all" | "blocked" | "human" | "unlinked";
@@ -150,8 +160,10 @@ function matchesBoardFilter(card: CockpitWorkItemCard, filter: BoardFilter): boo
 
 export function CockpitPage() {
   const gt = useGT();
+  const resolveMessage = useMessages();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
-  const [activeTab, setActiveTab] = useState<CockpitTab>("board");
+  const [activeTab, setActiveTab] = useState<CockpitTab>("overview");
+  const [deliverySubTab, setDeliverySubTab] = useState<DeliverySubTab>("kanban");
   const [boardView, setBoardView] = useState<BoardViewMode>("board");
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
@@ -166,6 +178,9 @@ export function CockpitPage() {
   const [reviewQueue, setReviewQueue] = useState<TeamHubReviewQueueResult | null>(null);
   const [digests, setDigests] = useState<TeamHubDigestsResult | null>(null);
   const [memory, setMemory] = useState<TeamHubMemoryResult["memory"]>(null);
+  const [members, setMembers] = useState<ReadonlyArray<WorkspaceMember>>([]);
+  const [boardMessages, setBoardMessages] = useState<ReadonlyArray<TeamBoardMessage>>([]);
+  const [releases, setReleases] = useState<ReadonlyArray<ReleaseCard>>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -177,6 +192,9 @@ export function CockpitPage() {
 
   const [generatingDigest, setGeneratingDigest] = useState(false);
   const [savingDirectives, setSavingDirectives] = useState(false);
+  const [postingBoardMessage, setPostingBoardMessage] = useState(false);
+  const [pendingMentionHandle, setPendingMentionHandle] = useState<string | null>(null);
+  const [pendingFilterHandle, setPendingFilterHandle] = useState<string | null>(null);
   const [liveRefreshCount, setLiveRefreshCount] = useState(0);
   const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
   const [selectedChangeRequestId, setSelectedChangeRequestId] = useState<string | null>(null);
@@ -196,6 +214,14 @@ export function CockpitPage() {
     reportFailure: false,
   });
   const fetchMemory = useAtomCommand(teamHubEnvironment.getMemory, { reportFailure: false });
+  const fetchMembers = useAtomCommand(teamHubEnvironment.listMembers, { reportFailure: false });
+  const fetchBoardMessages = useAtomCommand(teamHubEnvironment.listBoardMessages, {
+    reportFailure: false,
+  });
+  const postBoardMessage = useAtomCommand(teamHubEnvironment.postBoardMessage, {
+    reportFailure: false,
+  });
+  const fetchReleases = useAtomCommand(teamHubEnvironment.listReleases, { reportFailure: false });
   const updateDirectives = useAtomCommand(teamHubEnvironment.updateDirectives, {
     reportFailure: false,
   });
@@ -215,13 +241,14 @@ export function CockpitPage() {
     setLoadingData(true);
     setErrorMessage(null);
 
-    const [overviewRes, queueRes, digestsRes] = await Promise.all([
+    const [overviewRes, queueRes, digestsRes, membersRes] = await Promise.all([
       fetchOverview({
         environmentId: envId,
         input: { workspaceId, projectId: projectId || null },
       }),
       fetchReviewQueue({ environmentId: envId, input: { workspaceId } }),
       fetchDigests({ environmentId: envId, input: { workspaceId } }),
+      fetchMembers({ environmentId: envId, input: { workspaceId } }),
     ]);
 
     if (overviewRes._tag === "Success") {
@@ -231,21 +258,62 @@ export function CockpitPage() {
       if (resolvedProjectId && resolvedProjectId !== projectId) {
         setSelectedProjectId(resolvedProjectId);
       }
-      if (resolvedProjectId) {
-        const memRes = await fetchMemory({
+
+      const [boardRes, memRes, releasesRes] = await Promise.all([
+        fetchBoardMessages({
           environmentId: envId,
-          input: { projectId: resolvedProjectId },
-        });
+          input: {
+            workspaceId,
+            ...(resolvedProjectId ? { projectId: resolvedProjectId } : {}),
+            limit: 200,
+          },
+        }),
+        resolvedProjectId
+          ? fetchMemory({
+              environmentId: envId,
+              input: { projectId: resolvedProjectId },
+            })
+          : Promise.resolve(null),
+        resolvedProjectId
+          ? fetchReleases({
+              environmentId: envId,
+              input: { projectId: resolvedProjectId },
+            })
+          : Promise.resolve(null),
+      ]);
+
+      if (boardRes._tag === "Success") {
+        setBoardMessages(boardRes.value.messages);
+      }
+      if (memRes) {
         if (memRes._tag === "Success") {
           setMemory(memRes.value.memory);
         }
       } else {
         setMemory(null);
       }
+      if (releasesRes) {
+        if (releasesRes._tag === "Success") {
+          setReleases(releasesRes.value.releases);
+        }
+      } else {
+        setReleases([]);
+      }
     } else {
       setErrorMessage(
         formatCockpitCommandError(overviewRes, gt("Failed to load cockpit overview.")),
       );
+      const boardRes = await fetchBoardMessages({
+        environmentId: envId,
+        input: {
+          workspaceId,
+          ...(projectId ? { projectId } : {}),
+          limit: 200,
+        },
+      });
+      if (boardRes._tag === "Success") {
+        setBoardMessages(boardRes.value.messages);
+      }
     }
 
     if (queueRes._tag === "Success") {
@@ -253,6 +321,9 @@ export function CockpitPage() {
     }
     if (digestsRes._tag === "Success") {
       setDigests(digestsRes.value);
+    }
+    if (membersRes._tag === "Success") {
+      setMembers(membersRes.value.members);
     }
     setLoadingData(false);
   };
@@ -328,9 +399,14 @@ export function CockpitPage() {
     const firstWorkspaceId = nextStatus.me?.workspaces[0]?.id ?? "";
     setSelectedWorkspaceId(firstWorkspaceId);
     setSelectedProjectId("");
+    setPendingMentionHandle(null);
+    setPendingFilterHandle(null);
     handleCloseChangeRequest();
     if (primaryEnvironmentId && nextStatus.connected && firstWorkspaceId) {
+      setActiveTab("overview");
       void loadCockpitData(primaryEnvironmentId, firstWorkspaceId, "");
+    } else if (nextStatus.connected && !firstWorkspaceId) {
+      setActiveTab("setup");
     }
   };
 
@@ -342,6 +418,11 @@ export function CockpitPage() {
     setReviewQueue(null);
     setDigests(null);
     setMemory(null);
+    setMembers([]);
+    setBoardMessages([]);
+    setReleases([]);
+    setPendingMentionHandle(null);
+    setPendingFilterHandle(null);
     handleCloseChangeRequest();
   };
 
@@ -500,6 +581,67 @@ export function CockpitPage() {
     void handleSaveDirectives(next);
   };
 
+  const handlePostBoardMessage = async (input: {
+    readonly body: string;
+    readonly workItemId?: string | null;
+    readonly workItemCode?: string | null;
+  }): Promise<boolean> => {
+    const trimmed = input.body.trim();
+    if (!primaryEnvironmentId || !selectedWorkspaceId || !trimmed) return false;
+    setPostingBoardMessage(true);
+    const res = await postBoardMessage({
+      environmentId: primaryEnvironmentId,
+      input: {
+        workspaceId: selectedWorkspaceId,
+        projectId: selectedProjectId || null,
+        body: trimmed,
+        ...(input.workItemId !== undefined ? { workItemId: input.workItemId } : {}),
+        ...(input.workItemCode !== undefined ? { workItemCode: input.workItemCode } : {}),
+      },
+    });
+    setPostingBoardMessage(false);
+    if (res._tag === "Success") {
+      const created = res.value.message;
+      setBoardMessages((prev) =>
+        prev.some((msg) => msg.id === created.id) ? prev : [...prev, created],
+      );
+      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+      return true;
+    }
+    toastManager.add({
+      title: formatCockpitCommandError(res, gt("Failed to post board message.")),
+      type: "error",
+    });
+    return false;
+  };
+
+  const handleNavigateBoard = (opts?: {
+    readonly mentionHandle?: string;
+    readonly filterHandle?: string;
+  }) => {
+    setPendingMentionHandle(opts?.mentionHandle ?? null);
+    setPendingFilterHandle(opts?.filterHandle ?? null);
+    setActiveTab("board");
+  };
+
+  const handleMentionMember = (handle: string) => {
+    handleNavigateBoard({ mentionHandle: handle });
+  };
+
+  const handleFilterBoardByMember = (handle: string) => {
+    handleNavigateBoard({ filterHandle: handle });
+  };
+
+  const handleConsumeInitialDraft = () => {
+    setPendingMentionHandle(null);
+    setPendingFilterHandle(null);
+  };
+
+  const handleNavigateDelivery = (subView: DeliverySubTab) => {
+    setDeliverySubTab(subView);
+    setActiveTab("delivery");
+  };
+
   const activeProject = overview?.project ?? null;
   const stages = activeProject?.workflowConfig.stages ?? [];
   const gates = activeProject?.workflowConfig.gates ?? [];
@@ -507,6 +649,18 @@ export function CockpitPage() {
   const filteredCards = allCards.filter((card) => matchesBoardFilter(card, boardFilter));
   const blockedCardCount = allCards.filter((card) => matchesBoardFilter(card, "blocked")).length;
   const hasPrCardCount = allCards.filter((card) => matchesBoardFilter(card, "has_pr")).length;
+  const reviewItems = reviewQueue?.items ?? [];
+  const roster = deriveTeamRoster({
+    members,
+    cards: allCards,
+    reviewItems,
+    boardMessages,
+    currentUserId: status?.me?.user.id ?? null,
+    resolve: resolveMessage,
+  });
+  const deliveryOpenCount = overview
+    ? overview.metrics.activeWorkItems + overview.metrics.orphanChangeRequests
+    : reviewItems.length;
 
   const selectedWorkspace =
     status?.me?.workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? null;
@@ -515,7 +669,7 @@ export function CockpitPage() {
 
   const selectedChangeRequest: ChangeRequestAudit | null = (() => {
     if (!selectedChangeRequestId) return null;
-    const fromQueue = reviewQueue?.items.find((cr) => cr.id === selectedChangeRequestId);
+    const fromQueue = reviewItems.find((cr) => cr.id === selectedChangeRequestId);
     if (fromQueue) return fromQueue;
     for (const card of allCards) {
       const fromCard = card.changeRequests.find((cr) => cr.id === selectedChangeRequestId);
@@ -535,6 +689,8 @@ export function CockpitPage() {
   const isPullRequestPaneOpen = Boolean(
     isConnected && primaryEnvironmentId && selectedChangeRequest,
   );
+  const isKanbanColumnsView =
+    activeTab === "delivery" && deliverySubTab === "kanban" && boardView === "board";
   const hasActiveBlockers = Boolean(
     overview &&
     (overview.metrics.blockedWorkItems > 0 || overview.metrics.botBlockedChangeRequests > 0),
@@ -562,80 +718,82 @@ export function CockpitPage() {
               </h1>
             </WorkspaceBreadcrumbItem>
           </WorkspaceBreadcrumb>
+
           {isConnected && status?.me ? (
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-2xs font-medium text-muted-foreground">
-              <CockpitStatusDot ring tone="success" />
-              <T>Live</T>
-            </span>
+            <div className="flex min-w-0 items-center gap-2 [-webkit-app-region:no-drag]">
+              {status.me.workspaces.length > 0 ? (
+                <div className="max-w-44">
+                  <Select
+                    value={selectedWorkspaceId}
+                    onValueChange={(nextWs) => {
+                      if (!nextWs) return;
+                      setSelectedWorkspaceId(nextWs);
+                      setSelectedProjectId("");
+                      setMembers([]);
+                      setBoardMessages([]);
+                      setReleases([]);
+                      setPendingMentionHandle(null);
+                      setPendingFilterHandle(null);
+                      handleCloseChangeRequest();
+                      if (primaryEnvironmentId) {
+                        void loadCockpitData(primaryEnvironmentId, nextWs, "");
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={gt("Workspace")} size="compact">
+                      <SelectValue>{selectedWorkspace?.name ?? gt("Workspace")}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {status.me.workspaces.map((ws) => (
+                        <SelectItem key={ws.id} value={ws.id}>
+                          {ws.name}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+              ) : null}
+
+              {overview && overview.projects.length > 0 ? (
+                <div className="max-w-52">
+                  <Select
+                    value={selectedProjectId}
+                    onValueChange={(nextProj) => {
+                      if (!nextProj) return;
+                      setSelectedProjectId(nextProj);
+                      setReleases([]);
+                      if (primaryEnvironmentId) {
+                        void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, nextProj);
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={gt("Project")} size="compact">
+                      <SelectValue>
+                        {selectedProject
+                          ? `${selectedProject.key} · ${selectedProject.name}`
+                          : gt("Project")}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      {overview.projects.map((proj) => (
+                        <SelectItem key={proj.id} value={proj.id}>
+                          {proj.key} · {proj.name}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
         {isConnected && status?.me ? (
-          <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
-            {status.me.workspaces.length > 0 ? (
-              <div className="max-w-44">
-                <Select
-                  value={selectedWorkspaceId}
-                  onValueChange={(nextWs) => {
-                    if (!nextWs) return;
-                    setSelectedWorkspaceId(nextWs);
-                    setSelectedProjectId("");
-                    handleCloseChangeRequest();
-                    if (primaryEnvironmentId) {
-                      void loadCockpitData(primaryEnvironmentId, nextWs, "");
-                    }
-                  }}
-                >
-                  <SelectTrigger aria-label={gt("Workspace")} size="compact">
-                    <SelectValue>{selectedWorkspace?.name ?? gt("Workspace")}</SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {status.me.workspaces.map((ws) => (
-                      <SelectItem key={ws.id} value={ws.id}>
-                        {ws.name}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              </div>
-            ) : null}
-
-            {overview && overview.projects.length > 0 ? (
-              <div className="max-w-52">
-                <Select
-                  value={selectedProjectId}
-                  onValueChange={(nextProj) => {
-                    if (!nextProj) return;
-                    setSelectedProjectId(nextProj);
-                    if (primaryEnvironmentId) {
-                      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, nextProj);
-                    }
-                  }}
-                >
-                  <SelectTrigger aria-label={gt("Project")} size="compact">
-                    <SelectValue>
-                      {selectedProject
-                        ? `${selectedProject.key} · ${selectedProject.name}`
-                        : gt("Project")}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {overview.projects.map((proj) => (
-                      <SelectItem key={proj.id} value={proj.id}>
-                        {proj.key} · {proj.name}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              </div>
-            ) : null}
-
-            {activeTab === "board" && selectedProjectId ? (
-              <Button size="xs" variant="default" onClick={() => setCreateDialogOpen(true)}>
-                <PlusIcon />
-                <T>New Item</T>
-              </Button>
-            ) : null}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 [-webkit-app-region:no-drag]">
+            <span className="mr-1 inline-flex shrink-0 items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+              <CockpitStatusDot ring tone="success" />
+              <T>Live</T>
+            </span>
 
             <Button
               aria-label={gt("Refresh Cockpit")}
@@ -656,8 +814,21 @@ export function CockpitPage() {
             </Button>
 
             <Button
+              aria-label={gt("Workspace Setup")}
+              aria-pressed={activeTab === "setup"}
+              data-pressed={activeTab === "setup" ? "" : undefined}
+              size="icon-xs"
+              title={gt("Workspace Setup")}
+              variant="ghost-muted"
+              onClick={() => setActiveTab(activeTab === "setup" ? "overview" : "setup")}
+            >
+              <SlidersHorizontalIcon />
+            </Button>
+
+            <Button
               aria-label={gt("Disconnect Team Hub")}
               size="icon-xs"
+              title={gt("Disconnect Team Hub")}
               variant="ghost-muted"
               onClick={() => void handleDisconnect()}
             >
@@ -668,94 +839,79 @@ export function CockpitPage() {
       </WorkspacePageHeader>
 
       {isConnected ? (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-background px-5 py-2.5 sm:px-6">
-          <ToggleGroup
-            size="segmented"
-            value={[activeTab]}
-            variant="segmented"
-            onValueChange={(next) => {
-              const value = next[0];
-              if (
-                value === "board" ||
-                value === "triage" ||
-                value === "releases" ||
-                value === "memory" ||
-                value === "setup"
-              ) {
-                setActiveTab(value);
-              }
-            }}
-          >
-            <Toggle value="board">
-              <KanbanIcon />
-              <T>Board</T>
-              {overview && overview.metrics.activeWorkItems > 0 ? (
-                <span className="font-mono text-2xs tabular-nums opacity-70">
-                  {overview.metrics.activeWorkItems}
-                </span>
-              ) : null}
-            </Toggle>
-            <Toggle value="triage">
-              <PullRequestGlyph.pullRequest />
-              <T>Review Triage</T>
-              {reviewQueue && reviewQueue.items.length > 0 ? (
-                <span className="font-mono text-2xs tabular-nums opacity-70">
-                  {reviewQueue.items.length}
-                </span>
-              ) : null}
-            </Toggle>
-            <Toggle value="releases">
-              <PackageCheckIcon />
-              <T>Releases</T>
-            </Toggle>
-            <Toggle value="memory">
-              <BrainIcon />
-              <T>Memory & Digests</T>
-            </Toggle>
-            <Toggle value="setup">
-              <SlidersHorizontalIcon />
-              <T>Setup</T>
-            </Toggle>
-          </ToggleGroup>
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/50 bg-background px-5 sm:px-6">
+          <CockpitUnderlineTabs label={gt("Team Cockpit views")}>
+            <CockpitUnderlineTab
+              active={activeTab === "overview"}
+              onClick={() => setActiveTab("overview")}
+            >
+              <T context="team cockpit overview tab">Overview</T>
+            </CockpitUnderlineTab>
+            <CockpitUnderlineTab
+              active={activeTab === "board"}
+              count={boardMessages.length}
+              onClick={() => setActiveTab("board")}
+            >
+              <T context="team collaboration message board tab">Board</T>
+            </CockpitUnderlineTab>
+            <CockpitUnderlineTab
+              active={activeTab === "members"}
+              count={roster.length}
+              onClick={() => setActiveTab("members")}
+            >
+              <T>Members</T>
+            </CockpitUnderlineTab>
+            <CockpitUnderlineTab
+              active={activeTab === "delivery"}
+              count={deliveryOpenCount > 0 ? deliveryOpenCount : undefined}
+              onClick={() => setActiveTab("delivery")}
+            >
+              <T>Delivery</T>
+            </CockpitUnderlineTab>
+            <CockpitUnderlineTab
+              active={activeTab === "memory"}
+              onClick={() => setActiveTab("memory")}
+            >
+              <T context="team cockpit project memory tab">Memory</T>
+            </CockpitUnderlineTab>
+          </CockpitUnderlineTabs>
 
           {hasActiveBlockers && overview ? (
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 py-1.5">
               {overview.metrics.blockedWorkItems > 0 ? (
                 <CockpitStatPill
-                  active={activeTab === "board" && boardFilter === "blocked"}
+                  active={
+                    activeTab === "delivery" &&
+                    deliverySubTab === "kanban" &&
+                    boardFilter === "blocked"
+                  }
                   label={<T>Blocked</T>}
                   tone="error"
                   value={overview.metrics.blockedWorkItems}
                   onClick={() => {
-                    setActiveTab("board");
+                    setActiveTab("delivery");
+                    setDeliverySubTab("kanban");
                     setBoardFilter("blocked");
                   }}
                 />
               ) : null}
               {overview.metrics.botBlockedChangeRequests > 0 ? (
                 <CockpitStatPill
-                  active={activeTab === "triage" && triageFilter === "blocked"}
+                  active={
+                    activeTab === "delivery" &&
+                    deliverySubTab === "triage" &&
+                    triageFilter === "blocked"
+                  }
                   label={<T>Bot Blocked</T>}
                   tone="error"
                   value={overview.metrics.botBlockedChangeRequests}
                   onClick={() => {
-                    setActiveTab("triage");
+                    setActiveTab("delivery");
+                    setDeliverySubTab("triage");
                     setTriageFilter("blocked");
                   }}
                 />
               ) : null}
-            </div>
-          ) : activeTab === "board" && activeProject ? (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>{activeProject.workflowConfig.preset}</span>
-              <span aria-hidden className="opacity-40">
-                ·
-              </span>
-              <span className="tabular-nums">
-                <T>
-                  <Var>{overview?.repos.length ?? 0}</Var> repos
-                </T>
-              </span>
             </div>
           ) : null}
         </div>
@@ -798,104 +954,110 @@ export function CockpitPage() {
               className={
                 isPullRequestPaneOpen
                   ? "max-w-none px-5 py-5 sm:px-5"
-                  : cn(
-                      "py-6 pb-12",
-                      activeTab === "board" && boardView === "board" && "max-w-[1600px]",
-                    )
+                  : cn("py-6 pb-12", isKanbanColumnsView && "max-w-[1600px]")
               }
-              width={activeTab === "board" ? "expanded" : "readable"}
+              width={isKanbanColumnsView ? "expanded" : "readable"}
             >
               {errorMessage ? (
                 <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
               ) : null}
 
+              {activeTab === "overview" ? (
+                <CockpitOverviewTab
+                  boardMessages={boardMessages}
+                  overview={overview}
+                  releases={releases}
+                  reviewItems={reviewItems}
+                  roster={roster}
+                  onNavigateBoard={handleNavigateBoard}
+                  onNavigateDelivery={handleNavigateDelivery}
+                  onNavigateMembers={() => setActiveTab("members")}
+                  onOpenChangeRequest={handleOpenChangeRequest}
+                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                />
+              ) : null}
+
               {activeTab === "board" ? (
-                stages.length === 0 ? (
-                  <CockpitSurface variant="grouped">
-                    <Empty size="compact">
-                      <EmptyMedia variant="icon">
+                <CockpitBoardTab
+                  cards={allCards}
+                  initialFilterHandle={pendingFilterHandle}
+                  initialMentionHandle={pendingMentionHandle}
+                  messages={boardMessages}
+                  posting={postingBoardMessage}
+                  reviewItems={reviewItems}
+                  roster={roster}
+                  onConsumeInitialDraft={handleConsumeInitialDraft}
+                  onOpenChangeRequest={handleOpenChangeRequest}
+                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                  onPostMessage={handlePostBoardMessage}
+                />
+              ) : null}
+
+              {activeTab === "members" ? (
+                <CockpitMembersTab
+                  roster={roster}
+                  onFilterBoardByMember={handleFilterBoardByMember}
+                  onMentionMember={handleMentionMember}
+                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                />
+              ) : null}
+
+              {activeTab === "delivery" ? (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <ToggleGroup
+                      aria-label={gt("Delivery views")}
+                      size="segmented"
+                      value={[deliverySubTab]}
+                      variant="segmented"
+                      onValueChange={(next) => {
+                        const value = next[0];
+                        if (value === "kanban" || value === "triage" || value === "releases") {
+                          setDeliverySubTab(value);
+                        }
+                      }}
+                    >
+                      <Toggle value="kanban">
                         <KanbanIcon />
-                      </EmptyMedia>
-                      <EmptyHeader>
-                        <EmptyTitle>
-                          <T>No project configured yet</T>
-                        </EmptyTitle>
-                        <EmptyDescription>
+                        <T>Work Items</T>
+                        {allCards.length > 0 ? (
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {allCards.length}
+                          </span>
+                        ) : null}
+                      </Toggle>
+                      <Toggle value="triage">
+                        <PullRequestGlyph.pullRequest />
+                        <T>Review Triage</T>
+                        {reviewItems.length > 0 ? (
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {reviewItems.length}
+                          </span>
+                        ) : null}
+                      </Toggle>
+                      <Toggle value="releases">
+                        <PackageCheckIcon />
+                        <T>Releases</T>
+                      </Toggle>
+                    </ToggleGroup>
+
+                    {deliverySubTab === "kanban" && activeProject ? (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>{activeProject.workflowConfig.preset}</span>
+                        <span aria-hidden className="opacity-40">
+                          ·
+                        </span>
+                        <span className="tabular-nums">
                           <T>
-                            Create or select a project in Setup to track cross-repository work items
-                            and workflow gates.
+                            <Var>{overview?.repos.length ?? 0}</Var> repos
                           </T>
-                        </EmptyDescription>
-                      </EmptyHeader>
-                      <EmptyContent>
-                        <Button size="sm" variant="outline" onClick={() => setActiveTab("setup")}>
-                          <SlidersHorizontalIcon />
-                          <T>Open Setup</T>
-                        </Button>
-                      </EmptyContent>
-                    </Empty>
-                  </CockpitSurface>
-                ) : (
-                  <div className="space-y-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <ToggleGroup
-                        size="segmented"
-                        value={[boardFilter]}
-                        variant="segmented"
-                        onValueChange={(next) => {
-                          const value = next[0];
-                          if (value === "all" || value === "blocked" || value === "has_pr") {
-                            setBoardFilter(value);
-                          }
-                        }}
-                      >
-                        <Toggle value="all">
-                          <T>All</T>
-                          {allCards.length > 0 ? (
-                            <span className="font-mono text-2xs tabular-nums opacity-70">
-                              {allCards.length}
-                            </span>
-                          ) : null}
-                        </Toggle>
-                        <Toggle value="blocked">
-                          <T>Blocked</T>
-                          {blockedCardCount > 0 ? (
-                            <span className="font-mono text-2xs tabular-nums opacity-70">
-                              {blockedCardCount}
-                            </span>
-                          ) : null}
-                        </Toggle>
-                        <Toggle value="has_pr">
-                          <T>Has PR</T>
-                          {hasPrCardCount > 0 ? (
-                            <span className="font-mono text-2xs tabular-nums opacity-70">
-                              {hasPrCardCount}
-                            </span>
-                          ) : null}
-                        </Toggle>
-                      </ToggleGroup>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
 
-                      <ToggleGroup
-                        size="segmented"
-                        value={[boardView]}
-                        variant="segmented"
-                        onValueChange={(next) => {
-                          const value = next[0];
-                          if (value === "board" || value === "list") setBoardView(value);
-                        }}
-                      >
-                        <Toggle value="board">
-                          <KanbanIcon />
-                          <T>Board</T>
-                        </Toggle>
-                        <Toggle value="list">
-                          <ListIcon />
-                          <T>List</T>
-                        </Toggle>
-                      </ToggleGroup>
-                    </div>
-
-                    {filteredCards.length === 0 && boardFilter !== "all" ? (
+                  {deliverySubTab === "kanban" ? (
+                    stages.length === 0 ? (
                       <CockpitSurface variant="grouped">
                         <Empty size="compact">
                           <EmptyMedia variant="icon">
@@ -903,12 +1065,12 @@ export function CockpitPage() {
                           </EmptyMedia>
                           <EmptyHeader>
                             <EmptyTitle>
-                              <T>No matching work items</T>
+                              <T>No project configured yet</T>
                             </EmptyTitle>
                             <EmptyDescription>
                               <T>
-                                No work items match the active filter. Reset the filter to inspect
-                                all stages.
+                                Create or select a project in Setup to track cross-repository work
+                                items and workflow gates.
                               </T>
                             </EmptyDescription>
                           </EmptyHeader>
@@ -916,123 +1078,235 @@ export function CockpitPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setBoardFilter("all")}
+                              onClick={() => setActiveTab("setup")}
                             >
-                              <T>Show all items</T>
+                              <SlidersHorizontalIcon />
+                              <T>Open Setup</T>
                             </Button>
                           </EmptyContent>
                         </Empty>
                       </CockpitSurface>
-                    ) : boardView === "board" ? (
-                      <div className="flex items-start gap-4 overflow-x-auto pb-4">
-                        {stages.map((stage) => {
-                          const stageCards = filteredCards.filter(
-                            (card) => card.workItem.stage === stage.id,
-                          );
-                          return (
-                            <CockpitSurface
-                              key={stage.id}
-                              className="flex w-80 shrink-0 flex-col gap-3"
-                              padding="sm"
-                              variant="subtle"
-                            >
-                              <CockpitSectionHeader count={stageCards.length} title={stage.label} />
-
-                              <div className="flex flex-col gap-3">
-                                {stageCards.map((card) => (
-                                  <WorkItemCardView
-                                    key={card.workItem.id}
-                                    card={card}
-                                    gates={gates}
-                                    selectedChangeRequestId={selectedChangeRequestId}
-                                    stages={stages}
-                                    onApproveGate={(gateKey) =>
-                                      void handleApproveGate(card.workItem.id, gateKey)
-                                    }
-                                    onMoveStage={(nextStage) =>
-                                      void handleMoveStage(card.workItem.id, nextStage)
-                                    }
-                                    onOpenChangeRequest={handleOpenChangeRequest}
-                                    onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
-                                  />
-                                ))}
-                                {stageCards.length === 0 ? (
-                                  <p className="py-8 text-center text-xs text-muted-foreground/60">
-                                    <T>No items</T>
-                                  </p>
-                                ) : null}
-                              </div>
-                            </CockpitSurface>
-                          );
-                        })}
-                      </div>
                     ) : (
-                      <div className="space-y-6 pb-4">
-                        {stages.map((stage) => {
-                          const stageCards = filteredCards.filter(
-                            (card) => card.workItem.stage === stage.id,
-                          );
-                          if (stageCards.length === 0 && boardFilter !== "all") return null;
-                          return (
-                            <section key={stage.id} className="space-y-2">
-                              <CockpitSectionHeader count={stageCards.length} title={stage.label} />
-                              {stageCards.length === 0 ? (
-                                <CockpitSurface padding="sm" variant="subtle">
-                                  <p className="text-xs text-muted-foreground/75">
-                                    <T>No items in this stage</T>
-                                  </p>
+                      <div className="space-y-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <ToggleGroup
+                            size="segmented"
+                            value={[boardFilter]}
+                            variant="segmented"
+                            onValueChange={(next) => {
+                              const value = next[0];
+                              if (value === "all" || value === "blocked" || value === "has_pr") {
+                                setBoardFilter(value);
+                              }
+                            }}
+                          >
+                            <Toggle value="all">
+                              <T>All</T>
+                              {allCards.length > 0 ? (
+                                <span className="font-mono text-2xs tabular-nums opacity-70">
+                                  {allCards.length}
+                                </span>
+                              ) : null}
+                            </Toggle>
+                            <Toggle value="blocked">
+                              <T>Blocked</T>
+                              {blockedCardCount > 0 ? (
+                                <span className="font-mono text-2xs tabular-nums opacity-70">
+                                  {blockedCardCount}
+                                </span>
+                              ) : null}
+                            </Toggle>
+                            <Toggle value="has_pr">
+                              <T>Has PR</T>
+                              {hasPrCardCount > 0 ? (
+                                <span className="font-mono text-2xs tabular-nums opacity-70">
+                                  {hasPrCardCount}
+                                </span>
+                              ) : null}
+                            </Toggle>
+                          </ToggleGroup>
+
+                          <div className="flex items-center gap-2">
+                            <ToggleGroup
+                              size="segmented"
+                              value={[boardView]}
+                              variant="segmented"
+                              onValueChange={(next) => {
+                                const value = next[0];
+                                if (value === "board" || value === "list") setBoardView(value);
+                              }}
+                            >
+                              <Toggle value="board">
+                                <KanbanIcon />
+                                <T>Board</T>
+                              </Toggle>
+                              <Toggle value="list">
+                                <ListIcon />
+                                <T>List</T>
+                              </Toggle>
+                            </ToggleGroup>
+
+                            {selectedProjectId ? (
+                              <Button
+                                size="xs"
+                                variant="default"
+                                onClick={() => setCreateDialogOpen(true)}
+                              >
+                                <PlusIcon />
+                                <T>New Item</T>
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {filteredCards.length === 0 && boardFilter !== "all" ? (
+                          <CockpitSurface variant="grouped">
+                            <Empty size="compact">
+                              <EmptyMedia variant="icon">
+                                <KanbanIcon />
+                              </EmptyMedia>
+                              <EmptyHeader>
+                                <EmptyTitle>
+                                  <T>No matching work items</T>
+                                </EmptyTitle>
+                                <EmptyDescription>
+                                  <T>
+                                    No work items match the active filter. Reset the filter to
+                                    inspect all stages.
+                                  </T>
+                                </EmptyDescription>
+                              </EmptyHeader>
+                              <EmptyContent>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setBoardFilter("all")}
+                                >
+                                  <T>Show all items</T>
+                                </Button>
+                              </EmptyContent>
+                            </Empty>
+                          </CockpitSurface>
+                        ) : boardView === "board" ? (
+                          <div className="flex items-start gap-4 overflow-x-auto pb-4">
+                            {stages.map((stage) => {
+                              const stageCards = filteredCards.filter(
+                                (card) => card.workItem.stage === stage.id,
+                              );
+                              return (
+                                <CockpitSurface
+                                  key={stage.id}
+                                  className="flex w-80 shrink-0 flex-col gap-3"
+                                  padding="sm"
+                                  variant="subtle"
+                                >
+                                  <CockpitSectionHeader
+                                    count={stageCards.length}
+                                    title={stage.label}
+                                  />
+
+                                  <div className="flex flex-col gap-3">
+                                    {stageCards.map((card) => (
+                                      <WorkItemCardView
+                                        key={card.workItem.id}
+                                        card={card}
+                                        gates={gates}
+                                        selectedChangeRequestId={selectedChangeRequestId}
+                                        stages={stages}
+                                        onApproveGate={(gateKey) =>
+                                          void handleApproveGate(card.workItem.id, gateKey)
+                                        }
+                                        onMoveStage={(nextStage) =>
+                                          void handleMoveStage(card.workItem.id, nextStage)
+                                        }
+                                        onOpenChangeRequest={handleOpenChangeRequest}
+                                        onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
+                                      />
+                                    ))}
+                                    {stageCards.length === 0 ? (
+                                      <p className="py-8 text-center text-xs text-muted-foreground/60">
+                                        <T>No items</T>
+                                      </p>
+                                    ) : null}
+                                  </div>
                                 </CockpitSurface>
-                              ) : (
-                                <CockpitSurface divided variant="grouped">
-                                  {stageCards.map((card) => (
-                                    <WorkItemListRowView
-                                      key={card.workItem.id}
-                                      card={card}
-                                      gates={gates}
-                                      selectedChangeRequestId={selectedChangeRequestId}
-                                      stages={stages}
-                                      onApproveGate={(gateKey) =>
-                                        void handleApproveGate(card.workItem.id, gateKey)
-                                      }
-                                      onMoveStage={(nextStage) =>
-                                        void handleMoveStage(card.workItem.id, nextStage)
-                                      }
-                                      onOpenChangeRequest={handleOpenChangeRequest}
-                                      onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
-                                    />
-                                  ))}
-                                </CockpitSurface>
-                              )}
-                            </section>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="space-y-6 pb-4">
+                            {stages.map((stage) => {
+                              const stageCards = filteredCards.filter(
+                                (card) => card.workItem.stage === stage.id,
+                              );
+                              if (stageCards.length === 0 && boardFilter !== "all") return null;
+                              return (
+                                <section key={stage.id} className="space-y-2">
+                                  <CockpitSectionHeader
+                                    count={stageCards.length}
+                                    title={stage.label}
+                                  />
+                                  {stageCards.length === 0 ? (
+                                    <CockpitSurface padding="sm" variant="subtle">
+                                      <p className="text-xs text-muted-foreground/75">
+                                        <T>No items in this stage</T>
+                                      </p>
+                                    </CockpitSurface>
+                                  ) : (
+                                    <CockpitSurface divided variant="grouped">
+                                      {stageCards.map((card) => (
+                                        <WorkItemListRowView
+                                          key={card.workItem.id}
+                                          card={card}
+                                          gates={gates}
+                                          selectedChangeRequestId={selectedChangeRequestId}
+                                          stages={stages}
+                                          onApproveGate={(gateKey) =>
+                                            void handleApproveGate(card.workItem.id, gateKey)
+                                          }
+                                          onMoveStage={(nextStage) =>
+                                            void handleMoveStage(card.workItem.id, nextStage)
+                                          }
+                                          onOpenChangeRequest={handleOpenChangeRequest}
+                                          onOpenDetail={() =>
+                                            setSelectedWorkItemId(card.workItem.id)
+                                          }
+                                        />
+                                      ))}
+                                    </CockpitSurface>
+                                  )}
+                                </section>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )
-              ) : null}
+                    )
+                  ) : null}
 
-              {activeTab === "triage" ? (
-                <CockpitTriageTab
-                  cards={allCards}
-                  filter={triageFilter}
-                  reviewQueue={reviewQueue}
-                  selectedChangeRequestId={selectedChangeRequestId}
-                  onFilterChange={setTriageFilter}
-                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
-                  onSelectChangeRequest={handleOpenChangeRequest}
-                />
-              ) : null}
+                  {deliverySubTab === "triage" ? (
+                    <CockpitTriageTab
+                      cards={allCards}
+                      filter={triageFilter}
+                      reviewQueue={reviewQueue}
+                      selectedChangeRequestId={selectedChangeRequestId}
+                      onFilterChange={setTriageFilter}
+                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                      onSelectChangeRequest={handleOpenChangeRequest}
+                    />
+                  ) : null}
 
-              {activeTab === "releases" ? (
-                <CockpitReleasesTab
-                  cards={allCards}
-                  environmentId={primaryEnvironmentId}
-                  refreshSignal={liveRefreshCount}
-                  repos={overview?.repos ?? []}
-                  selectedProjectId={selectedProjectId}
-                  onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
-                />
+                  {deliverySubTab === "releases" ? (
+                    <CockpitReleasesTab
+                      cards={allCards}
+                      environmentId={primaryEnvironmentId}
+                      refreshSignal={liveRefreshCount}
+                      repos={overview?.repos ?? []}
+                      selectedProjectId={selectedProjectId}
+                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                    />
+                  ) : null}
+                </div>
               ) : null}
 
               {activeTab === "memory" ? (
@@ -1049,33 +1323,49 @@ export function CockpitPage() {
               ) : null}
 
               {activeTab === "setup" ? (
-                <CockpitSettingsTab
-                  environmentId={primaryEnvironmentId}
-                  overview={overview}
-                  selectedProjectId={selectedProjectId}
-                  selectedWorkspaceId={selectedWorkspaceId}
-                  status={status}
-                  onRefreshAll={(nextWsId, nextProjId) => {
-                    void fetchStatus({ environmentId: primaryEnvironmentId, input: {} }).then(
-                      (statusRes) => {
-                        if (statusRes._tag === "Success") {
-                          setStatus(statusRes.value);
-                          const wsId =
-                            nextWsId ??
-                            selectedWorkspaceId ??
-                            statusRes.value.me?.workspaces[0]?.id ??
-                            "";
-                          const projId = nextProjId ?? selectedProjectId;
-                          if (wsId) setSelectedWorkspaceId(wsId);
-                          if (nextProjId !== undefined) setSelectedProjectId(projId);
-                          if (wsId) {
-                            void loadCockpitData(primaryEnvironmentId, wsId, projId);
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <SlidersHorizontalIcon aria-hidden className="size-4 text-muted-foreground" />
+                      <T>Workspace Setup</T>
+                    </div>
+                    <Button
+                      size="xs"
+                      variant="ghost-muted"
+                      onClick={() => setActiveTab("overview")}
+                    >
+                      <ArrowLeftIcon />
+                      <T>Back to Overview</T>
+                    </Button>
+                  </div>
+                  <CockpitSettingsTab
+                    environmentId={primaryEnvironmentId}
+                    overview={overview}
+                    selectedProjectId={selectedProjectId}
+                    selectedWorkspaceId={selectedWorkspaceId}
+                    status={status}
+                    onRefreshAll={(nextWsId, nextProjId) => {
+                      void fetchStatus({ environmentId: primaryEnvironmentId, input: {} }).then(
+                        (statusRes) => {
+                          if (statusRes._tag === "Success") {
+                            setStatus(statusRes.value);
+                            const wsId =
+                              nextWsId ??
+                              selectedWorkspaceId ??
+                              statusRes.value.me?.workspaces[0]?.id ??
+                              "";
+                            const projId = nextProjId ?? selectedProjectId;
+                            if (wsId) setSelectedWorkspaceId(wsId);
+                            if (nextProjId !== undefined) setSelectedProjectId(projId);
+                            if (wsId) {
+                              void loadCockpitData(primaryEnvironmentId, wsId, projId);
+                            }
                           }
-                        }
-                      },
-                    );
-                  }}
-                />
+                        },
+                      );
+                    }}
+                  />
+                </div>
               ) : null}
             </WorkspacePageContainer>
           )}
