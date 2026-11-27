@@ -1,12 +1,12 @@
 import { serve } from "@hono/node-server";
 import { createHubApp } from "./app.ts";
 import { loadHubConfig } from "./config.ts";
-import { createPostgresHubDb } from "./db/client.ts";
+import { createHubDbFromUrl } from "./db/client.ts";
 import { DigestScheduler } from "./memory/scheduler.ts";
 import { loadExternalHubPlugins } from "./plugins/index.ts";
 
 const config = loadHubConfig();
-const dbHandle = createPostgresHubDb(config.databaseUrl);
+const dbHandle = await createHubDbFromUrl(config.databaseUrl);
 await dbHandle.runMigrations();
 
 const externalPlugins = await loadExternalHubPlugins(config.pluginModules);

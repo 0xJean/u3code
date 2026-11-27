@@ -35,3 +35,29 @@ export function createPostgresHubDb(databaseUrl: string): HubDbHandle {
     },
   };
 }
+
+export async function createHubDbFromUrl(databaseUrl: string): Promise<HubDbHandle> {
+  if (databaseUrl.startsWith("pglite://")) {
+    const rawTarget = databaseUrl.slice("pglite://".length).trim();
+    const dataDir = !rawTarget || rawTarget === "memory" ? undefined : NodePath.resolve(rawTarget);
+    if (dataDir) {
+      NodeFS.mkdirSync(dataDir, { recursive: true });
+    }
+    const [{ PGlite }, { drizzle: drizzlePglite }] = await Promise.all([
+      import("@electric-sql/pglite"),
+      import("drizzle-orm/pglite"),
+    ]);
+    const pglite = dataDir ? new PGlite(dataDir) : new PGlite();
+    const db = drizzlePglite({ client: pglite }) as unknown as HubDatabase;
+    return {
+      db,
+      runMigrations: async () => {
+        await pglite.exec(readInitMigrationSql());
+      },
+      close: async () => {
+        await pglite.close();
+      },
+    };
+  }
+  return createPostgresHubDb(databaseUrl);
+}

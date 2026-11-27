@@ -4,7 +4,15 @@
 
 ## 1. Quick Trial (Local / LAN — No Domain Required)
 
-You do **not** need a domain name to try `u3code-hub` locally or over LAN / Tailscale. Outbound Lark/Slack notifications and on-demand GitHub Open PR sync work without exposing a public port.
+You do **not** need a domain name (or even Docker/PostgreSQL!) to try `u3code-hub` locally.
+
+### Option 1A: Zero-Docker Local Mode (1 second, embedded PGlite)
+
+```sh
+DATABASE_URL=pglite://.u3code-hub-data HUB_ALLOW_LOCAL_DEV_AUTH=true node infra/hub/src/index.ts
+```
+
+### Option 1B: Docker Compose (PostgreSQL 16 + Hub)
 
 ```sh
 cd infra/hub
