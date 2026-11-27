@@ -133,6 +133,10 @@ import {
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
   TeamHubSubscribeEventsInput,
+  TeamHubSyncProjectRepoInput,
+  TeamHubSyncProjectRepoResult,
+  TeamHubTestNotificationChannelInput,
+  TeamHubTestNotificationChannelResult,
   TeamHubToggleNotificationChannelInput,
   TeamHubUpdateDirectivesInput,
   TeamHubUpdateMemberRolesInput,
@@ -815,6 +819,8 @@ export const WS_METHODS = {
   teamHubGetWorkItemDetail: "teamHub.getWorkItemDetail",
   teamHubLinkChangeRequest: "teamHub.linkChangeRequest",
   teamHubListPlugins: "teamHub.listPlugins",
+  teamHubSyncProjectRepo: "teamHub.syncProjectRepo",
+  teamHubTestNotificationChannel: "teamHub.testNotificationChannel",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1846,6 +1852,18 @@ const WsTeamHubLinkChangeRequestRpc = Rpc.make(WS_METHODS.teamHubLinkChangeReque
 const WsTeamHubListPluginsRpc = Rpc.make(WS_METHODS.teamHubListPlugins, {
   payload: Schema.Struct({}),
   success: TeamHubListPluginsResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubSyncProjectRepoRpc = Rpc.make(WS_METHODS.teamHubSyncProjectRepo, {
+  payload: TeamHubSyncProjectRepoInput,
+  success: TeamHubSyncProjectRepoResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubTestNotificationChannelRpc = Rpc.make(WS_METHODS.teamHubTestNotificationChannel, {
+  payload: TeamHubTestNotificationChannelInput,
+  success: TeamHubTestNotificationChannelResult,
   error: TeamHubRpcError,
 });
 
@@ -2982,6 +3000,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubGetWorkItemDetailRpc,
   WsTeamHubLinkChangeRequestRpc,
   WsTeamHubListPluginsRpc,
+  WsTeamHubSyncProjectRepoRpc,
+  WsTeamHubTestNotificationChannelRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

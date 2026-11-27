@@ -379,4 +379,32 @@ export type TeamHubLinkChangeRequestResult = typeof TeamHubLinkChangeRequestResu
 export const TeamHubListPluginsResult = HubPluginsListResponse;
 export type TeamHubListPluginsResult = typeof TeamHubListPluginsResult.Type;
 
+export const TeamHubSyncProjectRepoInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  repoId: TrimmedNonEmptyString,
+});
+export type TeamHubSyncProjectRepoInput = typeof TeamHubSyncProjectRepoInput.Type;
+
+export const TeamHubSyncProjectRepoResult = Schema.Struct({
+  repoFullName: Schema.String,
+  syncedCount: Schema.Int,
+  openCount: Schema.Int,
+  linkedCount: Schema.Int,
+});
+export type TeamHubSyncProjectRepoResult = typeof TeamHubSyncProjectRepoResult.Type;
+
+export const TeamHubTestNotificationChannelInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  channelId: TrimmedNonEmptyString,
+});
+export type TeamHubTestNotificationChannelInput = typeof TeamHubTestNotificationChannelInput.Type;
+
+export const TeamHubTestNotificationChannelResult = Schema.Struct({
+  ok: Schema.Boolean,
+  driver: NotifierDriverKind,
+  channelName: Schema.String,
+  mentioned: Schema.Boolean,
+});
+export type TeamHubTestNotificationChannelResult = typeof TeamHubTestNotificationChannelResult.Type;
+
 export { CockpitOverview, HubWsEvent, PulseDraft, WorkItemDetail };

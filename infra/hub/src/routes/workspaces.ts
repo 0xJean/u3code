@@ -25,14 +25,19 @@ import {
   workspaceMemberships,
   workspaces,
 } from "../db/schema.ts";
-import type { NotifierChannelSecretConfig } from "../notifiers/index.ts";
+import type { NotificationDispatcher, NotifierChannelSecretConfig } from "../notifiers/index.ts";
 import type { HubPluginRegistry } from "../plugins/index.ts";
 import { encryptSecretJson, newId } from "../utils/crypto.ts";
+import { syncGitHubOpenPullRequests } from "../webhooks/syncGithub.ts";
+import type { HubSocketBroker } from "../ws/hubSocket.ts";
 
 export function createWorkspaceRoutes(deps: {
   readonly db: HubDatabase;
   readonly config: HubConfig;
+  readonly broker: HubSocketBroker;
+  readonly notifier: NotificationDispatcher;
   readonly pluginRegistry?: HubPluginRegistry;
+  readonly fetchImpl?: typeof fetch;
 }): Hono<{ Variables: HubAuthVariables }> {
   const app = new Hono<{ Variables: HubAuthVariables }>();
   app.use("*", createAuthMiddleware(deps.db, deps.config));
@@ -316,6 +321,40 @@ export function createWorkspaceRoutes(deps: {
     return c.json({ ok: true });
   });
 
+  app.post("/projects/:projectId/repos/:repoId/sync", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const repoId = c.req.param("repoId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    try {
+      const result = await syncGitHubOpenPullRequests(
+        {
+          db: deps.db,
+          config: deps.config,
+          broker: deps.broker,
+          ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+        },
+        { projectId, repoId },
+      );
+      return c.json(result);
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "Failed to sync repository PRs." },
+        502,
+      );
+    }
+  });
+
   app.post("/workspaces/:workspaceId/notification-channels", async (c) => {
     const user = getAuthUser(c);
     const workspaceId = c.req.param("workspaceId");
@@ -446,6 +485,33 @@ export function createWorkspaceRoutes(deps: {
         ),
       );
     return c.json({ ok: true });
+  });
+
+  app.post("/workspaces/:workspaceId/notification-channels/:channelId/test", async (c) => {
+    const user = getAuthUser(c);
+    const workspaceId = c.req.param("workspaceId");
+    const channelId = c.req.param("channelId");
+    const roles = await getUserWorkspaceRoles(deps.db, workspaceId, user.id);
+    if (!hasAnyRole(roles, ["owner", "ops"])) {
+      return c.json({ error: "Requires owner or ops role to test notification channels." }, 403);
+    }
+
+    try {
+      const result = await deps.notifier.sendTestChannel({
+        workspaceId,
+        channelId,
+        actorDisplayName: user.displayName,
+        actorHandles: user.notificationHandles,
+      });
+      return c.json(result);
+    } catch (error) {
+      return c.json(
+        {
+          error: error instanceof Error ? error.message : "Failed to send test notification.",
+        },
+        502,
+      );
+    }
   });
 
   return app;

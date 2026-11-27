@@ -98,7 +98,14 @@ export function createHubApp(options: CreateHubAppOptions): {
   );
   app.route(
     "/api/v1",
-    createWorkspaceRoutes({ db: options.db, config: options.config, pluginRegistry }),
+    createWorkspaceRoutes({
+      db: options.db,
+      config: options.config,
+      broker,
+      notifier,
+      pluginRegistry,
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    }),
   );
   app.route(
     "/api/v1",

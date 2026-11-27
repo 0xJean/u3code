@@ -232,4 +232,65 @@ export class NotificationDispatcher {
 
     return { sent, failed };
   }
+
+  async sendTestChannel(input: {
+    readonly workspaceId: string;
+    readonly channelId: string;
+    readonly actorDisplayName: string;
+    readonly actorHandles: Readonly<Record<string, string>>;
+  }): Promise<{
+    readonly ok: true;
+    readonly driver: NotifierDriverKind;
+    readonly channelName: string;
+    readonly mentioned: boolean;
+  }> {
+    const rows = await this.#db
+      .select()
+      .from(notificationChannels)
+      .where(
+        and(
+          eq(notificationChannels.id, input.channelId),
+          eq(notificationChannels.workspaceId, input.workspaceId),
+        ),
+      )
+      .limit(1);
+    const channel = rows[0];
+    if (!channel) {
+      throw new Error("Notification channel not found.");
+    }
+    const driverKind = channel.driver as NotifierDriverKind;
+    const driver = this.#drivers.get(driverKind);
+    if (!driver) {
+      throw new Error(`No notifier driver registered for '${driverKind}'.`);
+    }
+
+    const actorHandle = input.actorHandles[driverKind]?.trim();
+    const secretCfg = decryptSecretJson<NotifierChannelSecretConfig>(
+      this.#config.encryptionKey,
+      channel.configEncrypted,
+    );
+
+    const testMessage: NotificationMessage = {
+      event: "digest.ready",
+      title: `[u3code-hub] Test Notification (${channel.name})`,
+      severity: "info",
+      summary: `${input.actorDisplayName} triggered a connectivity test from Team Cockpit.`,
+      bullets: [
+        `Driver: ${driverKind}`,
+        `Subscribed events: ${channel.events.join(", ")}`,
+        actorHandle
+          ? `Verified @mention handle for ${input.actorDisplayName}.`
+          : "Tip: Bind your notification handle in Setup -> My Profile to test @mentions.",
+      ],
+      ...(actorHandle ? { mentionHandles: [actorHandle] } : {}),
+    };
+
+    await driver.send(secretCfg, testMessage);
+    return {
+      ok: true,
+      driver: driverKind,
+      channelName: channel.name,
+      mentioned: Boolean(actorHandle),
+    };
+  }
 }

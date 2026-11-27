@@ -16,6 +16,8 @@ import {
   GitBranchIcon,
   LayersIcon,
   PuzzleIcon,
+  RefreshCwIcon,
+  SendIcon,
   Trash2Icon,
   UserCogIcon,
   UserPlusIcon,
@@ -110,7 +112,9 @@ export function CockpitSettingsTab({
   const [newMemberRole, setNewMemberRole] = useState<(typeof WORKSPACE_ROLES)[number]>("dev");
   const [addingMember, setAddingMember] = useState(false);
   const [removingRepoId, setRemovingRepoId] = useState<string | null>(null);
+  const [syncingRepoId, setSyncingRepoId] = useState<string | null>(null);
   const [busyChannelId, setBusyChannelId] = useState<string | null>(null);
+  const [testingChannelId, setTestingChannelId] = useState<string | null>(null);
 
   const createWorkspace = useAtomCommand(teamHubEnvironment.createWorkspace, {
     reportFailure: false,
@@ -141,6 +145,12 @@ export function CockpitSettingsTab({
     reportFailure: false,
   });
   const listPlugins = useAtomCommand(teamHubEnvironment.listPlugins, { reportFailure: false });
+  const syncProjectRepo = useAtomCommand(teamHubEnvironment.syncProjectRepo, {
+    reportFailure: false,
+  });
+  const testChannel = useAtomCommand(teamHubEnvironment.testNotificationChannel, {
+    reportFailure: false,
+  });
 
   const loadHubPlugins = useEffectEvent((envId: EnvironmentId, cancelled: () => boolean) => {
     void listPlugins({ environmentId: envId, input: {} }).then((res) => {
@@ -441,6 +451,54 @@ export function CockpitSettingsTab({
     } else {
       toastManager.add({
         title: formatCockpitCommandError(res, gt("Failed to unlink repository.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSyncRepo = async (repoId: string) => {
+    if (!selectedProjectId) return;
+    setSyncingRepoId(repoId);
+    const res = await syncProjectRepo({
+      environmentId,
+      input: { projectId: selectedProjectId, repoId },
+    });
+    setSyncingRepoId(null);
+    if (res._tag === "Success") {
+      toastManager.add({
+        title: gt("Synced {count} open PRs ({linked} linked)", {
+          count: res.value.syncedCount,
+          linked: res.value.linkedCount,
+        }),
+        type: "success",
+      });
+      onRefreshAll(selectedWorkspaceId, selectedProjectId);
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to sync open PRs from GitHub.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleTestChannel = async (channelId: string) => {
+    if (!selectedWorkspaceId) return;
+    setTestingChannelId(channelId);
+    const res = await testChannel({
+      environmentId,
+      input: { workspaceId: selectedWorkspaceId, channelId },
+    });
+    setTestingChannelId(null);
+    if (res._tag === "Success") {
+      toastManager.add({
+        title: res.value.mentioned
+          ? gt("Test notification sent (with @mention)")
+          : gt("Test notification sent"),
+        type: "success",
+      });
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Test notification failed.")),
         type: "error",
       });
     }
@@ -791,6 +849,17 @@ export function CockpitSettingsTab({
                           bot:{bot.name}
                         </Badge>
                       ))}
+                      {repo.forgeKind === "github" ? (
+                        <Button
+                          disabled={syncingRepoId === repo.id}
+                          size="micro"
+                          variant="outline"
+                          onClick={() => void handleSyncRepo(repo.id)}
+                        >
+                          <RefreshCwIcon />
+                          {syncingRepoId === repo.id ? <T>Syncing...</T> : <T>Sync PRs</T>}
+                        </Button>
+                      ) : null}
                       <Button
                         aria-label={gt("Remove repository")}
                         disabled={removingRepoId === repo.id}
@@ -908,6 +977,15 @@ export function CockpitSettingsTab({
                           <Var>{ch.events.length}</Var> events
                         </T>
                       </Badge>
+                      <Button
+                        disabled={testingChannelId === ch.id}
+                        size="micro"
+                        variant="outline"
+                        onClick={() => void handleTestChannel(ch.id)}
+                      >
+                        <SendIcon />
+                        {testingChannelId === ch.id ? <T>Sending...</T> : <T>Test</T>}
+                      </Button>
                       <Button
                         disabled={busyChannelId === ch.id}
                         size="micro"

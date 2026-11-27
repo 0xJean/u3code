@@ -4,14 +4,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-u3code}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-u3code}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-u3code_change_me}
       POSTGRES_DB: ${POSTGRES_DB:-u3code_hub}
     volumes:
-      - hub_pgdata:/var/lib/postgresql/data
+      - u3code_hub_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-u3code} -d ${POSTGRES_DB:-u3code_hub}"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
 
   hub:
@@ -22,23 +22,31 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${PORT:-4310}:4310"
+    env_file:
+      - path: .env
+        required: false
     environment:
       HOST: 0.0.0.0
-      PORT: 4310
-      DATABASE_URL: postgres://${POSTGRES_USER:-u3code}:${POSTGRES_PASSWORD:-u3code}@postgres:5432/${POSTGRES_DB:-u3code_hub}
-      HUB_PUBLIC_URL: ${HUB_PUBLIC_URL:-http://localhost:4310}
-      HUB_JWT_SECRET: ${HUB_JWT_SECRET:?Set HUB_JWT_SECRET in .env}
-      HUB_ENCRYPTION_KEY: ${HUB_ENCRYPTION_KEY:?Set HUB_ENCRYPTION_KEY in .env}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
-      ALLOWED_GITHUB_ORGS: ${ALLOWED_GITHUB_ORGS:-}
-      HUB_LLM_BASE_URL: ${HUB_LLM_BASE_URL:-https://api.openai.com/v1}
-      HUB_LLM_API_KEY: ${HUB_LLM_API_KEY:-}
-      HUB_LLM_MODEL: ${HUB_LLM_MODEL:-gpt-4.1-mini}
-      HUB_ALLOW_LOCAL_DEV_AUTH: ${HUB_ALLOW_LOCAL_DEV_AUTH:-false}
+      PORT: ${PORT:-4310}
+      DATABASE_URL: postgres://${POSTGRES_USER:-u3code}:${POSTGRES_PASSWORD:-u3code_change_me}@postgres:5432/${POSTGRES_DB:-u3code_hub}
+    ports:
+      - "${PORT:-4310}:4310"
+
+  # Optional: Automatic HTTPS reverse proxy (uncomment when using a custom domain like hub.example.com)
+  # caddy:
+  #   image: caddy:2-alpine
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - hub
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   command: caddy reverse-proxy --from ${HUB_DOMAIN:-hub.example.com} --to hub:4310
+  #   volumes:
+  #     - u3code_hub_caddy_data:/data
+  #     - u3code_hub_caddy_config:/config
 
 volumes:
-  hub_pgdata:
+  u3code_hub_pgdata:
+  # u3code_hub_caddy_data:
+  # u3code_hub_caddy_config:

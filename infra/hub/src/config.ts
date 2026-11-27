@@ -10,6 +10,8 @@ export interface HubConfig {
   readonly githubClientId: string | null;
   readonly githubClientSecret: string | null;
   readonly githubWebhookSecret: string | null;
+  /** Optional GitHub PAT / fine-grained token used for on-demand Open PR sync on private repos. */
+  readonly githubSyncToken: string | null;
   readonly allowedGithubOrgs: readonly string[];
   readonly allowLocalDevAuth: boolean;
   readonly llmBaseUrl: string;
@@ -53,6 +55,7 @@ export function loadHubConfig(env: NodeJS.ProcessEnv = process.env): HubConfig {
     githubClientId: env.GITHUB_CLIENT_ID?.trim() || null,
     githubClientSecret: env.GITHUB_CLIENT_SECRET?.trim() || null,
     githubWebhookSecret: env.GITHUB_WEBHOOK_SECRET?.trim() || null,
+    githubSyncToken: env.GITHUB_SYNC_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || null,
     allowedGithubOrgs: parseList(env.ALLOWED_GITHUB_ORGS),
     allowLocalDevAuth: env.HUB_ALLOW_LOCAL_DEV_AUTH === "true",
     llmBaseUrl: (env.HUB_LLM_BASE_URL ?? "https://api.openai.com/v1").replace(/\/+$/, ""),

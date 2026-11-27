@@ -2124,6 +2124,9 @@ export const layerWsRpc = (
         [WS_METHODS.teamHubGetWorkItemDetail]: (input) => teamHub.getWorkItemDetail(input),
         [WS_METHODS.teamHubLinkChangeRequest]: (input) => teamHub.linkChangeRequest(input),
         [WS_METHODS.teamHubListPlugins]: () => teamHub.listPlugins(),
+        [WS_METHODS.teamHubSyncProjectRepo]: (input) => teamHub.syncProjectRepo(input),
+        [WS_METHODS.teamHubTestNotificationChannel]: (input) =>
+          teamHub.testNotificationChannel(input),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

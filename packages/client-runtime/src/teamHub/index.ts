@@ -147,5 +147,13 @@ export function createTeamHubEnvironmentAtoms<R, E>(
       label: "environment-data:team-hub:list-plugins",
       tag: WS_METHODS.teamHubListPlugins,
     }),
+    syncProjectRepo: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:sync-project-repo",
+      tag: WS_METHODS.teamHubSyncProjectRepo,
+    }),
+    testNotificationChannel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:test-notification-channel",
+      tag: WS_METHODS.teamHubTestNotificationChannel,
+    }),
   };
 }

@@ -1,26 +1,56 @@
-# u3code-hub
+# u3code-hub — Self-Hosted Team Engineering Cockpit
 
-Open-source, self-hostable Team Control Plane for `u3code` (Cockpit, multi-repo workflow presets, automated PR reviewer triage, quality signals, Living Project Memory, and pluggable notifications).
+`u3code-hub` is the optional, open-source, self-hosted coordination service paired with `u3code`. It tracks cross-repository Work Items, Pulses, PR Review Triage, RBAC Gates, Multi-Repo Releases, Living Project Memory, and AI Digests.
 
-## Quick start (Docker Compose)
+## 1. Quick Trial (Local / LAN — No Domain Required)
+
+You do **not** need a domain name to try `u3code-hub` locally or over LAN / Tailscale. Outbound Lark/Slack notifications and on-demand GitHub Open PR sync work without exposing a public port.
 
 ```sh
 cd infra/hub
 cp .env.example .env
-# Fill HUB_JWT_SECRET, HUB_ENCRYPTION_KEY, and GitHub OAuth / Webhook secrets
+# Edit .env: set HUB_JWT_SECRET, HUB_ENCRYPTION_KEY, and optionally GITHUB_SYNC_TOKEN
 docker compose up -d --build
 ```
 
 Verify health:
 
 ```sh
-curl http://localhost:4310/healthz
+curl http://127.0.0.1:4310/healthz
 ```
 
-## Key capabilities
+Then open **Team Cockpit** in `u3code`, connect to `http://127.0.0.1:4310` (or your LAN/Tailscale IP), create a workspace/project in **Setup**, link your GitHub repos, and click **Sync PRs** to import existing open PRs immediately.
 
-- **Pluggable Auth & RBAC**: GitHub OAuth2 PKCE with optional `ALLOWED_GITHUB_ORGS` membership guard, short-lived JWTs + rotating refresh tokens, and multi-role workspace RBAC (`owner`, `pm`, `qa`, `dev`, `security`, `ops`, or custom roles).
-- **Configurable Workflow Presets**: Built-in `lean` and `full-delivery` presets plus custom stages and role-enforced quality gates.
-- **Generic Forge Webhooks**: Maps arbitrary branch pipelines (`integration` auto-merge vs `release` manual promotion), arbitrary automated review bots (Dotsbot, CodeRabbit, Macroscope, PR-Agent, etc.), and regex-extracted CI quality signals (such as diff coverage).
-- **Zero-Gap Pulses**: Supports both explicit human thread pulses and automatic system pulses on integration merges or bot review blocks.
-- **Pluggable Notifications**: Built-in `lark` interactive card driver (with `@` handles and HMAC signing) and `webhook` driver.
+## 2. Production Deployment (With Domain + HTTPS)
+
+A subdomain (e.g. `hub.yourdomain.com`) with HTTPS is recommended when enabling:
+
+- Real-time **GitHub Webhooks** (`https://hub.yourdomain.com/webhooks/github`)
+- **GitHub OAuth** sign-in (`https://hub.yourdomain.com/api/v1/auth/github/callback`)
+- **Lark interactive card callbacks** (`https://hub.yourdomain.com/plugins/lark/callback`)
+
+### Option A: Built-in Caddy Auto-HTTPS
+
+1. Point a DNS `A` record for `hub.yourdomain.com` to your server IP (ports 80 & 443 open).
+2. Set `HUB_PUBLIC_URL=https://hub.yourdomain.com` and `HUB_ALLOW_LOCAL_DEV_AUTH=false` in `.env`.
+3. Uncomment the `caddy` service in `docker-compose.yml` and run:
+
+```sh
+HUB_DOMAIN=hub.yourdomain.com docker compose up -d --build
+```
+
+### Option B: Zero-Port Exposure (Cloudflare Tunnel or Tailscale Funnel)
+
+- **Cloudflare Tunnel**: Point a tunnel hostname `hub.yourdomain.com` directly to `http://127.0.0.1:4310` — no public IP or open firewall ports needed.
+- **Tailscale Funnel** (no custom domain required): Run `tailscale funnel 4310` to get a public HTTPS URL (`https://<machine>.<tailnet>.ts.net`) for testing webhooks immediately.
+
+## 3. GitHub & Lark Setup Checklist
+
+1. **GitHub OAuth App**: Set Authorization callback URL to `${HUB_PUBLIC_URL}/api/v1/auth/github/callback` and fill `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `ALLOWED_GITHUB_ORGS` in `.env`.
+2. **GitHub Webhook**: Point Payload URL to `${HUB_PUBLIC_URL}/webhooks/github` (`application/json`), set the same secret as `GITHUB_WEBHOOK_SECRET`, and subscribe to `Pull requests`, `Pull request reviews`, `Check runs`, and `Deployment statuses`.
+3. **Existing Open PRs**: Set `GITHUB_SYNC_TOKEN` (fine-grained PAT with `Pull requests: Read`) in `.env` and click **Sync PRs** in Cockpit **Setup**.
+4. **Lark / Feishu**: Add a webhook channel in Cockpit **Setup**, bind your Lark `open_id` in **My Profile**, and click **Test** to verify signing + `@mention` delivery.
+
+## 4. Plugins & Playbook Packs
+
+See [`packs/README.md`](../../packs/README.md) for loading custom server plugins (`HUB_PLUGINS`) and installing reusable T3 Code Workflow & Skill packs (`node infra/hub/src/packs/cli.ts packs/bot-review-autofix`).

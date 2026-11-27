@@ -21,6 +21,8 @@ import {
   TeamHubReleaseResult,
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
+  TeamHubSyncProjectRepoResult,
+  TeamHubTestNotificationChannelResult,
   TeamHubUpdateMemberRolesResult,
   TeamHubUpdateProfileResult,
   TeamHubWorkItemResult,
@@ -49,6 +51,8 @@ import {
   type TeamHubPublishPulseInput,
   type TeamHubReviewQueueInput,
   type TeamHubSubscribeEventsInput,
+  type TeamHubSyncProjectRepoInput,
+  type TeamHubTestNotificationChannelInput,
   type TeamHubToggleNotificationChannelInput,
   type TeamHubUpdateDirectivesInput,
   type TeamHubUpdateMemberRolesInput,
@@ -126,6 +130,10 @@ const decodeAddMember = Schema.decodeUnknownEffect(TeamHubAddMemberResult);
 const decodeWorkItemDetail = Schema.decodeUnknownEffect(WorkItemDetail);
 const decodeLinkChangeRequest = Schema.decodeUnknownEffect(TeamHubLinkChangeRequestResult);
 const decodeListPlugins = Schema.decodeUnknownEffect(TeamHubListPluginsResult);
+const decodeSyncProjectRepo = Schema.decodeUnknownEffect(TeamHubSyncProjectRepoResult);
+const decodeTestNotificationChannel = Schema.decodeUnknownEffect(
+  TeamHubTestNotificationChannelResult,
+);
 const decodeHubWsEventJson = Schema.decodeUnknownSync(Schema.fromJsonString(HubWsEvent));
 
 function normalizeHubUrl(raw: string): string {
@@ -237,6 +245,12 @@ export class TeamHubService extends Context.Service<
       input: TeamHubLinkChangeRequestInput,
     ) => Effect.Effect<TeamHubLinkChangeRequestResult, TeamHubError>;
     readonly listPlugins: () => Effect.Effect<TeamHubListPluginsResult, TeamHubError>;
+    readonly syncProjectRepo: (
+      input: TeamHubSyncProjectRepoInput,
+    ) => Effect.Effect<TeamHubSyncProjectRepoResult, TeamHubError>;
+    readonly testNotificationChannel: (
+      input: TeamHubTestNotificationChannelInput,
+    ) => Effect.Effect<TeamHubTestNotificationChannelResult, TeamHubError>;
   }
 >()("t3/teamHub/TeamHubService") {}
 
@@ -774,6 +788,26 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const syncProjectRepo = Effect.fn("TeamHubService.syncProjectRepo")(function* (
+    input: TeamHubSyncProjectRepoInput,
+  ) {
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/repos/${encodeURIComponent(input.repoId)}/sync`,
+      decode: decodeSyncProjectRepo,
+    });
+  });
+
+  const testNotificationChannel = Effect.fn("TeamHubService.testNotificationChannel")(function* (
+    input: TeamHubTestNotificationChannelInput,
+  ) {
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/notification-channels/${encodeURIComponent(input.channelId)}/test`,
+      decode: decodeTestNotificationChannel,
+    });
+  });
+
   const refreshStoredCredentials = Effect.fnUntraced(function* (creds: StoredTeamHubCredentials) {
     const refreshed = yield* executeJsonRequest({
       method: "POST",
@@ -922,6 +956,8 @@ const make = Effect.gen(function* () {
     getWorkItemDetail,
     linkChangeRequest,
     listPlugins,
+    syncProjectRepo,
+    testNotificationChannel,
   });
 });
 
