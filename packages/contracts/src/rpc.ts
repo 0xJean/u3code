@@ -90,6 +90,8 @@ import {
   CockpitOverview,
   HubWsEvent,
   PulseDraft,
+  TeamHubAddMemberInput,
+  TeamHubAddMemberResult,
   TeamHubAddProjectRepoInput,
   TeamHubAddProjectRepoResult,
   TeamHubApproveGateInput,
@@ -104,12 +106,16 @@ import {
   TeamHubCreateWorkItemInput,
   TeamHubCreateWorkspaceInput,
   TeamHubCreateWorkspaceResult,
+  TeamHubDeleteNotificationChannelInput,
+  TeamHubDeleteProjectRepoInput,
   TeamHubDigestsInput,
   TeamHubDigestsResult,
   TeamHubError,
   TeamHubExtractPulseDraftInput,
   TeamHubGenerateDigestInput,
   TeamHubGenerateDigestResult,
+  TeamHubLinkChangeRequestInput,
+  TeamHubLinkChangeRequestResult,
   TeamHubListMembersInput,
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsInput,
@@ -126,6 +132,7 @@ import {
   TeamHubReviewQueueResult,
   TeamHubStatusResult,
   TeamHubSubscribeEventsInput,
+  TeamHubToggleNotificationChannelInput,
   TeamHubUpdateDirectivesInput,
   TeamHubUpdateMemberRolesInput,
   TeamHubUpdateMemberRolesResult,
@@ -133,7 +140,9 @@ import {
   TeamHubUpdateProfileResult,
   TeamHubUpdateReleaseInput,
   TeamHubUpdateWorkItemInput,
+  TeamHubWorkItemDetailInput,
   TeamHubWorkItemResult,
+  WorkItemDetail,
 } from "./teamHub.ts";
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
@@ -798,6 +807,12 @@ export const WS_METHODS = {
   teamHubCreateRelease: "teamHub.createRelease",
   teamHubUpdateRelease: "teamHub.updateRelease",
   teamHubSubscribeEvents: "teamHub.subscribeEvents",
+  teamHubAddMember: "teamHub.addMember",
+  teamHubDeleteProjectRepo: "teamHub.deleteProjectRepo",
+  teamHubToggleNotificationChannel: "teamHub.toggleNotificationChannel",
+  teamHubDeleteNotificationChannel: "teamHub.deleteNotificationChannel",
+  teamHubGetWorkItemDetail: "teamHub.getWorkItemDetail",
+  teamHubLinkChangeRequest: "teamHub.linkChangeRequest",
 
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
@@ -1782,6 +1797,48 @@ const WsTeamHubSubscribeEventsRpc = Rpc.make(WS_METHODS.teamHubSubscribeEvents, 
   success: HubWsEvent,
   error: TeamHubRpcError,
   stream: true,
+});
+
+const WsTeamHubAddMemberRpc = Rpc.make(WS_METHODS.teamHubAddMember, {
+  payload: TeamHubAddMemberInput,
+  success: TeamHubAddMemberResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubDeleteProjectRepoRpc = Rpc.make(WS_METHODS.teamHubDeleteProjectRepo, {
+  payload: TeamHubDeleteProjectRepoInput,
+  success: Schema.Void,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubToggleNotificationChannelRpc = Rpc.make(
+  WS_METHODS.teamHubToggleNotificationChannel,
+  {
+    payload: TeamHubToggleNotificationChannelInput,
+    success: TeamHubCreateNotificationChannelResult,
+    error: TeamHubRpcError,
+  },
+);
+
+const WsTeamHubDeleteNotificationChannelRpc = Rpc.make(
+  WS_METHODS.teamHubDeleteNotificationChannel,
+  {
+    payload: TeamHubDeleteNotificationChannelInput,
+    success: Schema.Void,
+    error: TeamHubRpcError,
+  },
+);
+
+const WsTeamHubGetWorkItemDetailRpc = Rpc.make(WS_METHODS.teamHubGetWorkItemDetail, {
+  payload: TeamHubWorkItemDetailInput,
+  success: WorkItemDetail,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubLinkChangeRequestRpc = Rpc.make(WS_METHODS.teamHubLinkChangeRequest, {
+  payload: TeamHubLinkChangeRequestInput,
+  success: TeamHubLinkChangeRequestResult,
+  error: TeamHubRpcError,
 });
 
 /**
@@ -2910,6 +2967,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubCreateReleaseRpc,
   WsTeamHubUpdateReleaseRpc,
   WsTeamHubSubscribeEventsRpc,
+  WsTeamHubAddMemberRpc,
+  WsTeamHubDeleteProjectRepoRpc,
+  WsTeamHubToggleNotificationChannelRpc,
+  WsTeamHubDeleteNotificationChannelRpc,
+  WsTeamHubGetWorkItemDetailRpc,
+  WsTeamHubLinkChangeRequestRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
   WsSourceControlPublishRepositoryRpc,

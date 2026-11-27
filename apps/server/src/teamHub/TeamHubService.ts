@@ -2,6 +2,7 @@ import {
   CockpitOverview,
   HubWsEvent,
   PulseDraft,
+  TeamHubAddMemberResult,
   TeamHubAddProjectRepoResult,
   TeamHubApproveGateResult,
   TeamHubCreateNotificationChannelResult,
@@ -10,6 +11,7 @@ import {
   TeamHubDigestsResult,
   TeamHubError,
   TeamHubGenerateDigestResult,
+  TeamHubLinkChangeRequestResult,
   TeamHubListMembersResult,
   TeamHubListNotificationChannelsResult,
   TeamHubListReleasesResult,
@@ -21,6 +23,8 @@ import {
   TeamHubUpdateMemberRolesResult,
   TeamHubUpdateProfileResult,
   TeamHubWorkItemResult,
+  WorkItemDetail,
+  type TeamHubAddMemberInput,
   type TeamHubAddProjectRepoInput,
   type TeamHubApproveGateInput,
   type TeamHubConnectLocalInput,
@@ -30,9 +34,12 @@ import {
   type TeamHubCreateReleaseInput,
   type TeamHubCreateWorkItemInput,
   type TeamHubCreateWorkspaceInput,
+  type TeamHubDeleteNotificationChannelInput,
+  type TeamHubDeleteProjectRepoInput,
   type TeamHubDigestsInput,
   type TeamHubExtractPulseDraftInput,
   type TeamHubGenerateDigestInput,
+  type TeamHubLinkChangeRequestInput,
   type TeamHubListMembersInput,
   type TeamHubListNotificationChannelsInput,
   type TeamHubListReleasesInput,
@@ -41,14 +48,17 @@ import {
   type TeamHubPublishPulseInput,
   type TeamHubReviewQueueInput,
   type TeamHubSubscribeEventsInput,
+  type TeamHubToggleNotificationChannelInput,
   type TeamHubUpdateDirectivesInput,
   type TeamHubUpdateMemberRolesInput,
   type TeamHubUpdateProfileInput,
   type TeamHubUpdateReleaseInput,
   type TeamHubUpdateWorkItemInput,
+  type TeamHubWorkItemDetailInput,
 } from "@t3tools/contracts";
 import { HubAuthMe, HubTokenPair } from "@u3code/hub-contracts";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -111,6 +121,9 @@ const decodeListMembers = Schema.decodeUnknownEffect(TeamHubListMembersResult);
 const decodeUpdateMemberRoles = Schema.decodeUnknownEffect(TeamHubUpdateMemberRolesResult);
 const decodeListReleases = Schema.decodeUnknownEffect(TeamHubListReleasesResult);
 const decodeRelease = Schema.decodeUnknownEffect(TeamHubReleaseResult);
+const decodeAddMember = Schema.decodeUnknownEffect(TeamHubAddMemberResult);
+const decodeWorkItemDetail = Schema.decodeUnknownEffect(WorkItemDetail);
+const decodeLinkChangeRequest = Schema.decodeUnknownEffect(TeamHubLinkChangeRequestResult);
 const decodeHubWsEventJson = Schema.decodeUnknownSync(Schema.fromJsonString(HubWsEvent));
 
 function normalizeHubUrl(raw: string): string {
@@ -203,6 +216,24 @@ export class TeamHubService extends Context.Service<
     readonly subscribeEvents: (
       input: TeamHubSubscribeEventsInput,
     ) => Stream.Stream<HubWsEvent, TeamHubError>;
+    readonly addMember: (
+      input: TeamHubAddMemberInput,
+    ) => Effect.Effect<TeamHubAddMemberResult, TeamHubError>;
+    readonly deleteProjectRepo: (
+      input: TeamHubDeleteProjectRepoInput,
+    ) => Effect.Effect<void, TeamHubError>;
+    readonly toggleNotificationChannel: (
+      input: TeamHubToggleNotificationChannelInput,
+    ) => Effect.Effect<TeamHubCreateNotificationChannelResult, TeamHubError>;
+    readonly deleteNotificationChannel: (
+      input: TeamHubDeleteNotificationChannelInput,
+    ) => Effect.Effect<void, TeamHubError>;
+    readonly getWorkItemDetail: (
+      input: TeamHubWorkItemDetailInput,
+    ) => Effect.Effect<WorkItemDetail, TeamHubError>;
+    readonly linkChangeRequest: (
+      input: TeamHubLinkChangeRequestInput,
+    ) => Effect.Effect<TeamHubLinkChangeRequestResult, TeamHubError>;
   }
 >()("t3/teamHub/TeamHubService") {}
 
@@ -668,26 +699,149 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const addMember = Effect.fn("TeamHubService.addMember")(function* (input: TeamHubAddMemberInput) {
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/members`,
+      body: {
+        identifier: input.identifier,
+        ...(input.roles !== undefined ? { roles: input.roles } : {}),
+      },
+      decode: decodeAddMember,
+    });
+  });
+
+  const deleteProjectRepo = Effect.fn("TeamHubService.deleteProjectRepo")(function* (
+    input: TeamHubDeleteProjectRepoInput,
+  ) {
+    yield* authedRequest({
+      method: "DELETE",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/repos/${encodeURIComponent(input.repoId)}`,
+      decode: decodeUnknown,
+    });
+  });
+
+  const toggleNotificationChannel = Effect.fn("TeamHubService.toggleNotificationChannel")(
+    function* (input: TeamHubToggleNotificationChannelInput) {
+      return yield* authedRequest({
+        method: "PATCH",
+        pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/notification-channels/${encodeURIComponent(input.channelId)}`,
+        body: { isEnabled: input.isEnabled },
+        decode: decodeCreateChannel,
+      });
+    },
+  );
+
+  const deleteNotificationChannel = Effect.fn("TeamHubService.deleteNotificationChannel")(
+    function* (input: TeamHubDeleteNotificationChannelInput) {
+      yield* authedRequest({
+        method: "DELETE",
+        pathAndQuery: `/api/v1/workspaces/${encodeURIComponent(input.workspaceId)}/notification-channels/${encodeURIComponent(input.channelId)}`,
+        decode: decodeUnknown,
+      });
+    },
+  );
+
+  const getWorkItemDetail = Effect.fn("TeamHubService.getWorkItemDetail")(function* (
+    input: TeamHubWorkItemDetailInput,
+  ) {
+    return yield* authedRequest({
+      method: "GET",
+      pathAndQuery: `/api/v1/work-items/${encodeURIComponent(input.workItemId)}`,
+      decode: decodeWorkItemDetail,
+    });
+  });
+
+  const linkChangeRequest = Effect.fn("TeamHubService.linkChangeRequest")(function* (
+    input: TeamHubLinkChangeRequestInput,
+  ) {
+    return yield* authedRequest({
+      method: "POST",
+      pathAndQuery: `/api/v1/change-requests/${encodeURIComponent(input.changeRequestId)}/link`,
+      body: { workItemId: input.workItemId },
+      decode: decodeLinkChangeRequest,
+    });
+  });
+
+  const refreshStoredCredentials = Effect.fnUntraced(function* (creds: StoredTeamHubCredentials) {
+    const refreshed = yield* executeJsonRequest({
+      method: "POST",
+      url: `${creds.hubUrl}/api/v1/auth/refresh`,
+      body: { refreshToken: creds.refreshToken },
+      decode: decodeRefreshResponse,
+    }).pipe(Effect.orElseSucceed(() => null));
+    if (!refreshed) return creds;
+    const nextCreds: StoredTeamHubCredentials = {
+      hubUrl: creds.hubUrl,
+      accessToken: refreshed.tokens.accessToken,
+      refreshToken: refreshed.tokens.refreshToken,
+    };
+    yield* writeCredentials(nextCreds).pipe(Effect.ignore);
+    return nextCreds;
+  });
+
   const subscribeEvents = (
     input: TeamHubSubscribeEventsInput,
-  ): Stream.Stream<HubWsEvent, TeamHubError> =>
-    Stream.unwrap(
-      Effect.gen(function* () {
-        const creds = yield* readCredentials();
-        if (!creds || typeof WebSocket === "undefined") {
-          return Stream.empty;
-        }
-        const wsOrigin = creds.hubUrl.replace(/^http/i, "ws");
-        const params = new URLSearchParams({
-          workspaceId: input.workspaceId,
-          token: creds.accessToken,
-        });
-        const wsUrl = `${wsOrigin}/ws?${params.toString()}`;
+  ): Stream.Stream<HubWsEvent, TeamHubError> => {
+    if (typeof WebSocket === "undefined") {
+      return Stream.empty;
+    }
 
-        return Stream.callback<HubWsEvent, TeamHubError>((queue) =>
-          Effect.acquireRelease(
-            Effect.sync(() => {
+    return Stream.callback<HubWsEvent, TeamHubError>((queue) =>
+      Effect.gen(function* () {
+        let closedByScope = false;
+        let activeSocket: WebSocket | null = null;
+
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            closedByScope = true;
+            if (
+              activeSocket &&
+              (activeSocket.readyState === WebSocket.OPEN ||
+                activeSocket.readyState === WebSocket.CONNECTING)
+            ) {
+              activeSocket.close();
+            }
+            activeSocket = null;
+          }),
+        );
+
+        const runLoop = Effect.gen(function* () {
+          let attempt = 0;
+
+          for (;;) {
+            if (closedByScope) return;
+            const rawCreds = yield* readCredentials().pipe(Effect.orElseSucceed(() => null));
+            if (!rawCreds) {
+              Queue.endUnsafe(queue);
+              return;
+            }
+
+            // Refresh access token on reconnect attempts so long-lived streams survive JWT rotation.
+            const creds = attempt > 0 ? yield* refreshStoredCredentials(rawCreds) : rawCreds;
+            const wsOrigin = creds.hubUrl.replace(/^http/i, "ws");
+            const params = new URLSearchParams({
+              workspaceId: input.workspaceId,
+              token: creds.accessToken,
+            });
+            const wsUrl = `${wsOrigin}/ws?${params.toString()}`;
+
+            const opened = yield* Effect.callback<boolean>((resume) => {
+              let settled = false;
+              let didOpen = false;
               const socket = new WebSocket(wsUrl);
+              activeSocket = socket;
+
+              const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (activeSocket === socket) activeSocket = null;
+                resume(Effect.succeed(didOpen));
+              };
+
+              socket.addEventListener("open", () => {
+                didOpen = true;
+              });
               socket.addEventListener("message", (event) => {
                 if (typeof event.data !== "string") return;
                 try {
@@ -697,27 +851,30 @@ const make = Effect.gen(function* () {
                   // Ignore unknown or non-event frames cleanly.
                 }
               });
-              socket.addEventListener("close", () => {
-                Queue.endUnsafe(queue);
-              });
-              socket.addEventListener("error", () => {
-                Queue.endUnsafe(queue);
-              });
-              return socket;
-            }),
-            (socket) =>
-              Effect.sync(() => {
+              socket.addEventListener("close", finish);
+              socket.addEventListener("error", finish);
+
+              return Effect.sync(() => {
                 if (
                   socket.readyState === WebSocket.OPEN ||
                   socket.readyState === WebSocket.CONNECTING
                 ) {
                   socket.close();
                 }
-              }),
-          ),
-        );
+              });
+            });
+
+            if (closedByScope) return;
+            attempt = opened ? 1 : attempt + 1;
+            const backoffMs = Math.min(30_000, 2_000 * 2 ** Math.min(attempt - 1, 4));
+            yield* Effect.sleep(Duration.millis(backoffMs));
+          }
+        });
+
+        yield* Effect.forkScoped(runLoop);
       }),
     );
+  };
 
   return TeamHubService.of({
     status,
@@ -747,6 +904,12 @@ const make = Effect.gen(function* () {
     createRelease,
     updateRelease,
     subscribeEvents,
+    addMember,
+    deleteProjectRepo,
+    toggleNotificationChannel,
+    deleteNotificationChannel,
+    getWorkItemDetail,
+    linkChangeRequest,
   });
 });
 

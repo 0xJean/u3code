@@ -27,6 +27,7 @@ import {
   RepoPolicy,
   WorkHealth,
   WorkItem,
+  WorkItemDetail,
   WorkItemPriority,
   WorkItemType,
   WorkspaceMember,
@@ -325,4 +326,53 @@ export const TeamHubSubscribeEventsInput = Schema.Struct({
 });
 export type TeamHubSubscribeEventsInput = typeof TeamHubSubscribeEventsInput.Type;
 
-export { CockpitOverview, HubWsEvent, PulseDraft };
+export const TeamHubAddMemberInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  identifier: TrimmedNonEmptyString,
+  roles: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type TeamHubAddMemberInput = typeof TeamHubAddMemberInput.Type;
+
+export const TeamHubAddMemberResult = Schema.Struct({
+  member: WorkspaceMember,
+});
+export type TeamHubAddMemberResult = typeof TeamHubAddMemberResult.Type;
+
+export const TeamHubDeleteProjectRepoInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  repoId: TrimmedNonEmptyString,
+});
+export type TeamHubDeleteProjectRepoInput = typeof TeamHubDeleteProjectRepoInput.Type;
+
+export const TeamHubToggleNotificationChannelInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  channelId: TrimmedNonEmptyString,
+  isEnabled: Schema.Boolean,
+});
+export type TeamHubToggleNotificationChannelInput =
+  typeof TeamHubToggleNotificationChannelInput.Type;
+
+export const TeamHubDeleteNotificationChannelInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  channelId: TrimmedNonEmptyString,
+});
+export type TeamHubDeleteNotificationChannelInput =
+  typeof TeamHubDeleteNotificationChannelInput.Type;
+
+export const TeamHubWorkItemDetailInput = Schema.Struct({
+  workItemId: TrimmedNonEmptyString,
+});
+export type TeamHubWorkItemDetailInput = typeof TeamHubWorkItemDetailInput.Type;
+
+export const TeamHubLinkChangeRequestInput = Schema.Struct({
+  changeRequestId: TrimmedNonEmptyString,
+  workItemId: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type TeamHubLinkChangeRequestInput = typeof TeamHubLinkChangeRequestInput.Type;
+
+export const TeamHubLinkChangeRequestResult = Schema.Struct({
+  changeRequest: ChangeRequestAudit,
+});
+export type TeamHubLinkChangeRequestResult = typeof TeamHubLinkChangeRequestResult.Type;
+
+export { CockpitOverview, HubWsEvent, PulseDraft, WorkItemDetail };

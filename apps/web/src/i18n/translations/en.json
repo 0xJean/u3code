@@ -5335,6 +5335,9 @@
   "3d12b60af792caba": "Unable to move work item stage.",
   "dce926e69693ba42": "Gate approved",
   "f458187d9cb3aa35": "Failed to approve gate.",
+  "19ba87268baac4ff": "Pull request linked to work item",
+  "e37864470755b3f0": "Pull request unlinked",
+  "e8d146d9112c44a0": "Failed to link pull request.",
   "1f4f756156635c20": "Work item created",
   "9cc885bf41125062": "Failed to create work item.",
   "327631cbc2a7dda1": "Cockpit digest generated",
@@ -5358,6 +5361,7 @@
   "1713f84cd41cf8cd": "Orphan PRs (No Work Item)",
   "e967616b6ecbe8b0": "Auto-Merged (Integration)",
   "e0b196715ec7a4a6": "Draft",
+  "7601ecdd6a75bc1f": "Link to work item",
   "5d2cedf4b8b28251": "Team Cockpit",
   "9a06fd459ce858b9": "Live",
   "8b25153390e240fe": "New Item",
@@ -5402,6 +5406,7 @@
       "v": "v"
     }
   ],
+  "23a899df3d776ed6": "Link",
   "86401fff1d2bca58": "Release created",
   "209dac3fbf56aba0": "Failed to create release.",
   "625e84a606db11d8": "Release status updated",
@@ -5446,10 +5451,21 @@
   "e87894ae3f53cf2a": "A member must keep at least one role.",
   "37ae603f07bef334": "Member roles updated",
   "5b49c90e49f9d239": "Failed to update member roles.",
+  "1012c23b46ffc56c": "Member added to workspace",
+  "de1a912b8dd6daba": "Failed to add workspace member.",
+  "8d18905ff7a3a19e": "Repository unlinked",
+  "91190eede15b6d28": "Failed to unlink repository.",
+  "07bd999a120044c0": "Notification channel enabled",
+  "bc326c7c618bca1c": "Notification channel disabled",
+  "019881de3d534094": "Failed to update notification channel.",
+  "1964ca8dbd166895": "Notification channel deleted",
+  "784c5ba9afddbede": "Failed to delete notification channel.",
   "f31ce60f3f118c0d": "Display name",
   "beb93fe9c64f3721": "GitHub / VCS login",
   "15c77f570305ba66": "Lark open_id (for @mentions)",
   "b126ac4c6e0d8b6f": "Slack member ID (optional)",
+  "ec9bfbe9927e861f": "GitHub login or email of existing Hub user",
+  "4acbdd9a6cbcfa10": "Initial role",
   "021866887401ae66": "Workspace name (e.g. Engineering)",
   "8a7b4641730e8650": "Slug (e.g. eng)",
   "b9c1e5ebfdf316f4": "Key (e.g. CORE)",
@@ -5457,6 +5473,7 @@
   "77314fedefbb274c": "Workflow Preset",
   "04ba993d1fb6528e": "Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)",
   "5dc0780fddf4bccd": "Lean (Backlog → In Progress → Review → Done)",
+  "d24ecd236589f9db": "Remove repository",
   "026c73c285bc0b56": "Forge",
   "577d6df309b55d70": "org/repository",
   "895d891a5f139f5a": "Integration branch (dev)",
@@ -5464,6 +5481,7 @@
   "1fb613a4dfff8d4c": "Max PR lines (500)",
   "08f08e9a39875e01": "Automated reviewer name (optional)",
   "fa4b9d64b2af8399": "Bot logins comma-separated (optional)",
+  "1163ee57613a7d1d": "Delete notification channel",
   "c4259b13b7ae05ea": "Notification Driver",
   "1928b2febd44676e": "Lark / Feishu",
   "26c0a2940015eb00": "Generic Webhook",
@@ -5478,6 +5496,8 @@
   "30311ef808403506": "Save Profile",
   "0eddf0dceeece20d": "Team Members & Roles",
   "9b596f1b189b06e0": "Select or create a workspace to manage member roles.",
+  "52c51be58fb768ec": "Adding...",
+  "5920eb7ff63e4355": "Add Member",
   "e1ac1ddc7506007e": "No members loaded yet.",
   "55a341be5cf6ecb5": [
     "Lark: ",
@@ -5504,6 +5524,14 @@
   "a621ba6acc673990": "Linking...",
   "7779146aba5b2107": "Link Repository",
   "06c19778bfed6f9f": "Notification Channels",
+  "ab17a324be1e51aa": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " events"
+  ],
   "5af43d8916d92945": "Select or create a workspace to add notification channels.",
   "79b34ae18da4a777": "Add Channel",
   "208ff31f188c2c74": "Unable to check Team Hub status.",
@@ -5532,6 +5560,53 @@
   "bf55fd98aad7bf4c": "Next Step",
   "c7ed959c913764d6": "Syncing...",
   "3bd59ea5dbbe02b4": "Publish Pulse",
+  "95f9260d1f06a412": "Failed to load work item details.",
+  "ce7d5c5cd2973e7f": "Work item saved",
+  "b14e6d205ce83e0d": "Failed to save work item.",
+  "d5c2de5215f5bfd7": "Failed to unlink pull request.",
+  "ff716dff9590a946": "Write requirements, architecture notes, or rollout constraints",
+  "52fdae1bb4491760": "Remove acceptance criterion",
+  "43eba4224e5f7cc2": "Add acceptance criterion...",
+  "7387b90ea8f0d202": "Unlink pull request",
+  "d1db72238bd4afe7": "Work Item Details",
+  "7f9e4c3b895db2eb": "Edit specification, acceptance criteria, workflow stage, gates, linked PRs, and pulse history.",
+  "0f63393085912ff2": "Loading work item details...",
+  "5692b3d251f7d53a": "Stage",
+  "7ccba740603a10df": "Specification (Markdown)",
+  "e38499a71bad2434": "Acceptance Criteria",
+  "9079ecf662696217": "No acceptance criteria yet. Add one below.",
+  "7cf44008bfa855e3": "Add AC",
+  "613681f88af50fae": "Workflow Gates",
+  "d2ad3addcd3c666b": "Approving...",
+  "ed88afd43e747c66": "Linked Pull Requests",
+  "aa5bec48bb6e7d58": "No PRs linked yet. Mention the work item code in a PR title or branch, or link an orphan PR from Review Triage.",
+  "8c9afee3d7bfdf37": "Pulse History",
+  "e01438adb006ca0a": "No pulses published yet. Sync a pulse from an active coding thread.",
+  "d1c23b1a2ea2595c": [
+    "Decisions: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "7b7a9538b577d9ff": [
+    "Blockers: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "f73ebbb67abc9f7b": [
+    "Next: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "532285398002a13b": "Save Changes",
   "a80895f122d7020f": "Could not open the link",
   "2a1758375b2701f3": "Could not add backend",
   "6730fa8ae68fad99": "Failed to add backend.",
@@ -13218,14 +13293,6 @@
   ],
   "8a79c29136eccfc5": "Questions to consider",
   "ece7c08d198323df": "Ask about this stop",
-  "f73ebbb67abc9f7b": [
-    "Next: ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    }
-  ],
   "dc51df37e4ab575c": "Finish review",
   "15672ff2f044d23a": [
     "The diff could not be loaded, so excerpts are missing: ",

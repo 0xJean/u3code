@@ -2071,7 +2071,36 @@ export const layerWsRpc = (
         [WS_METHODS.teamHubUpdateWorkItem]: (input) => teamHub.updateWorkItem(input),
         [WS_METHODS.teamHubApproveGate]: (input) => teamHub.approveGate(input),
         [WS_METHODS.teamHubPublishPulse]: (input) => teamHub.publishPulse(input),
-        [WS_METHODS.teamHubExtractPulseDraft]: (input) => teamHub.extractPulseDraft(input),
+        [WS_METHODS.teamHubExtractPulseDraft]: Effect.fn("ws.teamHub.extractPulseDraft")(
+          function* (input) {
+            const snapshot = yield* threadManagement
+              .getThreadSnapshotWindow(input.threadId, { rowLimit: 24 })
+              .pipe(Effect.orElseSucceed(() => null));
+            const branchName = input.branchName ?? snapshot?.projection.thread.branch ?? null;
+            const threadTitle =
+              input.threadTitle.trim().length > 0
+                ? input.threadTitle
+                : (snapshot?.projection.thread.title ?? input.threadTitle);
+            const recentExcerpts =
+              input.recentExcerpts && input.recentExcerpts.length > 0
+                ? input.recentExcerpts
+                : (snapshot?.projection.messages ?? [])
+                    .filter(
+                      (msg) =>
+                        (msg.role === "assistant" || msg.role === "user") &&
+                        msg.workflowScript !== true &&
+                        msg.text.trim().length > 0,
+                    )
+                    .slice(-5)
+                    .map((msg) => msg.text.trim().slice(0, 600));
+            return yield* teamHub.extractPulseDraft({
+              threadId: input.threadId,
+              threadTitle,
+              branchName,
+              recentExcerpts,
+            });
+          },
+        ),
         [WS_METHODS.teamHubCreateWorkspace]: (input) => teamHub.createWorkspace(input),
         [WS_METHODS.teamHubCreateProject]: (input) => teamHub.createProject(input),
         [WS_METHODS.teamHubAddProjectRepo]: (input) => teamHub.addProjectRepo(input),
@@ -2086,6 +2115,14 @@ export const layerWsRpc = (
         [WS_METHODS.teamHubCreateRelease]: (input) => teamHub.createRelease(input),
         [WS_METHODS.teamHubUpdateRelease]: (input) => teamHub.updateRelease(input),
         [WS_METHODS.teamHubSubscribeEvents]: (input) => teamHub.subscribeEvents(input),
+        [WS_METHODS.teamHubAddMember]: (input) => teamHub.addMember(input),
+        [WS_METHODS.teamHubDeleteProjectRepo]: (input) => teamHub.deleteProjectRepo(input),
+        [WS_METHODS.teamHubToggleNotificationChannel]: (input) =>
+          teamHub.toggleNotificationChannel(input),
+        [WS_METHODS.teamHubDeleteNotificationChannel]: (input) =>
+          teamHub.deleteNotificationChannel(input),
+        [WS_METHODS.teamHubGetWorkItemDetail]: (input) => teamHub.getWorkItemDetail(input),
+        [WS_METHODS.teamHubLinkChangeRequest]: (input) => teamHub.linkChangeRequest(input),
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,

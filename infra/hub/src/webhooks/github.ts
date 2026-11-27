@@ -556,17 +556,25 @@ async function handlePullRequestReviewEvent(
     }
 
     if (isBlocking && repoContext) {
-      await deps.notifier.dispatch(repoContext.project.workspaceId, repoContext.project.id, {
-        event: "pr.bot_blocked",
-        title: `[${matchedBot.name}] PR #${existing.number} Blocked (${repoFullName})`,
-        severity: finding.riskLevel === "high" ? "critical" : "warning",
-        summary: `${matchedBot.name} requested changes on "${existing.title}" by @${existing.authorVcsLogin}.`,
-        bullets: [
-          `Branch: ${existing.headBranch} -> ${existing.baseBranch}`,
-          ...(body ? [`Excerpt: ${body.slice(0, 180)}`] : []),
-        ],
-        url: existing.url,
-      });
+      await deps.notifier.dispatch(
+        repoContext.project.workspaceId,
+        repoContext.project.id,
+        {
+          event: "pr.bot_blocked",
+          title: `[${matchedBot.name}] PR #${existing.number} Blocked (${repoFullName})`,
+          severity: finding.riskLevel === "high" ? "critical" : "warning",
+          summary: `${matchedBot.name} requested changes on "${existing.title}" by @${existing.authorVcsLogin}.`,
+          bullets: [
+            `Branch: ${existing.headBranch} -> ${existing.baseBranch}`,
+            ...(body ? [`Excerpt: ${body.slice(0, 180)}`] : []),
+          ],
+          url: existing.url,
+        },
+        {
+          vcsLogins: [existing.authorVcsLogin],
+          ...(finding.riskLevel === "high" ? { roles: ["owner", "security"] } : {}),
+        },
+      );
     }
   } else {
     if (reviewState === "APPROVED") humanReviewState = "approved";

@@ -11,6 +11,7 @@ import {
 import type { HubConfig } from "../config.ts";
 import type { HubDatabase } from "../db/client.ts";
 import {
+  changeRequests,
   gateApprovals,
   projectMemories,
   projects,
@@ -20,6 +21,7 @@ import {
 } from "../db/schema.ts";
 import type { NotificationDispatcher } from "../notifiers/index.ts";
 import { newId } from "../utils/crypto.ts";
+import { computeTriageBucket } from "../webhooks/github.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
 
 export function createWorkItemRoutes(deps: {
@@ -258,16 +260,132 @@ export function createWorkItemRoutes(deps: {
     });
 
     if (blockers.length > 0) {
-      await deps.notifier.dispatch(found.project.workspaceId, found.project.id, {
-        event: "blocker.needs_attention",
-        title: `[${found.item.code}] Blocker Reported: ${found.item.title}`,
-        severity: "warning",
-        summary: `${user.displayName} synced a pulse with ${blockers.length} blocker(s).`,
-        bullets: blockers.map((b) => b.text),
-      });
+      const mentionRoles = [
+        ...new Set(blockers.flatMap((b) => b.needsAttentionRoles ?? ["owner"])),
+      ];
+      await deps.notifier.dispatch(
+        found.project.workspaceId,
+        found.project.id,
+        {
+          event: "blocker.needs_attention",
+          title: `[${found.item.code}] Blocker Reported: ${found.item.title}`,
+          severity: "warning",
+          summary: `${user.displayName} synced a pulse with ${blockers.length} blocker(s).`,
+          bullets: blockers.map((b) => b.text),
+        },
+        { roles: mentionRoles },
+      );
     }
 
     return c.json({ pulse: inserted[0] }, 201);
+  });
+
+  app.get("/work-items/:workItemId", async (c) => {
+    const user = getAuthUser(c);
+    const workItemId = c.req.param("workItemId");
+    const rows = await deps.db
+      .select({ item: workItems, project: projects })
+      .from(workItems)
+      .innerJoin(projects, eq(workItems.projectId, projects.id))
+      .where(eq(workItems.id, workItemId))
+      .limit(1);
+    const found = rows[0];
+    if (!found) return c.json({ error: "Work item not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, found.project.workspaceId, user.id);
+    if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+
+    const [pulseRows, crRows, approvalRows] = await Promise.all([
+      deps.db
+        .select()
+        .from(pulses)
+        .where(eq(pulses.workItemId, workItemId))
+        .orderBy(desc(pulses.createdAt)),
+      deps.db
+        .select()
+        .from(changeRequests)
+        .where(eq(changeRequests.workItemId, workItemId))
+        .orderBy(desc(changeRequests.updatedAt)),
+      deps.db
+        .select()
+        .from(gateApprovals)
+        .where(
+          and(eq(gateApprovals.targetType, "work_item"), eq(gateApprovals.targetId, workItemId)),
+        ),
+    ]);
+
+    return c.json({
+      workItem: found.item,
+      pulses: pulseRows,
+      changeRequests: crRows,
+      gateApprovals: approvalRows,
+    });
+  });
+
+  app.post("/change-requests/:changeRequestId/link", async (c) => {
+    const user = getAuthUser(c);
+    const changeRequestId = c.req.param("changeRequestId");
+    const crRows = await deps.db
+      .select()
+      .from(changeRequests)
+      .where(eq(changeRequests.id, changeRequestId))
+      .limit(1);
+    const existing = crRows[0];
+    if (!existing) return c.json({ error: "Change request not found." }, 404);
+
+    const body = (await c.req.json()) as { readonly workItemId?: string | null };
+    let workspaceId: string | null = null;
+    let projectId: string | null = null;
+
+    if (body.workItemId) {
+      const wiRows = await deps.db
+        .select({ item: workItems, project: projects })
+        .from(workItems)
+        .innerJoin(projects, eq(workItems.projectId, projects.id))
+        .where(eq(workItems.id, body.workItemId))
+        .limit(1);
+      const foundWi = wiRows[0];
+      if (!foundWi) return c.json({ error: "Work item not found." }, 404);
+      const roles = await getUserWorkspaceRoles(deps.db, foundWi.project.workspaceId, user.id);
+      if (roles.length === 0) return c.json({ error: "Forbidden." }, 403);
+      workspaceId = foundWi.project.workspaceId;
+      projectId = foundWi.project.id;
+    }
+
+    const nextWorkItemId = body.workItemId ?? null;
+    const nextBucket = computeTriageBucket({
+      state: existing.state,
+      baseBranchRole: existing.baseBranchRole as "integration" | "release" | "other",
+      workItemId: nextWorkItemId,
+      automatedReview: existing.automatedReview,
+      qualitySignals: existing.qualitySignals,
+      humanReviewState: existing.humanReviewState,
+    });
+
+    const updated = await deps.db
+      .update(changeRequests)
+      .set({
+        workItemId: nextWorkItemId,
+        triageBucket: nextBucket,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(changeRequests.id, changeRequestId))
+      .returning();
+
+    const changeRequest = updated[0]!;
+    if (workspaceId) {
+      deps.broker.broadcast({
+        type: "change_request.updated",
+        workspaceId,
+        projectId,
+        repoFullName: changeRequest.repoFullName,
+        number: changeRequest.number,
+        triageBucket: nextBucket,
+        blockingCount: changeRequest.automatedReview.blockingCount,
+      });
+    }
+
+    return c.json({ changeRequest });
   });
 
   app.get("/work-items/:workItemId/pulses", async (c) => {

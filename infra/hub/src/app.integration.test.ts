@@ -492,5 +492,75 @@ describe("u3code-hub integration (PGlite)", () => {
     expect(finalRel.release.status).toBe("released");
     expect(finalRel.release.releasedAt).not.toBeNull();
     expect(finalRel.gateApprovals).toHaveLength(1);
+
+    // 11. Add teammate by GitHub/VCS login, fetch WorkItem detail, and link orphan PR
+    const bobLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "go_dev_bob", displayName: "Bob" }),
+    });
+    expect(bobLoginRes.status).toBe(200);
+
+    const addMemberRes = await app.request(`/api/v1/workspaces/${workspace.id}/members`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ identifier: "go_dev_bob", roles: ["dev", "ops"] }),
+    });
+    expect(addMemberRes.status).toBe(201);
+    const { member: addedBob } = (await addMemberRes.json()) as {
+      member: { primaryVcsLogin: string; roles: string[] };
+    };
+    expect(addedBob.primaryVcsLogin).toBe("go_dev_bob");
+    expect(addedBob.roles).toEqual(["dev", "ops"]);
+
+    const detailRes = await app.request(`/api/v1/work-items/${workItem.id}`, {
+      headers: ownerHeaders,
+    });
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as {
+      workItem: { id: string };
+      pulses: unknown[];
+      changeRequests: unknown[];
+    };
+    expect(detail.workItem.id).toBe(workItem.id);
+    expect(detail.pulses.length).toBeGreaterThanOrEqual(2);
+
+    // Create and toggle/delete notification channel
+    const createChRes = await app.request(
+      `/api/v1/workspaces/${workspace.id}/notification-channels`,
+      {
+        method: "POST",
+        headers: ownerHeaders,
+        body: JSON.stringify({
+          driver: "lark",
+          name: "Eng Alerts",
+          config: { webhookUrl: "https://open.feishu.cn/open-apis/bot/v2/hook/test" },
+        }),
+      },
+    );
+    expect(createChRes.status).toBe(201);
+    const { channel: createdCh } = (await createChRes.json()) as {
+      channel: { id: string; isEnabled: boolean };
+    };
+
+    const toggleChRes = await app.request(
+      `/api/v1/workspaces/${workspace.id}/notification-channels/${createdCh.id}`,
+      {
+        method: "PATCH",
+        headers: ownerHeaders,
+        body: JSON.stringify({ isEnabled: false }),
+      },
+    );
+    expect(toggleChRes.status).toBe(200);
+    const { channel: disabledCh } = (await toggleChRes.json()) as {
+      channel: { isEnabled: boolean };
+    };
+    expect(disabledCh.isEnabled).toBe(false);
+
+    const deleteChRes = await app.request(
+      `/api/v1/workspaces/${workspace.id}/notification-channels/${createdCh.id}`,
+      { method: "DELETE", headers: ownerHeaders },
+    );
+    expect(deleteChRes.status).toBe(200);
   });
 });

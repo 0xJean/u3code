@@ -25,6 +25,7 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   KanbanIcon,
+  Link2Icon,
   LogOutIcon,
   PackageCheckIcon,
   PlusIcon,
@@ -63,6 +64,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { CockpitConnectCard } from "./CockpitConnectCard";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
 import { CockpitSettingsTab } from "./CockpitSettingsTab";
+import { WorkItemDetailDialog } from "./WorkItemDetailDialog";
 import { formatCockpitCommandError } from "./cockpitError";
 
 type CockpitTab = "board" | "triage" | "releases" | "memory" | "setup";
@@ -137,6 +139,7 @@ export function CockpitPage() {
   const [newDirectiveText, setNewDirectiveText] = useState("");
   const [savingDirectives, setSavingDirectives] = useState(false);
   const [liveRefreshCount, setLiveRefreshCount] = useState(0);
+  const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
 
   const fetchStatus = useAtomCommand(teamHubEnvironment.status, { reportFailure: false });
   const connectTokens = useAtomCommand(teamHubEnvironment.connectTokens, { reportFailure: false });
@@ -160,6 +163,9 @@ export function CockpitPage() {
     reportFailure: false,
   });
   const approveGate = useAtomCommand(teamHubEnvironment.approveGate, { reportFailure: false });
+  const linkChangeRequest = useAtomCommand(teamHubEnvironment.linkChangeRequest, {
+    reportFailure: false,
+  });
 
   const loadCockpitData = async (envId: EnvironmentId, workspaceId: string, projectId: string) => {
     if (!workspaceId) return;
@@ -318,6 +324,26 @@ export function CockpitPage() {
     } else {
       toastManager.add({
         title: formatCockpitCommandError(res, gt("Failed to approve gate.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleLinkChangeRequest = async (changeRequestId: string, workItemId: string | null) => {
+    if (!primaryEnvironmentId) return;
+    const res = await linkChangeRequest({
+      environmentId: primaryEnvironmentId,
+      input: { changeRequestId, workItemId },
+    });
+    if (res._tag === "Success") {
+      toastManager.add({
+        title: workItemId ? gt("Pull request linked to work item") : gt("Pull request unlinked"),
+        type: "success",
+      });
+      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to link pull request.")),
         type: "error",
       });
     }
@@ -692,6 +718,7 @@ export function CockpitPage() {
                                 onMoveStage={(nextStage) =>
                                   void handleMoveStage(card.workItem.id, nextStage)
                                 }
+                                onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
                               />
                             ))}
                             {stageCards.length === 0 ? (
@@ -707,7 +734,13 @@ export function CockpitPage() {
                 )
               ) : null}
 
-              {activeTab === "triage" ? <TriageQueueView reviewQueue={reviewQueue} /> : null}
+              {activeTab === "triage" ? (
+                <TriageQueueView
+                  cards={overview?.cards ?? []}
+                  reviewQueue={reviewQueue}
+                  onLinkChangeRequest={(crId, wiId) => void handleLinkChangeRequest(crId, wiId)}
+                />
+              ) : null}
 
               {activeTab === "releases" ? (
                 <CockpitReleasesTab
@@ -1018,6 +1051,20 @@ export function CockpitPage() {
           </DialogFooter>
         </DialogPopup>
       </Dialog>
+      {primaryEnvironmentId ? (
+        <WorkItemDetailDialog
+          environmentId={primaryEnvironmentId}
+          gates={gates}
+          stages={stages}
+          workItemId={selectedWorkItemId}
+          onClose={() => setSelectedWorkItemId(null)}
+          onUpdated={() => {
+            if (primaryEnvironmentId && selectedWorkspaceId) {
+              void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+            }
+          }}
+        />
+      ) : null}
     </SidebarInset>
   );
 }
@@ -1079,6 +1126,7 @@ function WorkItemCardView({
   gates,
   onMoveStage,
   onApproveGate,
+  onOpenDetail,
 }: {
   readonly card: CockpitWorkItemCard;
   readonly stages: ReadonlyArray<{ readonly id: string; readonly label: string }>;
@@ -1090,6 +1138,7 @@ function WorkItemCardView({
   }>;
   readonly onMoveStage: (nextStage: string) => void;
   readonly onApproveGate: (gateKey: string) => void;
+  readonly onOpenDetail: () => void;
 }) {
   const approvedKeys = new Set(
     card.gateApprovals.filter((g) => g.status === "approved").map((g) => g.gateKey),
@@ -1103,9 +1152,13 @@ function WorkItemCardView({
   return (
     <div className="space-y-2.5 rounded-lg border border-border bg-card p-3 shadow-2xs">
       <div className="flex items-center justify-between gap-1.5">
-        <span className="font-mono text-xs font-medium text-muted-foreground">
+        <button
+          className="font-mono text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+          type="button"
+          onClick={onOpenDetail}
+        >
           {card.workItem.code}
-        </span>
+        </button>
         <div className="flex items-center gap-1">
           <Badge size="sm" variant="outline">
             {card.workItem.priority.toUpperCase()}
@@ -1116,7 +1169,13 @@ function WorkItemCardView({
         </div>
       </div>
 
-      <div className="text-sm leading-snug font-medium text-foreground">{card.workItem.title}</div>
+      <button
+        className="block w-full text-left text-sm leading-snug font-medium text-foreground hover:underline"
+        type="button"
+        onClick={onOpenDetail}
+      >
+        {card.workItem.title}
+      </button>
 
       {card.checklistTotalCount > 0 ? (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -1180,23 +1239,31 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      {nextStage ? (
-        <div className="flex justify-end pt-1">
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <Button size="micro" variant="ghost" onClick={onOpenDetail}>
+          <T>Details</T>
+        </Button>
+        {nextStage ? (
           <Button size="micro" variant="outline" onClick={() => onMoveStage(nextStage.id)}>
             → {nextStage.label}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function TriageQueueView({
   reviewQueue,
+  cards,
+  onLinkChangeRequest,
 }: {
   readonly reviewQueue: TeamHubReviewQueueResult | null;
+  readonly cards: ReadonlyArray<CockpitWorkItemCard>;
+  readonly onLinkChangeRequest: (changeRequestId: string, workItemId: string) => void;
 }) {
   const gt = useGT();
+  const [selectedTargets, setSelectedTargets] = useState<Record<string, string>>({});
   const bucketOrder = [
     "bot_blocked",
     "ready_for_human_review",
@@ -1296,6 +1363,36 @@ function TriageQueueView({
                       </div>
                     ) : null}
                   </div>
+                  {cr.workItemId === null && cards.length > 0 ? (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        aria-label={gt("Link to work item")}
+                        className="h-7 max-w-48 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                        value={selectedTargets[cr.id] ?? cards[0]?.workItem.id ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSelectedTargets((prev) => ({ ...prev, [cr.id]: value }));
+                        }}
+                      >
+                        {cards.map((card) => (
+                          <option key={card.workItem.id} value={card.workItem.id}>
+                            {card.workItem.code} · {card.workItem.title}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => {
+                          const targetId = selectedTargets[cr.id] ?? cards[0]?.workItem.id;
+                          if (targetId) onLinkChangeRequest(cr.id, targetId);
+                        }}
+                      >
+                        <Link2Icon />
+                        <T>Link</T>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

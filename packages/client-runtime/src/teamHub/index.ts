@@ -119,5 +119,29 @@ export function createTeamHubEnvironmentAtoms<R, E>(
       label: "environment-data:team-hub:events",
       tag: WS_METHODS.teamHubSubscribeEvents,
     }),
+    addMember: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:add-member",
+      tag: WS_METHODS.teamHubAddMember,
+    }),
+    deleteProjectRepo: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:delete-project-repo",
+      tag: WS_METHODS.teamHubDeleteProjectRepo,
+    }),
+    toggleNotificationChannel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:toggle-notification-channel",
+      tag: WS_METHODS.teamHubToggleNotificationChannel,
+    }),
+    deleteNotificationChannel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:delete-notification-channel",
+      tag: WS_METHODS.teamHubDeleteNotificationChannel,
+    }),
+    getWorkItemDetail: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:get-work-item-detail",
+      tag: WS_METHODS.teamHubGetWorkItemDetail,
+    }),
+    linkChangeRequest: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:team-hub:link-change-request",
+      tag: WS_METHODS.teamHubLinkChangeRequest,
+    }),
   };
 }

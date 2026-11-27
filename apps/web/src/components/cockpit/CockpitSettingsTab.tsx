@@ -13,7 +13,9 @@ import {
   FolderPlusIcon,
   GitBranchIcon,
   LayersIcon,
+  Trash2Icon,
   UserCogIcon,
+  UserPlusIcon,
   UsersIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
@@ -95,6 +97,11 @@ export function CockpitSettingsTab({
   // Workspace members & multi-role assignments
   const [members, setMembers] = useState<ReadonlyArray<WorkspaceMember>>([]);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [newMemberIdentifier, setNewMemberIdentifier] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<(typeof WORKSPACE_ROLES)[number]>("dev");
+  const [addingMember, setAddingMember] = useState(false);
+  const [removingRepoId, setRemovingRepoId] = useState<string | null>(null);
+  const [busyChannelId, setBusyChannelId] = useState<string | null>(null);
 
   const createWorkspace = useAtomCommand(teamHubEnvironment.createWorkspace, {
     reportFailure: false,
@@ -103,14 +110,24 @@ export function CockpitSettingsTab({
   const addProjectRepo = useAtomCommand(teamHubEnvironment.addProjectRepo, {
     reportFailure: false,
   });
+  const deleteProjectRepo = useAtomCommand(teamHubEnvironment.deleteProjectRepo, {
+    reportFailure: false,
+  });
   const listChannels = useAtomCommand(teamHubEnvironment.listNotificationChannels, {
     reportFailure: false,
   });
   const createChannel = useAtomCommand(teamHubEnvironment.createNotificationChannel, {
     reportFailure: false,
   });
+  const toggleChannel = useAtomCommand(teamHubEnvironment.toggleNotificationChannel, {
+    reportFailure: false,
+  });
+  const deleteChannel = useAtomCommand(teamHubEnvironment.deleteNotificationChannel, {
+    reportFailure: false,
+  });
   const updateProfile = useAtomCommand(teamHubEnvironment.updateProfile, { reportFailure: false });
   const listMembers = useAtomCommand(teamHubEnvironment.listMembers, { reportFailure: false });
+  const addMember = useAtomCommand(teamHubEnvironment.addMember, { reportFailure: false });
   const updateMemberRoles = useAtomCommand(teamHubEnvironment.updateMemberRoles, {
     reportFailure: false,
   });
@@ -351,6 +368,102 @@ export function CockpitSettingsTab({
     }
   };
 
+  const handleAddMember = async () => {
+    const trimmed = newMemberIdentifier.trim();
+    if (!selectedWorkspaceId || !trimmed) return;
+    setAddingMember(true);
+    const res = await addMember({
+      environmentId,
+      input: {
+        workspaceId: selectedWorkspaceId,
+        identifier: trimmed,
+        roles: [newMemberRole],
+      },
+    });
+    setAddingMember(false);
+    if (res._tag === "Success") {
+      setNewMemberIdentifier("");
+      setMembers((prev) => {
+        const exists = prev.some((m) => m.userId === res.value.member.userId);
+        return exists
+          ? prev.map((m) => (m.userId === res.value.member.userId ? res.value.member : m))
+          : [...prev, res.value.member];
+      });
+      toastManager.add({ title: gt("Member added to workspace"), type: "success" });
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to add workspace member.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteRepo = async (repoId: string) => {
+    if (!selectedProjectId) return;
+    setRemovingRepoId(repoId);
+    const res = await deleteProjectRepo({
+      environmentId,
+      input: { projectId: selectedProjectId, repoId },
+    });
+    setRemovingRepoId(null);
+    if (res._tag === "Success") {
+      toastManager.add({ title: gt("Repository unlinked"), type: "success" });
+      onRefreshAll(selectedWorkspaceId, selectedProjectId);
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to unlink repository.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleToggleChannel = async (channel: NotificationChannelSummary) => {
+    if (!selectedWorkspaceId) return;
+    setBusyChannelId(channel.id);
+    const res = await toggleChannel({
+      environmentId,
+      input: {
+        workspaceId: selectedWorkspaceId,
+        channelId: channel.id,
+        isEnabled: !channel.isEnabled,
+      },
+    });
+    setBusyChannelId(null);
+    if (res._tag === "Success") {
+      setChannels((prev) => prev.map((c) => (c.id === channel.id ? res.value.channel : c)));
+      toastManager.add({
+        title: res.value.channel.isEnabled
+          ? gt("Notification channel enabled")
+          : gt("Notification channel disabled"),
+        type: "success",
+      });
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to update notification channel.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteChannel = async (channelId: string) => {
+    if (!selectedWorkspaceId) return;
+    setBusyChannelId(channelId);
+    const res = await deleteChannel({
+      environmentId,
+      input: { workspaceId: selectedWorkspaceId, channelId },
+    });
+    setBusyChannelId(null);
+    if (res._tag === "Success") {
+      setChannels((prev) => prev.filter((c) => c.id !== channelId));
+      toastManager.add({ title: gt("Notification channel deleted"), type: "success" });
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to delete notification channel.")),
+        type: "error",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
@@ -416,48 +529,85 @@ export function CockpitSettingsTab({
             <p className="text-xs text-muted-foreground">
               <T>Select or create a workspace to manage member roles.</T>
             </p>
-          ) : visibleMembers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              <T>No members loaded yet.</T>
-            </p>
           ) : (
-            <div className="space-y-2">
-              {visibleMembers.map((member) => (
-                <div
-                  key={member.userId}
-                  className="space-y-2 rounded-lg border border-border bg-muted/25 p-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="font-medium text-foreground">
-                      {member.displayName}
-                      {member.primaryVcsLogin ? ` (@${member.primaryVcsLogin})` : ""}
-                    </span>
-                    {member.notificationHandles.lark ? (
-                      <Badge size="sm" variant="outline">
-                        <T>
-                          Lark: <Var>{member.notificationHandles.lark}</Var>
-                        </T>
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {WORKSPACE_ROLES.map((role) => {
-                      const active = member.roles.includes(role);
-                      return (
-                        <Button
-                          key={role}
-                          disabled={updatingMemberId === member.userId}
-                          size="micro"
-                          variant={active ? "default" : "outline"}
-                          onClick={() => void handleToggleMemberRole(member, role)}
-                        >
-                          {role}
-                        </Button>
-                      );
-                    })}
-                  </div>
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <div className="min-w-44 flex-1">
+                  <Input
+                    placeholder={gt("GitHub login or email of existing Hub user")}
+                    size="sm"
+                    value={newMemberIdentifier}
+                    onChange={(event) => setNewMemberIdentifier(event.target.value)}
+                  />
                 </div>
-              ))}
+                <select
+                  aria-label={gt("Initial role")}
+                  className="h-8 rounded-lg border border-input bg-background px-2 text-xs text-foreground"
+                  value={newMemberRole}
+                  onChange={(event) =>
+                    setNewMemberRole(event.target.value as (typeof WORKSPACE_ROLES)[number])
+                  }
+                >
+                  {WORKSPACE_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  disabled={addingMember || !newMemberIdentifier.trim()}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleAddMember()}
+                >
+                  <UserPlusIcon />
+                  {addingMember ? <T>Adding...</T> : <T>Add Member</T>}
+                </Button>
+              </div>
+              {visibleMembers.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  <T>No members loaded yet.</T>
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {visibleMembers.map((member) => (
+                    <div
+                      key={member.userId}
+                      className="space-y-2 rounded-lg border border-border bg-muted/25 p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-medium text-foreground">
+                          {member.displayName}
+                          {member.primaryVcsLogin ? ` (@${member.primaryVcsLogin})` : ""}
+                        </span>
+                        {member.notificationHandles.lark ? (
+                          <Badge size="sm" variant="outline">
+                            <T>
+                              Lark: <Var>{member.notificationHandles.lark}</Var>
+                            </T>
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {WORKSPACE_ROLES.map((role) => {
+                          const active = member.roles.includes(role);
+                          return (
+                            <Button
+                              key={role}
+                              disabled={updatingMemberId === member.userId}
+                              size="micro"
+                              variant={active ? "default" : "outline"}
+                              onClick={() => void handleToggleMemberRole(member, role)}
+                            >
+                              {role}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -604,6 +754,15 @@ export function CockpitSettingsTab({
                           bot:{bot.name}
                         </Badge>
                       ))}
+                      <Button
+                        aria-label={gt("Remove repository")}
+                        disabled={removingRepoId === repo.id}
+                        size="icon-xs"
+                        variant="ghost-muted"
+                        onClick={() => void handleDeleteRepo(repo.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
                     </div>
                   </li>
                 ))}
@@ -708,8 +867,27 @@ export function CockpitSettingsTab({
                         {ch.driver}
                       </Badge>
                       <Badge size="sm" variant={ch.isEnabled ? "success" : "secondary"}>
-                        {ch.events.length} events
+                        <T>
+                          <Var>{ch.events.length}</Var> events
+                        </T>
                       </Badge>
+                      <Button
+                        disabled={busyChannelId === ch.id}
+                        size="micro"
+                        variant="outline"
+                        onClick={() => void handleToggleChannel(ch)}
+                      >
+                        {ch.isEnabled ? <T>Disable</T> : <T>Enable</T>}
+                      </Button>
+                      <Button
+                        aria-label={gt("Delete notification channel")}
+                        disabled={busyChannelId === ch.id}
+                        size="icon-xs"
+                        variant="ghost-muted"
+                        onClick={() => void handleDeleteChannel(ch.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
                     </div>
                   </li>
                 ))}

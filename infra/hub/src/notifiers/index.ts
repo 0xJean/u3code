@@ -3,8 +3,13 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import type { NotificationMessage, NotifierDriverKind } from "@u3code/hub-contracts";
 import type { HubConfig } from "../config.ts";
 import type { HubDatabase } from "../db/client.ts";
-import { notificationChannels } from "../db/schema.ts";
+import { notificationChannels, users, workspaceMemberships } from "../db/schema.ts";
 import { decryptSecretJson } from "../utils/crypto.ts";
+
+export interface NotificationMentionTarget {
+  readonly vcsLogins?: readonly string[];
+  readonly roles?: readonly string[];
+}
 
 export interface NotifierChannelSecretConfig {
   readonly webhookUrl: string;
@@ -137,6 +142,7 @@ export class NotificationDispatcher {
     workspaceId: string,
     projectId: string | null,
     message: NotificationMessage,
+    mentionTarget?: NotificationMentionTarget,
   ): Promise<{ readonly sent: number; readonly failed: number }> {
     const channels = await this.#db
       .select()
@@ -154,6 +160,34 @@ export class NotificationDispatcher {
         ),
       );
 
+    const wantedLogins = new Set(
+      (mentionTarget?.vcsLogins ?? []).map((l) => l.trim().toLowerCase()).filter(Boolean),
+    );
+    const wantedRoles = new Set(
+      (mentionTarget?.roles ?? []).map((r) => r.trim().toLowerCase()).filter(Boolean),
+    );
+
+    const matchedUsers =
+      wantedLogins.size > 0 || wantedRoles.size > 0
+        ? (
+            await this.#db
+              .select({
+                primaryVcsLogin: users.primaryVcsLogin,
+                notificationHandles: users.notificationHandles,
+                roles: workspaceMemberships.roles,
+              })
+              .from(workspaceMemberships)
+              .innerJoin(users, eq(workspaceMemberships.userId, users.id))
+              .where(eq(workspaceMemberships.workspaceId, workspaceId))
+          ).filter((row) => {
+            const loginMatch =
+              row.primaryVcsLogin !== null &&
+              wantedLogins.has(row.primaryVcsLogin.trim().toLowerCase());
+            const roleMatch = row.roles.some((r) => wantedRoles.has(r.trim().toLowerCase()));
+            return loginMatch || roleMatch;
+          })
+        : [];
+
     let sent = 0;
     let failed = 0;
 
@@ -162,12 +196,22 @@ export class NotificationDispatcher {
       const driver = this.#drivers.get(channel.driver as NotifierDriverKind);
       if (!driver) continue;
 
+      const resolvedHandles = new Set(message.mentionHandles ?? []);
+      for (const member of matchedUsers) {
+        const handle = member.notificationHandles[channel.driver];
+        if (handle && handle.trim().length > 0) {
+          resolvedHandles.add(handle.trim());
+        }
+      }
+      const enrichedMessage: NotificationMessage =
+        resolvedHandles.size > 0 ? { ...message, mentionHandles: [...resolvedHandles] } : message;
+
       try {
         const secretCfg = decryptSecretJson<NotifierChannelSecretConfig>(
           this.#config.encryptionKey,
           channel.configEncrypted,
         );
-        await driver.send(secretCfg, message);
+        await driver.send(secretCfg, enrichedMessage);
         sent++;
       } catch {
         failed++;

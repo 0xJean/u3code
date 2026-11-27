@@ -231,6 +231,14 @@ export const CockpitWorkItemCard = Schema.Struct({
 });
 export type CockpitWorkItemCard = typeof CockpitWorkItemCard.Type;
 
+export const WorkItemDetail = Schema.Struct({
+  workItem: WorkItem,
+  pulses: Schema.Array(Pulse),
+  changeRequests: Schema.Array(ChangeRequestAudit),
+  gateApprovals: Schema.Array(GateApproval),
+});
+export type WorkItemDetail = typeof WorkItemDetail.Type;
+
 export const CockpitMetrics = Schema.Struct({
   activeWorkItems: Schema.Int,
   blockedWorkItems: Schema.Int,

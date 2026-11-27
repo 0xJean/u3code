@@ -226,16 +226,23 @@ export function createReleaseRoutes(deps: {
     });
 
     if (body.status === "ready") {
-      void deps.notifier.dispatch(project.workspaceId, project.id, {
-        event: "release.ready",
-        title: `Release Ready: ${project.key} ${release.versionLabel}`,
-        severity: "info",
-        summary: `Release ${release.versionLabel} is ready for final Go/No-Go sign-off.`,
-        bullets: [
-          `Project: ${project.name}`,
-          ...(release.rollbackPlan ? [`Rollback plan: ${release.rollbackPlan.slice(0, 140)}`] : []),
-        ],
-      });
+      void deps.notifier.dispatch(
+        project.workspaceId,
+        project.id,
+        {
+          event: "release.ready",
+          title: `Release Ready: ${project.key} ${release.versionLabel}`,
+          severity: "info",
+          summary: `Release ${release.versionLabel} is ready for final Go/No-Go sign-off.`,
+          bullets: [
+            `Project: ${project.name}`,
+            ...(release.rollbackPlan
+              ? [`Rollback plan: ${release.rollbackPlan.slice(0, 140)}`]
+              : []),
+          ],
+        },
+        { roles: ["owner"] },
+      );
     }
 
     return c.json({
