@@ -1,17 +1,21 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { CockpitOverview, EnvironmentId, TeamHubStatusResult } from "@t3tools/contracts";
-import type {
-  ForgeKind,
-  HubPluginSummary,
-  NotificationChannelSummary,
-  NotificationEventKind,
-  NotifierDriverKind,
-  RegisteredWorkflowPreset,
-  RepoPolicy,
-  WorkspaceMember,
+import {
+  BranchTopology,
+  type ForgeKind,
+  type HubPluginSummary,
+  type NotificationChannelSummary,
+  type NotificationEventKind,
+  type NotifierDriverKind,
+  type RegisteredWorkflowPreset,
+  type RepoPolicy,
+  type WorkspaceMember,
 } from "@u3code/hub-contracts";
+import * as Schema from "effect/Schema";
 import { T, useGT, Var } from "gt-react";
 import {
   BellIcon,
+  BotIcon,
   CheckIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -20,6 +24,8 @@ import {
   PuzzleIcon,
   RefreshCwIcon,
   SendIcon,
+  ShieldCheckIcon,
+  TagIcon,
   Trash2Icon,
   UserCogIcon,
   UserPlusIcon,
@@ -59,6 +65,9 @@ import {
 import { Switch } from "~/components/ui/switch";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { toastManager } from "~/components/ui/toast";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { useProjects } from "~/state/entities";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -69,6 +78,7 @@ import {
   CockpitSurfaceRow,
 } from "./CockpitPrimitives";
 import { formatCockpitCommandError } from "./cockpitError";
+import { buildRepoGovernanceBootstrapPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
 
 interface CockpitSettingsTabProps {
   readonly environmentId: EnvironmentId;
@@ -79,7 +89,26 @@ interface CockpitSettingsTabProps {
   readonly onRefreshAll: (nextWorkspaceId?: string, nextProjectId?: string) => void;
 }
 
-type SetupSection = "overview" | "team" | "notifications" | "plugins";
+type SetupSection = "overview" | "team" | "notifications" | "plugins" | "governance";
+
+const BRANCH_TOPOLOGY_STORAGE_KEY = "u3code:cockpit-branch-topology:v1";
+const branchTopologyStorageSchema = Schema.Record(Schema.String, BranchTopology);
+
+const STANDARD_GITHUB_LABELS: ReadonlyArray<{
+  readonly name: string;
+  readonly variant: "info" | "error" | "warning" | "secondary" | "success" | "outline";
+}> = [
+  { name: "type:feature", variant: "info" },
+  { name: "type:bug", variant: "error" },
+  { name: "type:hotfix", variant: "error" },
+  { name: "priority:p0", variant: "error" },
+  { name: "priority:p1", variant: "warning" },
+  { name: "priority:p2", variant: "info" },
+  { name: "priority:p3", variant: "secondary" },
+  { name: "qa-approved", variant: "success" },
+  { name: "blocked", variant: "warning" },
+  { name: "needs-info", variant: "outline" },
+];
 
 const DEFAULT_EVENTS: ReadonlyArray<NotificationEventKind> = [
   "digest.ready",
@@ -155,7 +184,16 @@ export function CockpitSettingsTab({
   onRefreshAll,
 }: CockpitSettingsTabProps) {
   const gt = useGT();
+  const localProjects = useProjects();
+  const handleNewThread = useNewThreadHandler();
   const [activeSection, setActiveSection] = useState<SetupSection>("overview");
+  const [topologyByScope, setTopologyByScope] = useLocalStorage(
+    BRANCH_TOPOLOGY_STORAGE_KEY,
+    {},
+    branchTopologyStorageSchema,
+  );
+  const [chosenBootstrapProjectKey, setChosenBootstrapProjectKey] = useState("");
+  const [startingBootstrap, setStartingBootstrap] = useState(false);
 
   // Creation dialog open states
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
@@ -307,6 +345,48 @@ export function CockpitSettingsTab({
   const repos = overview?.repos ?? [];
   const activeWorkspace = status.me?.workspaces.find((ws) => ws.id === selectedWorkspaceId) ?? null;
   const activeProject = overview?.project ?? null;
+
+  const topologyScopeKey = selectedProjectId || selectedWorkspaceId || "default";
+  const hasIntegrationBranch = repos.some((repo) =>
+    repo.repoPolicy.branches.some((branch) => branch.role === "integration"),
+  );
+  const inferredTopology: BranchTopology =
+    repos.length > 0 && !hasIntegrationBranch ? "single_trunk" : "dual_trunk";
+  const activeTopology: BranchTopology = topologyByScope[topologyScopeKey] ?? inferredTopology;
+
+  const envLocalProjects = localProjects.filter((proj) => proj.environmentId === environmentId);
+  const candidateLocalProjects = envLocalProjects.length > 0 ? envLocalProjects : localProjects;
+  const fallbackBootstrapProject = pickMatchingWorkspaceProject(candidateLocalProjects, repos);
+  const selectedBootstrapProject =
+    localProjects.find(
+      (proj) => `${proj.environmentId}:${proj.id}` === chosenBootstrapProjectKey,
+    ) ?? fallbackBootstrapProject;
+  const bootstrapRepoFullName =
+    repos[0]?.repoFullName ?? selectedBootstrapProject?.title ?? activeProject?.name ?? "";
+
+  const handleBootstrapGovernance = async () => {
+    if (!selectedBootstrapProject) {
+      toastManager.add({
+        title: gt("Add a local workspace repository first to run an Agent thread."),
+        type: "warning",
+      });
+      return;
+    }
+    setStartingBootstrap(true);
+    const prompt = buildRepoGovernanceBootstrapPrompt({
+      project: activeProject,
+      repoFullName: bootstrapRepoFullName,
+      topology: activeTopology,
+    });
+    await handleNewThread(
+      scopeProjectRef(selectedBootstrapProject.environmentId, selectedBootstrapProject.id),
+      {
+        envMode: "worktree",
+        prompt,
+      },
+    );
+    setStartingBootstrap(false);
+  };
 
   const fallbackPresets: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
     {
@@ -700,7 +780,8 @@ export function CockpitSettingsTab({
               value === "overview" ||
               value === "team" ||
               value === "notifications" ||
-              value === "plugins"
+              value === "plugins" ||
+              value === "governance"
             ) {
               setActiveSection(value);
             }
@@ -717,6 +798,9 @@ export function CockpitSettingsTab({
           </Toggle>
           <Toggle value="plugins">
             <T>Plugins & Packs</T>
+          </Toggle>
+          <Toggle value="governance">
+            <T>Workflow Governance</T>
           </Toggle>
         </ToggleGroup>
       </div>
@@ -1469,6 +1553,245 @@ export function CockpitSettingsTab({
               </CockpitSurface>
             </section>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* Section 5: GitHub Team Workflow Governance */}
+      {activeSection === "governance" ? (
+        <div className="space-y-6">
+          <section className="space-y-2.5">
+            <CockpitSectionHeader
+              action={
+                <span className="font-mono text-2xs text-muted-foreground/80">
+                  {"github-team-workflow"}
+                </span>
+              }
+              icon={<ShieldCheckIcon />}
+              title={<T>GitHub Team Workflow Governance</T>}
+            />
+
+            <CockpitSurface divided variant="grouped">
+              <CockpitSurfaceRow className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <div className="text-sm font-medium text-foreground">
+                      <T>Branch Topology</T>
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {activeTopology === "dual_trunk" ? (
+                        <T>
+                          Standard Dual-Trunk:{" "}
+                          <code className="font-mono text-foreground">main</code> +{" "}
+                          <code className="font-mono text-foreground">dev</code> +{" "}
+                          <code className="font-mono text-foreground">release/*</code> +{" "}
+                          <code className="font-mono text-foreground">hotfix/*</code>
+                        </T>
+                      ) : (
+                        <T>
+                          Lite Single-Trunk: <code className="font-mono text-foreground">main</code>{" "}
+                          + <code className="font-mono text-foreground">feat/*</code> +{" "}
+                          <code className="font-mono text-foreground">fix/*</code> +{" "}
+                          <code className="font-mono text-foreground">hotfix/*</code>
+                        </T>
+                      )}
+                    </p>
+                  </div>
+
+                  <ToggleGroup
+                    aria-label={gt("Branch topology")}
+                    size="segmented"
+                    value={[activeTopology]}
+                    variant="segmented"
+                    onValueChange={(next) => {
+                      const value = next[0];
+                      if (value === "dual_trunk" || value === "single_trunk") {
+                        setTopologyByScope((prev) => ({
+                          ...prev,
+                          [topologyScopeKey]: value,
+                        }));
+                      }
+                    }}
+                  >
+                    <Toggle value="dual_trunk">
+                      <T>Standard Dual-Trunk</T>
+                    </Toggle>
+                    <Toggle value="single_trunk">
+                      <T>Lite Single-Trunk</T>
+                    </Toggle>
+                  </ToggleGroup>
+                </div>
+
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <div className="rounded-lg border border-border/45 bg-background/40 px-3 py-2.5 text-xs">
+                    <div className="font-medium text-foreground">
+                      {activeTopology === "dual_trunk" ? (
+                        <T>
+                          Squash → <code className="font-mono">dev</code>
+                        </T>
+                      ) : (
+                        <T>
+                          Squash → <code className="font-mono">main</code>
+                        </T>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {activeTopology === "dual_trunk" ? (
+                        <T>
+                          Task branches squash-merge into dev with Conventional Commit titles for a
+                          clean linear history.
+                        </T>
+                      ) : (
+                        <T>
+                          Short-lived feature and fix branches squash-merge directly into main with
+                          Conventional Commit titles.
+                        </T>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border/45 bg-background/40 px-3 py-2.5 text-xs">
+                    <div className="font-medium text-foreground">
+                      {activeTopology === "dual_trunk" ? (
+                        <T>
+                          Merge commit → <code className="font-mono">main</code> &amp;{" "}
+                          <code className="font-mono">main</code> →{" "}
+                          <code className="font-mono">dev</code>
+                        </T>
+                      ) : (
+                        <T>Protected releases &amp; fast hotfixes</T>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {activeTopology === "dual_trunk" ? (
+                        <T>
+                          Preserve release, hotfix, and back-merge ancestry. Never squash-merge main
+                          into dev.
+                        </T>
+                      ) : (
+                        <T>
+                          Patch production with focused hotfix branches, required CI checks, and
+                          verified release tags.
+                        </T>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border/45 bg-background/40 px-3 py-2.5 text-xs">
+                    <div className="font-medium text-foreground">
+                      <T>PR &lt;= 400 lines</T>
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground">
+                      <T>
+                        Keep pull requests reviewable and split larger work into incremental,
+                        independently testable PRs.
+                      </T>
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-border/45 bg-background/40 px-3 py-2.5 text-xs">
+                    <div className="font-medium text-foreground">
+                      <T>
+                        Immutable <code className="font-mono">v*</code> tags + Layered Rulesets
+                      </T>
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground">
+                      <T>
+                        Tag releases from verified commits and enforce branch and tag rulesets in
+                        GitHub Settings.
+                      </T>
+                    </p>
+                  </div>
+                </div>
+              </CockpitSurfaceRow>
+
+              <CockpitSurfaceRow className="space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <TagIcon aria-hidden className="size-3.5 text-muted-foreground" />
+                  <T>Standard Label Taxonomy</T>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {STANDARD_GITHUB_LABELS.map((label) => (
+                    <Badge key={label.name} size="sm" variant={label.variant}>
+                      <span className="font-mono">{label.name}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </CockpitSurfaceRow>
+
+              <CockpitSurfaceRow className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <BotIcon aria-hidden className="size-3.5 text-muted-foreground" />
+                      <T>AI Repo Governance Bootstrap &amp; Audit</T>
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      <T>
+                        Launch a U3 Code Agent thread to non-destructively audit and generate{" "}
+                        <code className="font-mono text-foreground">.github/</code> templates,{" "}
+                        <code className="font-mono text-foreground">pr-dev.yml</code>,{" "}
+                        <code className="font-mono text-foreground">pr-main.yml</code>,{" "}
+                        <code className="font-mono text-foreground">sync-main-to-dev.yml</code>,{" "}
+                        <code className="font-mono text-foreground">CODEOWNERS</code>,{" "}
+                        <code className="font-mono text-foreground">AGENTS.md</code>, and{" "}
+                        <code className="font-mono text-foreground">init-labels.sh</code>.
+                      </T>
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {localProjects.length > 0 && selectedBootstrapProject ? (
+                      <div className="w-48 shrink-0">
+                        <Select
+                          value={`${selectedBootstrapProject.environmentId}:${selectedBootstrapProject.id}`}
+                          onValueChange={(value) => {
+                            if (value) setChosenBootstrapProjectKey(value);
+                          }}
+                        >
+                          <SelectTrigger aria-label={gt("Workspace repository")} size="compact">
+                            <SelectValue>{selectedBootstrapProject.title}</SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            {localProjects.map((proj) => (
+                              <SelectItem
+                                key={`${proj.environmentId}:${proj.id}`}
+                                value={`${proj.environmentId}:${proj.id}`}
+                              >
+                                {proj.title}
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+                    ) : null}
+
+                    <Button
+                      disabled={startingBootstrap || !selectedBootstrapProject}
+                      size="sm"
+                      variant="default"
+                      onClick={() => void handleBootstrapGovernance()}
+                    >
+                      <ShieldCheckIcon />
+                      {startingBootstrap ? (
+                        <T>Starting Governance Thread...</T>
+                      ) : (
+                        <T>Bootstrap / Audit Repo with AI</T>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {!selectedBootstrapProject ? (
+                  <p className="text-xs text-muted-foreground">
+                    <T>
+                      Add a local workspace repository in the sidebar to run AI repository
+                      governance bootstrap and audit.
+                    </T>
+                  </p>
+                ) : null}
+              </CockpitSurfaceRow>
+            </CockpitSurface>
+          </section>
         </div>
       ) : null}
 

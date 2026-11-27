@@ -18,6 +18,7 @@ const threadId = ThreadId.make("thread:team-hub");
 it.effect("reads team hub context + living memory and publishes pulse with threadId", () =>
   Effect.gen(function* () {
     const publishedPayloads: Array<unknown> = [];
+    const updateWorkItemPayloads: Array<unknown> = [];
     const boardReadPayloads: Array<unknown> = [];
     const boardPostPayloads: Array<unknown> = [];
 
@@ -166,8 +167,9 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
             changeRequests: [],
             gateApprovals: [],
           }),
-        updateWorkItem: (input) =>
-          Effect.succeed({
+        updateWorkItem: (input) => {
+          updateWorkItemPayloads.push(input);
+          return Effect.succeed({
             workItem: {
               id: input.workItemId,
               projectId: "prj_1",
@@ -178,19 +180,20 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
               priority: "p1",
               stage: input.stage ?? "dev",
               health: input.health ?? "on_track",
-              assigneeType: "unassigned",
-              assigneeUserId: null,
-              assigneeRunnerId: null,
+              assigneeType: input.assigneeType ?? "unassigned",
+              assigneeUserId: input.assigneeUserId ?? null,
+              assigneeRunnerId: input.assigneeRunnerId ?? null,
               specMarkdown: input.specMarkdown ?? "Must retry safely.",
-              specUrl: null,
-              previewUrls: [],
+              specUrl: input.specUrl ?? null,
+              previewUrls: [...(input.previewUrls ?? [])],
               checklistItems: [...(input.checklistItems ?? [])],
-              attributes: {},
+              attributes: { ...input.attributes },
               createdBy: "usr_1",
               createdAt: "2026-11-26T00:00:00.000Z",
               updatedAt: "2026-11-26T00:00:00.000Z",
             },
-          }),
+          });
+        },
         listBoardMessages: (input) => {
           boardReadPayloads.push(input);
           return Effect.succeed({
@@ -294,6 +297,46 @@ it.effect("reads team hub context + living memory and publishes pulse with threa
           ],
         },
       });
+
+      const lifecycleUpdated = yield* toolkit
+        .handle("team_hub_update_work_item", {
+          workItemId: "wi_1",
+          specMarkdown: "# PRD\nDetailed AI delivery specification.",
+          specUrl: "https://docs.example.com/prd/core-1",
+          previewUrls: ["https://proto.example.com/core-1"],
+          attributes: {
+            prdStatus: "approved",
+            prototypeStatus: "draft",
+            prototypeUrl: "https://proto.example.com/core-1",
+            githubIssueNumber: 101,
+            githubIssueUrl: "https://github.com/acme/u3code/issues/101",
+            githubLabels: ["type:feature", "priority:p1"],
+            branchName: "feat/101-idempotent-outbox",
+          },
+          assigneeType: "runner",
+          assigneeUserId: null,
+          assigneeRunnerId: "claude-agent",
+        })
+        .pipe(
+          Stream.unwrap,
+          Stream.runCollect,
+          Effect.map((parts) => parts.at(-1)?.result),
+        );
+      expect(lifecycleUpdated).toMatchObject({
+        workItem: {
+          id: "wi_1",
+          specUrl: "https://docs.example.com/prd/core-1",
+          previewUrls: ["https://proto.example.com/core-1"],
+          assigneeType: "runner",
+          assigneeRunnerId: "claude-agent",
+          attributes: {
+            prdStatus: "approved",
+            githubIssueNumber: 101,
+            branchName: "feat/101-idempotent-outbox",
+          },
+        },
+      });
+      expect(updateWorkItemPayloads).toHaveLength(2);
 
       const published = yield* toolkit
         .handle("team_hub_publish_pulse", {

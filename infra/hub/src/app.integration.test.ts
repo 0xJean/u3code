@@ -830,4 +830,146 @@ describe("u3code-hub integration (PGlite)", () => {
     expect(boardEvents.map((e) => e.seq)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(boardEvents[1]?.mentions).toEqual(["boss", "dotsbot[bot]", "qa-lead"]);
   });
+
+  it("persists work item assignees on create and posts handoff board messages on reassignment", async () => {
+    const { app, broker, pglite } = await createTestHub();
+    cleanups.push(async () => {
+      broker.close();
+      await pglite.close();
+    });
+
+    const ownerLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "boss", displayName: "Tech Founder" }),
+    });
+    const ownerAuth = (await ownerLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+    const devLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice", displayName: "Alice Dev" }),
+    });
+    const devAuth = (await devLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+
+    const ownerHeaders = {
+      Authorization: `Bearer ${ownerAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const wsRes = await app.request("/api/v1/workspaces", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ slug: "delivery-team", name: "Delivery Team" }),
+    });
+    const { workspace } = (await wsRes.json()) as { workspace: { id: string } };
+
+    await app.request(`/api/v1/workspaces/${workspace.id}/members/${devAuth.user.id}`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({ roles: ["dev"] }),
+    });
+
+    const projRes = await app.request(`/api/v1/workspaces/${workspace.id}/projects`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ key: "DLV", name: "Delivery", preset: "full-delivery" }),
+    });
+    const { project } = (await projRes.json()) as { project: { id: string } };
+
+    const createAssignedRes = await app.request(`/api/v1/projects/${project.id}/work-items`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        title: "Build Gantt schedule",
+        assigneeType: "human",
+        assigneeUserId: ownerAuth.user.id,
+        attributes: { plannedStartAt: "2026-11-27", dueAt: "2026-12-03" },
+      }),
+    });
+    expect(createAssignedRes.status).toBe(201);
+    const { workItem } = (await createAssignedRes.json()) as {
+      workItem: {
+        id: string;
+        code: string;
+        assigneeType: string;
+        assigneeUserId: string | null;
+        assigneeRunnerId: string | null;
+      };
+    };
+    expect(workItem.assigneeType).toBe("human");
+    expect(workItem.assigneeUserId).toBe(ownerAuth.user.id);
+    expect(workItem.assigneeRunnerId).toBeNull();
+
+    // Reassign to human teammate -> posts handoff mentioning @alice
+    const assignHumanRes = await app.request(`/api/v1/work-items/${workItem.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        assigneeType: "human",
+        assigneeUserId: devAuth.user.id,
+      }),
+    });
+    expect(assignHumanRes.status).toBe(200);
+
+    // Re-saving same assignee does NOT post a duplicate handoff
+    const noopSaveRes = await app.request(`/api/v1/work-items/${workItem.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        assigneeType: "human",
+        assigneeUserId: devAuth.user.id,
+        title: "Build Gantt schedule v2",
+      }),
+    });
+    expect(noopSaveRes.status).toBe(200);
+
+    // Reassign to coding runner -> clears assigneeUserId and posts handoff mentioning @claude-agent
+    const assignRunnerRes = await app.request(`/api/v1/work-items/${workItem.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        assigneeType: "runner",
+        assigneeRunnerId: "claude-agent",
+      }),
+    });
+    expect(assignRunnerRes.status).toBe(200);
+    const { workItem: runnerAssigned } = (await assignRunnerRes.json()) as {
+      workItem: {
+        assigneeType: string;
+        assigneeUserId: string | null;
+        assigneeRunnerId: string | null;
+      };
+    };
+    expect(runnerAssigned.assigneeType).toBe("runner");
+    expect(runnerAssigned.assigneeUserId).toBeNull();
+    expect(runnerAssigned.assigneeRunnerId).toBe("claude-agent");
+
+    // Unassigning clears both and does NOT post a handoff
+    const unassignRes = await app.request(`/api/v1/work-items/${workItem.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({ assigneeType: "unassigned" }),
+    });
+    expect(unassignRes.status).toBe(200);
+
+    const boardRes = await app.request(
+      `/api/v1/cockpit/board?workspaceId=${workspace.id}&projectId=${project.id}`,
+      { headers: ownerHeaders },
+    );
+    expect(boardRes.status).toBe(200);
+    const board = (await boardRes.json()) as { messages: TeamBoardMessage[]; head: number };
+    expect(board.head).toBe(2);
+    expect(board.messages.map((m) => m.kind)).toEqual(["handoff", "handoff"]);
+    expect(board.messages[0]?.mentions).toEqual(["alice"]);
+    expect(board.messages[0]?.body).toContain("@alice");
+    expect(board.messages[0]?.workItemCode).toBe("DLV-1");
+    expect(board.messages[1]?.mentions).toEqual(["claude-agent"]);
+    expect(board.messages[1]?.body).toContain("@claude-agent");
+  });
 });

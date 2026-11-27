@@ -1,5 +1,9 @@
 import type { TeamHubReviewQueueResult } from "@t3tools/contracts";
-import type { ChangeRequestAudit, CockpitWorkItemCard } from "@u3code/hub-contracts";
+import {
+  recommendPrMergeStrategy,
+  type ChangeRequestAudit,
+  type CockpitWorkItemCard,
+} from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
 import {
   AlertTriangleIcon,
@@ -41,6 +45,8 @@ import {
 } from "./CockpitPrimitives";
 
 export type TriageFilter = "all" | "blocked" | "human" | "unlinked";
+
+const PR_DIFF_GUARDRAIL_LINES = 400;
 
 export interface CockpitTriageTabProps {
   readonly reviewQueue: TeamHubReviewQueueResult | null;
@@ -322,6 +328,12 @@ export function CockpitTriageTab({
                     const linkedCard = cr.workItemId ? (cardById.get(cr.workItemId) ?? null) : null;
                     const topFinding = cr.automatedReview.reviewers[0] ?? null;
                     const ciTone = ciStatusTone(cr.qualitySignals.ciStatus);
+                    const changedLines = cr.additions + cr.deletions;
+                    const exceedsDiffGuardrail = changedLines > PR_DIFF_GUARDRAIL_LINES;
+                    const mergeStrategy = recommendPrMergeStrategy({
+                      headBranch: cr.headBranch,
+                      baseBranch: cr.baseBranch,
+                    });
 
                     return (
                       <CockpitSurfaceRow
@@ -363,7 +375,34 @@ export function CockpitTriageTab({
                                 {cr.headBranch} → {cr.baseBranch}
                               </span>
                             </span>
+                            {mergeStrategy.method === "merge_commit" ? (
+                              <Badge
+                                size="sm"
+                                variant={mergeStrategy.isBackMerge ? "warning" : "info"}
+                              >
+                                <PullRequestGlyph.merged />
+                                {mergeStrategy.isBackMerge ? (
+                                  <T>Back-merge: Merge commit</T>
+                                ) : (
+                                  <T>Merge commit</T>
+                                )}
+                              </Badge>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-muted-foreground/80">
+                                <PullRequestGlyph.merged
+                                  aria-hidden
+                                  className="size-3 shrink-0 opacity-70"
+                                />
+                                <T>Squash</T>
+                              </span>
+                            )}
                             <CockpitDiffStat additions={cr.additions} deletions={cr.deletions} />
+                            {exceedsDiffGuardrail ? (
+                              <span className="inline-flex items-center gap-1 font-mono text-warning-foreground">
+                                <AlertTriangleIcon aria-hidden className="size-3 shrink-0" />
+                                <span>{gt(">400 lines")}</span>
+                              </span>
+                            ) : null}
                             <span
                               className={cn(
                                 "inline-flex items-center gap-1.5",

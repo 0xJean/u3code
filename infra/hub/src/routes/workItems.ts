@@ -23,6 +23,7 @@ import {
   projects,
   pulses,
   releases,
+  users,
   workItems,
 } from "../db/schema.ts";
 import type { NotificationDispatcher } from "../notifiers/index.ts";
@@ -30,6 +31,12 @@ import { newId } from "../utils/crypto.ts";
 import { computeTriageBucket } from "../webhooks/github.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
 import { appendBoardMessage, deriveUserBoardHandle } from "./board.ts";
+
+const VALID_ASSIGNEE_TYPES = new Set<"unassigned" | "human" | "runner">([
+  "unassigned",
+  "human",
+  "runner",
+]);
 
 export function createWorkItemRoutes(deps: {
   readonly db: HubDatabase;
@@ -64,10 +71,22 @@ export function createWorkItemRoutes(deps: {
       readonly previewUrls?: string[];
       readonly checklistItems?: ChecklistItem[];
       readonly attributes?: Record<string, unknown>;
+      readonly assigneeType?: "unassigned" | "human" | "runner";
+      readonly assigneeUserId?: string | null;
+      readonly assigneeRunnerId?: string | null;
     };
 
     const title = body.title?.trim();
     if (!title) return c.json({ error: "title is required." }, 400);
+    if (body.assigneeType !== undefined && !VALID_ASSIGNEE_TYPES.has(body.assigneeType)) {
+      return c.json({ error: `Invalid assigneeType '${String(body.assigneeType)}'.` }, 400);
+    }
+
+    const assigneeType =
+      body.assigneeType ??
+      (body.assigneeUserId ? "human" : body.assigneeRunnerId ? "runner" : "unassigned");
+    const assigneeUserId = assigneeType === "human" ? (body.assigneeUserId ?? null) : null;
+    const assigneeRunnerId = assigneeType === "runner" ? (body.assigneeRunnerId ?? null) : null;
 
     const maxSeqRows = await deps.db
       .select({ maxSeq: max(workItems.seqNo) })
@@ -89,6 +108,9 @@ export function createWorkItemRoutes(deps: {
         itemType: body.itemType ?? "feature",
         priority: body.priority ?? "p1",
         stage,
+        assigneeType,
+        assigneeUserId,
+        assigneeRunnerId,
         specMarkdown: body.specMarkdown ?? "",
         specUrl: body.specUrl ?? null,
         previewUrls: body.previewUrls ?? [],
@@ -167,6 +189,44 @@ export function createWorkItemRoutes(deps: {
       }
     }
 
+    if (body.assigneeType !== undefined && !VALID_ASSIGNEE_TYPES.has(body.assigneeType)) {
+      return c.json({ error: `Invalid assigneeType '${String(body.assigneeType)}'.` }, 400);
+    }
+
+    const hasAssigneePatch =
+      body.assigneeType !== undefined ||
+      body.assigneeUserId !== undefined ||
+      body.assigneeRunnerId !== undefined;
+    let assigneePatch: {
+      assigneeType?: "unassigned" | "human" | "runner";
+      assigneeUserId?: string | null;
+      assigneeRunnerId?: string | null;
+    } = {};
+    if (hasAssigneePatch) {
+      const resolvedType =
+        body.assigneeType ??
+        (body.assigneeUserId !== undefined && body.assigneeUserId !== null
+          ? "human"
+          : body.assigneeRunnerId !== undefined && body.assigneeRunnerId !== null
+            ? "runner"
+            : (found.item.assigneeType as "unassigned" | "human" | "runner"));
+      assigneePatch = {
+        assigneeType: resolvedType,
+        assigneeUserId:
+          resolvedType === "human"
+            ? body.assigneeUserId !== undefined
+              ? body.assigneeUserId
+              : found.item.assigneeUserId
+            : null,
+        assigneeRunnerId:
+          resolvedType === "runner"
+            ? body.assigneeRunnerId !== undefined
+              ? body.assigneeRunnerId
+              : found.item.assigneeRunnerId
+            : null,
+      };
+    }
+
     const updated = await deps.db
       .update(workItems)
       .set({
@@ -180,9 +240,7 @@ export function createWorkItemRoutes(deps: {
         ...(body.attributes !== undefined
           ? { attributes: { ...found.item.attributes, ...body.attributes } }
           : {}),
-        ...(body.assigneeType !== undefined ? { assigneeType: body.assigneeType } : {}),
-        ...(body.assigneeUserId !== undefined ? { assigneeUserId: body.assigneeUserId } : {}),
-        ...(body.assigneeRunnerId !== undefined ? { assigneeRunnerId: body.assigneeRunnerId } : {}),
+        ...assigneePatch,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(workItems.id, workItemId))
@@ -197,6 +255,48 @@ export function createWorkItemRoutes(deps: {
       stage: next.stage,
       health: next.health as "on_track" | "at_risk" | "blocked",
     });
+
+    const assigneeChanged =
+      next.assigneeType !== found.item.assigneeType ||
+      next.assigneeUserId !== found.item.assigneeUserId ||
+      next.assigneeRunnerId !== found.item.assigneeRunnerId;
+
+    if (assigneeChanged && next.assigneeType !== "unassigned") {
+      let assigneeHandle: string | null = null;
+      if (next.assigneeType === "human" && next.assigneeUserId) {
+        const targetRows = await deps.db
+          .select()
+          .from(users)
+          .where(eq(users.id, next.assigneeUserId))
+          .limit(1);
+        const targetUser = targetRows[0];
+        if (targetUser) {
+          assigneeHandle = deriveUserBoardHandle(targetUser);
+        }
+      } else if (next.assigneeType === "runner" && next.assigneeRunnerId) {
+        const normalizedRunner = next.assigneeRunnerId.trim().replace(/^@+/, "").toLowerCase();
+        assigneeHandle = normalizedRunner || null;
+      }
+
+      if (assigneeHandle) {
+        await appendBoardMessage(
+          { db: deps.db, broker: deps.broker },
+          {
+            workspaceId: found.project.workspaceId,
+            projectId: found.project.id,
+            kind: "handoff",
+            authorType: "human",
+            authorUserId: user.id,
+            authorHandle: deriveUserBoardHandle(user),
+            authorDisplayName: user.displayName,
+            body: `@${assigneeHandle} assigned to ${next.code} (${next.title})`,
+            mentions: [assigneeHandle],
+            workItemId: next.id,
+            workItemCode: next.code,
+          },
+        );
+      }
+    }
 
     return c.json({ workItem: next });
   });

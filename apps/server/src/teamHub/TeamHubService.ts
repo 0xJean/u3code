@@ -547,10 +547,11 @@ const make = Effect.gen(function* () {
   const createWorkItem = Effect.fn("TeamHubService.createWorkItem")(function* (
     input: TeamHubCreateWorkItemInput,
   ) {
+    const { projectId, ...body } = input;
     return yield* authedRequest({
       method: "POST",
-      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/work-items`,
-      body: input,
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(projectId)}/work-items`,
+      body,
       decode: decodeWorkItem,
     });
   });

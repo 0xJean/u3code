@@ -3269,10 +3269,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "на компьютере, который открыл эту страницу"
-      ]
+      "c": [" ", "на компьютере, который открыл эту страницу"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3284,10 +3281,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· этот доступ получит любой, кто это запустит"
-      ]
+      "c": [" ", "· этот доступ получит любой, кто это запустит"]
     }
   ],
   "c54cc9c75db9dc58": "Подтверждайте только тот вход, который вы только что начали.",
@@ -5371,6 +5365,74 @@
   "0f54651dc9530e62": "Refresh Token",
   "32db31f0dc62bec8": "Подключение...",
   "90f46dbf8782cfde": "Подключить",
+  "bd8e87512fd9bdf2": "Не назначено",
+  "8d94d847be325143": "Timeline zoom",
+  "96eb8189e8543474": "Group timeline rows",
+  "85fb23f02e364230": "PRD {prd}, Prototype {proto}, Issue {issue}, PR {pr}",
+  "34c300dea53970ff": "none",
+  "6795b3d7a13c53e4": "merged",
+  "ac2c1a39608fc635": "open",
+  "66df64aa5ae26b23": "Shift {code} one day earlier",
+  "3745babb15c02094": "Shift {code} one day later",
+  "ed09daca6e3b89ca": "No scheduled work items yet",
+  "dd0d277bf29dfa66": "Add a requirement with planned start and due dates to track delivery timelines and release milestones.",
+  "ecac13a7d8d42362": "New Requirement",
+  "6cbdca322747e627": "2 Weeks",
+  "1e38c2cbccf1b0aa": "Month",
+  "f311f60c1c1346f1": "Quarter",
+  "5692b3d251f7d53a": "Stage",
+  "08247dd39b0c85ff": "Исполнитель",
+  "6ce303542525855f": "On track",
+  "e39a57514be028e9": "Ревью",
+  "25911e4a4804b73e": "Blocked",
+  "548077fc2880647c": "Release milestone",
+  "0ce85fa2fbb547fa": "Work Item",
+  "91dbffc57debe8aa": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " overdue"
+  ],
+  "db046871e24073f1": "Today",
+  "12eb7a3efe84bb5e": [
+    "Release ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " (",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ")"
+  ],
+  "055a04db5b6ea584": "Shift -1d",
+  "8ed4216551e558b7": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    ": ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " (",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    "%)"
+  ],
+  "6278167ece201c4c": "Shift +1d",
   "284ab90dc7687136": "Search members",
   "c485fbc80200f2ce": "Search members...",
   "e97e409bef7c68db": "Owner",
@@ -5440,15 +5502,34 @@
     }
   ],
   "f160e9bb0b0553c8": "Stage: {stage}",
+  "3bd1cb975487019c": "Due {date}",
+  "c25dc7daa1f8d57f": "Issue #{num}",
+  "46998dbfcabdd81e": "PRD",
+  "eab25cc34c027952": "Proto",
+  "07d6fa6782df34fc": "Delivery Pipeline",
+  "cf9e5b3a2eef38b1": "Intake",
+  "c4275f4f0bd253c0": "AI PRD",
+  "7ab7573c6034efa6": "Prototype",
+  "60722b149ee0dfbc": "Dev",
+  "242964c05817fd25": "PR Review",
   "9ba7ae80f789850f": "Active Now",
   "a40bceccfc3cf83c": "Project progress",
-  "3f37026f18629910": "Tracks",
+  "147b43f15493e52c": "Delivery Tracks",
   "7bed7d3fbf638c3e": "Planning",
   "d45caff1bb8c308f": "Staging",
   "a553be36e93303cd": "Ready",
   "312a0584fb0267f3": "Released",
   "ffd2b08e80e894f6": "Rolled Back",
   "5efca19ac2a8e144": "The team",
+  "91771d5a5ea24daf": "Delivery Pipeline",
+  "074b9ff8d78f5fd3": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " shipped"
+  ],
   "38f9779f6603cedd": "Active Now",
   "6bc7d41e095831d3": "Show all",
   "7bf1d1f0f6858ca5": [
@@ -5491,6 +5572,24 @@
     },
     " ACs verified"
   ],
+  "9f45972bd6242876": [
+    "· ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " overdue"
+  ],
+  "7dad7b17b8d319ea": [
+    "· ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ready for review"
+  ],
   "dd89fb3a17c06a50": {
     "t": "Plural",
     "i": 1,
@@ -5525,11 +5624,26 @@
     }
   },
   "28528345bbdb78fe": "No open pull requests right now.",
-  "3f14ad0e456a91df": "Tracks",
-  "71c021ea74f76e06": "Work Items",
-  "25911e4a4804b73e": "Blocked",
+  "afe856424c726fae": "Delivery Tracks",
+  "5166362dba5f3dc0": "Kanban Board",
   "d124d6f60ba0a8e6": "Moving",
   "a46e8c8722669f88": "All clear",
+  "b0c8d7d3e3626b98": "Gantt Timeline",
+  "1d2435371173f993": "No schedule yet",
+  "fc44db9f6e602599": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " dated"
+  ],
   "afe32cf7ce50b9e1": "PR Reviews",
   "4ceb36b83ab15181": [
     {
@@ -5640,6 +5754,9 @@
   "19ba87268baac4ff": "Pull request linked to work item",
   "e37864470755b3f0": "Pull request unlinked",
   "e8d146d9112c44a0": "Failed to link pull request.",
+  "38d5e089b89bc659": "Schedule updated",
+  "47f1ef90cd104598": "Failed to update schedule.",
+  "8a9f161501111285": "Work item created. Add a local repository to launch AI PRD threads.",
   "1f4f756156635c20": "Work item created",
   "9cc885bf41125062": "Failed to create work item.",
   "327631cbc2a7dda1": "Cockpit digest generated",
@@ -5658,7 +5775,11 @@
   "b579ddd2e1847788": "Refactor",
   "d9f5f2c228107120": "Chore",
   "ec8e528936b96b22": "Security",
-  "5d593f65a22fb808": "Outline requirements, edge cases, and acceptance criteria",
+  "7438e33a9afa75da": "Мелкий",
+  "f4285195dac7acd0": "Крупный",
+  "f24a869a2c45bdc1": "Cross-repo",
+  "d006312f761f5f53": "Coding Agent ({runnerId})",
+  "a1af216fb208642a": "Describe user problem, target outcomes, and edge cases",
   "5695bcf364c7f316": "Blocking",
   "edb9bc067fe3638c": "Passed",
   "117ab7481d901d6e": "Auto-merged",
@@ -5675,6 +5796,8 @@
   "b21e23bd6421075c": "No server environment connected",
   "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
   "daee9e8b51384a85": "Checking Team Hub connection...",
+  "2d40dd2539b7e017": "Kanban",
+  "fe6673bc90a3b7c8": "Gantt",
   "50e69de3abc32870": "Review Triage",
   "72d72a452aed7f1d": "Releases",
   "013dfe4a2448e211": [
@@ -5685,13 +5808,13 @@
     },
     " repos"
   ],
+  "8b25153390e240fe": "New Item",
   "345b2c797156733f": "No project configured yet",
   "9d1e700b8e32ad9b": "Create or select a project in Setup to track cross-repository work items and workflow gates.",
   "8c03a789a0570c98": "Open Setup",
   "e18bc1817ce7cafc": "Has PR",
   "f1f55521bea76543": "Board",
   "dc6de46021f4f9ec": "List",
-  "8b25153390e240fe": "New Item",
   "33f72596bc1c7d2a": "No matching work items",
   "5d6b2d0602ae75d6": "No work items match the active filter. Reset the filter to inspect all stages.",
   "78ecbaa429a6444e": "Show all items",
@@ -5700,14 +5823,22 @@
   "f4e6c050273cbb75": "Workspace Setup",
   "a56909d1b4179b31": "Back to Overview",
   "a4a5a19f3650a913": "New Work Item",
-  "9c4ec57e543d3dc5": "Create a cross-repository work item tracked in Team Cockpit.",
+  "e7b92257fbfb7171": "Capture requirement scope, design tier, owner, and timeline, or launch an AI PRD thread right away.",
   "3ac8ed47fe50bd34": "Title",
   "6d1395f41c06e0c9": "Тип",
   "db89367b182189de": "Priority",
-  "1bef2b0960294d41": "Spec / Acceptance Criteria (Markdown)",
+  "b4870e4ea4bbdf71": "Design Tier",
+  "d27f13e1e62caffb": "Unassigned",
+  "d2aba9ce191d09b7": "Planned Start",
+  "25e9479630195fcb": "Due Date",
+  "55faffd674513a7b": "Requirement Brief / Problem Statement",
+  "e57c0e2c14720521": "Launching PRD...",
+  "bca6c517d14e70c3": "Create & Draft PRD with AI",
   "479c50cef585f907": "Создание...",
-  "baaf07d893736ec8": "Создать",
+  "80cf357f1db711d7": "Create Item",
   "e1d4235d9234707f": "At Risk",
+  "030b75281931284b": "PRD",
+  "c3bfcd9e43be314a": "Proto",
   "2686a36b6d74306c": [
     "AC ",
     {
@@ -5736,6 +5867,8 @@
   "a1f8800c74ae3ba2": "Human Approved",
   "2d9b675e7b9ad0ca": "Changes Requested",
   "39d68861ce8b6bf0": "Awaiting Review",
+  "f1d7aa78fe313fb1": "{count} lines (>400: consider splitting)",
+  "7373a746faff6179": "{count} lines (<= 400 OK)",
   "74947ab5b4fd0b15": "High Risk",
   "ba9976aefa15a821": "Medium Risk",
   "6e85dbd602211b5a": "Low Risk",
@@ -5761,13 +5894,38 @@
     }
   ],
   "b5fcc94920c9bd0e": "Oversized",
+  "684d898aef165638": "Back-merge: Merge commit only!",
+  "c6cbd5583219f021": [
+    "Merge commit → ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "2c74d66632d807d1": [
+    "Squash → ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "d32c6cbf80efa55e": [
+    "Linked ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "1fefc7a5eea79d09": "Unlinked PR",
   "9a5dc4d55bdbf68f": "Handle Directly in U3 Code",
   "db813b401670037e": "Starting Fix Thread...",
   "d5daa3b0410188cd": "Fix Findings with Agent",
-  "a29315333eda3626": "Starting Review Thread...",
-  "e229ac5d7848775f": "Review PR with Agent",
-  "261cd163d43a7923": "Review with Agent",
-  "a886c94040108b81": "Open Native Diff & Actions",
+  "b7399dc39c0305c7": "Starting Auto-Review...",
+  "af588ec6399e8eed": "AI Auto-Review & Comment",
+  "60a7b8e53152553d": "Diff, Review & Merge",
   "805dd007ab6a2fd9": "Add this repository as a local project in the sidebar to launch Agent fix/review threads or inspect native diffs here.",
   "d443fc41428843c1": "Automated Review Signals",
   "51ae57722d249bfe": "No automated bot findings recorded on this PR.",
@@ -5776,9 +5934,21 @@
   "93ef88899dcc2317": "Open Item",
   "17ca3c63cd312f8f": "Link Work Item",
   "a78e9c96a7c509e5": "No work items in this project yet to link.",
+  "4a4a3372d27fdd12": "CI green on all target PRs",
+  "8432a5dc76eb0871": "Staging QA verified (qa-approved)",
+  "ea94c7c1174e7f22": "DB migrations and rollback verified",
+  "e3065c00af9149c4": "Environment variables and feature flags confirmed",
+  "5934b2c5784e22f5": "Changelog and release notes ready",
+  "a4b86aeeba4b87d2": "Release Manager and rollback owner confirmed",
+  "06fce3ff3de10fc4": "Post-release SLI monitoring ready",
+  "9cd7cdb44b52f18d": "Git command copied to clipboard",
+  "3c3e59753bc2bd2d": "Failed to copy git command.",
   "11d8d12204ff290f": "QA Sign-off",
   "3cff75d104ab4861": "Security Sign-off",
   "af827f6ecf816851": "Production Go/No-Go",
+  "53a0efbc59428cb3": "Tag RC (staging)",
+  "1c50f1586271a5a2": "Tag Production (main)",
+  "c48710249d01e25e": "Back-merge main → dev (Merge commit)",
   "48c59f685ebaeeab": "Release snapshots and notes generated",
   "86401fff1d2bca58": "Release created",
   "209dac3fbf56aba0": "Failed to create release.",
@@ -5804,6 +5974,11 @@
   "eb620b39cf05c673": "No releases match this filter",
   "55f7807ea2971bf4": "Switch back to All to inspect planned or shipped release trains.",
   "b404d85bca0709c9": "Show All Releases",
+  "65ca2033223620bb": "freeze",
+  "d9277ed8cd5f341d": "staging",
+  "ac1f9b3b07e0a49b": "Merge commit → main",
+  "edd41ba90dcaaac4": "tag",
+  "8fe274b3cd9c242e": "Merge commit main → dev",
   "191c1f9eba718240": [
     {
       "i": 1,
@@ -5827,6 +6002,7 @@
     }
   ],
   "c74396c377fe4c88": "Mark Rolled Back",
+  "74470ab2fd9117e6": "Dual-Trunk Flow",
   "a647e12237e460c9": "Release Sign-off Gates",
   "f6a91589456cca50": "Подтверждена",
   "da048c35113aca82": "Rejected",
@@ -5834,11 +6010,44 @@
   "b8cdfff5c128f754": "Reject",
   "02ebb9d477b4b86f": "Included Work Items",
   "c9c9a0e6e914d8b5": "Repository Snapshots",
-  "64d21a4288e8282a": "Release Notes & Rollback Plan",
-  "e12cdd8347c2574b": "Release Notes",
-  "93b357f027337511": "Rollback Plan",
+  "987d7f15b94dd770": "Release Notes, Checklist & Git Commands",
+  "f225a6e13b315464": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " ",
+    "checked"
+  ],
   "d95c0ec500affcbd": "Hide",
   "85dce58cc95211df": "Show",
+  "e12cdd8347c2574b": "Release Notes",
+  "93b357f027337511": "Rollback Plan",
+  "9518e4865bbc80b2": "Release Readiness Checklist",
+  "75cfb49b93908c3a": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " checked"
+  ],
+  "940c70e9932f201b": "Safe Git Tag & Back-Merge Commands",
+  "27589377aaa7776b": "Never squash-merge main → dev; tags are immutable.",
+  "ffd3cdd328e21c9d": "Copy",
   "1e6dcd9abc1293bd": "Plan Cross-Repo Release",
   "6dd9e4f0371d430c": "Select work items to include, auto-generate repository snapshots and release notes, and define the rollback plan.",
   "ff80756f16cf2ab8": "Version Label",
@@ -5904,6 +6113,8 @@
   "67799c2f5695a1b1": "Discord",
   "ebffe4dabf52835f": "Включить {name}",
   "1163ee57613a7d1d": "Delete notification channel",
+  "37356b9a4d0203a9": "Branch topology",
+  "18ed3e1af363c529": "Workspace repository",
   "021866887401ae66": "Workspace name (e.g. Engineering)",
   "8a7b4641730e8650": "Slug (e.g. eng)",
   "b9c1e5ebfdf316f4": "Key (e.g. CORE)",
@@ -5926,6 +6137,7 @@
   "4a7e19e8f0c26034": "Team & Profile",
   "87ff2a59e13f8485": "Notifications",
   "178659e33eb47277": "Plugins & Packs",
+  "d053ba62bc1c2376": "Workflow Governance",
   "7e6ae762268f6b0c": "New Workspace",
   "0ad9b34be4db040e": "New Project",
   "29bf6dffded56b11": "Workspace & Project",
@@ -6084,6 +6296,181 @@
     }
   ],
   "b73739b620951e53": "Registered Workflow Presets",
+  "8075af0ef7279771": "GitHub Team Workflow Governance",
+  "92f6349cb6034e69": "Branch Topology",
+  "4b1f66ee3bae90dc": [
+    "Standard Dual-Trunk:",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "main"
+    },
+    " +",
+    " ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": "dev"
+    },
+    " +",
+    " ",
+    {
+      "t": "code",
+      "i": 3,
+      "c": "release/*"
+    },
+    " +",
+    " ",
+    {
+      "t": "code",
+      "i": 4,
+      "c": "hotfix/*"
+    }
+  ],
+  "c454b62e2c3d0c63": [
+    "Lite Single-Trunk: ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "main"
+    },
+    " ",
+    "+ ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": "feat/*"
+    },
+    " +",
+    " ",
+    {
+      "t": "code",
+      "i": 3,
+      "c": "fix/*"
+    },
+    " +",
+    " ",
+    {
+      "t": "code",
+      "i": 4,
+      "c": "hotfix/*"
+    }
+  ],
+  "910de1d4d4639488": "Standard Dual-Trunk",
+  "9fc7392b1a0c0f54": "Lite Single-Trunk",
+  "98ccca6155a65680": [
+    "Squash → ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "dev"
+    }
+  ],
+  "324db62796e9a914": [
+    "Squash → ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "main"
+    }
+  ],
+  "cd3efc35bd0f5662": "Task branches squash-merge into dev with Conventional Commit titles for a clean linear history.",
+  "e76de69d5e957d57": "Short-lived feature and fix branches squash-merge directly into main with Conventional Commit titles.",
+  "125ed772496e0629": [
+    "Merge commit → ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "main"
+    },
+    " &",
+    " ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": "main"
+    },
+    " →",
+    " ",
+    {
+      "t": "code",
+      "i": 3,
+      "c": "dev"
+    }
+  ],
+  "c7098fe42e4f5695": "Protected releases & fast hotfixes",
+  "f79f989176c6fecb": "Preserve release, hotfix, and back-merge ancestry. Never squash-merge main into dev.",
+  "c37bbd858a485875": "Patch production with focused hotfix branches, required CI checks, and verified release tags.",
+  "afa9d6cdbc2bf44a": "PR <= 400 lines",
+  "ed6cbe99f3d88c93": "Keep pull requests reviewable and split larger work into incremental, independently testable PRs.",
+  "338ee504961aabdf": [
+    "Immutable ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": "v*"
+    },
+    " tags + Layered Rulesets"
+  ],
+  "8e36bd8160c03451": "Tag releases from verified commits and enforce branch and tag rulesets in GitHub Settings.",
+  "96f6b223512cfe18": "Standard Label Taxonomy",
+  "654a22e31118b6cb": "AI Repo Governance Bootstrap & Audit",
+  "33f8a956607a5125": [
+    "Launch a U3 Code Agent thread to non-destructively audit and generate",
+    " ",
+    {
+      "t": "code",
+      "i": 1,
+      "c": ".github/"
+    },
+    " templates,",
+    " ",
+    {
+      "t": "code",
+      "i": 2,
+      "c": "pr-dev.yml"
+    },
+    ",",
+    " ",
+    {
+      "t": "code",
+      "i": 3,
+      "c": "pr-main.yml"
+    },
+    ",",
+    " ",
+    {
+      "t": "code",
+      "i": 4,
+      "c": "sync-main-to-dev.yml"
+    },
+    ",",
+    " ",
+    {
+      "t": "code",
+      "i": 5,
+      "c": "CODEOWNERS"
+    },
+    ",",
+    " ",
+    {
+      "t": "code",
+      "i": 6,
+      "c": "AGENTS.md"
+    },
+    ", and",
+    " ",
+    {
+      "t": "code",
+      "i": 7,
+      "c": "init-labels.sh"
+    },
+    "."
+  ],
+  "1ebaaf9cf307de96": "Starting Governance Thread...",
+  "7ba0e9cfbf5a39e4": "Bootstrap / Audit Repo with AI",
+  "abae1f0c5f15df87": "Add a local workspace repository in the sidebar to run AI repository governance bootstrap and audit.",
   "37f68033d0ce22a8": "Create Workspace",
   "e388c774dcfdfcf9": [
     "Signed in as ",
@@ -6139,12 +6526,16 @@
   "1713f84cd41cf8cd": "Orphan PRs (No Work Item)",
   "e967616b6ecbe8b0": "Auto-Merged (Integration)",
   "e0b196715ec7a4a6": "Черновик",
+  "090b3201b8c67490": ">400 lines",
   "b82defc09325891a": "Review queue is clear",
   "953a241963e6ae08": "No open pull requests require triage right now. Sync a repository in Setup or open a PR to see live review signals here.",
   "4ab5f42b38d52f33": "Human Review",
   "b82cc4e5617a53a5": "Unlinked",
   "e24487e2ca305dba": "No matching pull requests",
   "a24ef44427ce9b5b": "Try clearing your search query or switching to a different triage filter.",
+  "0ee99f20343ebc89": "Back-merge: Merge commit",
+  "89852cf4644f31a8": "Merge commit",
+  "7492183abe5d750d": "Squash",
   "23a899df3d776ed6": "Привязать",
   "e40786aa5298b8be": "Inspect & Fix",
   "cc9615f3844912e7": "Review in App",
@@ -6167,7 +6558,6 @@
   "e2f5f9dd44c1ee3e": "Preparing pulse draft...",
   "23732eab2632e6e6": "Not connected to Team Hub",
   "828766ca3a06a20d": "Open Team Cockpit from the sidebar to connect to your u3code-hub server.",
-  "0ce85fa2fbb547fa": "Work Item",
   "0b931543718c4d6e": "Health",
   "7bd6f935d87a2690": "Progress Summary",
   "4dd578e0e5a8fd6b": "Key Decisions (one per line)",
@@ -6175,25 +6565,44 @@
   "bf55fd98aad7bf4c": "Next Step",
   "3bd59ea5dbbe02b4": "Publish Pulse",
   "95f9260d1f06a412": "Failed to load work item details.",
+  "ba8c42a8aa1a7f19": "Issue & Assign",
+  "887a30a2d4f8962f": "Dev Branch",
+  "241aed17395076f3": "PR & Review",
   "ce7d5c5cd2973e7f": "Work item saved",
   "b14e6d205ce83e0d": "Failed to save work item.",
   "71ec0937c18b45db": "Gate rejected",
   "650def2cfc176d5f": "Failed to update gate decision.",
   "d5c2de5215f5bfd7": "Failed to unlink pull request.",
+  "041121cc8473b1c3": "Branch command copied",
+  "5dc22c33068e42ce": "Clipboard is unavailable",
+  "49c4486e9697fc35": "Delivery lifecycle",
   "b2f4b17059941d63": "Local workspace project",
+  "210edc35df3a0b3f": "Development branch",
+  "afec41fb7dd6fdc9": "#42 or https://github.com/org/repo/issues/42",
+  "f10998a3c8649ce5": "Open GitHub Issue",
+  "823383a4097e97d5": "https://preview.example.com/prototype",
+  "b79915e9abe3ea47": "Open Prototype Preview",
   "ff716dff9590a946": "Write requirements, architecture notes, or rollout constraints",
   "52fdae1bb4491760": "Remove acceptance criterion",
   "43eba4224e5f7cc2": "Add acceptance criterion...",
   "7387b90ea8f0d202": "Unlink pull request",
   "d1db72238bd4afe7": "Work Item Details",
-  "7f9e4c3b895db2eb": "Edit specification, acceptance criteria, workflow stage, gates, linked PRs, and pulse history.",
+  "d76d02a85b53bc34": "Drive end-to-end delivery from requirement intake, AI PRD, and prototype to GitHub issue, dev branch, PR review, and release.",
   "0f63393085912ff2": "Loading work item details...",
-  "bfe14722f3c27286": "Start Coding Thread with Context",
-  "978ebf869c5ada19": "Pre-fills a new U3 Code thread with spec, acceptance criteria, and locked directives.",
-  "e05f828b4ca93e88": "Opening...",
-  "7dc3b6f88dbc7cfb": "Start Thread",
+  "2b0a2c079945af95": "AI Delivery Actions",
+  "c702fa3d4afb7f23": "Launch a scoped U3 Code agent thread with live spec, acceptance criteria, and branch workflow guardrails.",
   "517ee0a8bdff25d7": "Add a local repository in the sidebar first.",
-  "5692b3d251f7d53a": "Stage",
+  "e05f828b4ca93e88": "Opening...",
+  "947cca861b13a187": "AI Draft PRD",
+  "02be47bc4300c62d": "AI Prototype",
+  "50ba9e97d45430ad": "Submit GitHub Issue",
+  "50cc08ab5d8cf694": "Start Dev Branch",
+  "63253a4c6c30bbd8": "Start Date",
+  "0d150f63d538446b": "PRD Status",
+  "9267abc566e65317": "Prototype Status",
+  "bc8137b639dbfb88": "Copy Branch Command",
+  "d02e4508d4e8a093": "GitHub Issue URL or #Number",
+  "cdbbcab164b22ce4": "Prototype / Preview URL",
   "7ccba740603a10df": "Specification (Markdown)",
   "e38499a71bad2434": "Acceptance Criteria",
   "9079ecf662696217": "No acceptance criteria yet. Add one below.",
@@ -6297,9 +6706,7 @@
   "17e4e4d6883057a2": "Отсоединить Magic Keyboard",
   "154d42b7c7e0a68f": "Подсоединить Magic Keyboard",
   "5d515c509cf779de": "Восстановить 3D-вид",
-  "7438e33a9afa75da": "Мелкий",
   "e40e6d4ec89b5365": "По умолчанию",
-  "f4285195dac7acd0": "Крупный",
   "ae03f931ffdfab80": "Очень крупный",
   "316ac452c3c225a4": "Портретная",
   "82a09d4d33882f96": "Альбомная",
@@ -6973,7 +7380,6 @@
   "aead644e2cf1233f": "Показать все",
   "77ce79d865716719": "Нет подходящих проектов.",
   "af7eb4f9c7f0f575": "Фильтры",
-  "08247dd39b0c85ff": "Исполнитель",
   "5cad5a7879c8d38c": "Метки не найдены",
   "74452d03a978e159": "Не удалось прочитать метки",
   "d5f1d840bc1cacf6": "Меток больше, чем показано здесь.",
@@ -9885,7 +10291,6 @@
   "4d5e1036410e2a18": "Изменить сочетание для {command}: {shortcut}",
   "a974eca924f7ed52": "Не назначено",
   "337a261bf1551d16": "Сочетание клавиш для {command}",
-  "bd8e87512fd9bdf2": "Не назначено",
   "4da9b09518a3f47a": "Действия для {command}",
   "5cbab536dac9dc5f": "Снять назначение",
   "cd710f3021f96ea8": "Удалить",
@@ -11289,7 +11694,6 @@
   "a1f01740fa975542": "Как мы обращаемся с вашими данными, включая анонимные данные об использовании, которые собирает U3 Code.",
   "e741b1ab9396053a": "Как мы обращаемся с вашими данными. {telemetryOff}",
   "e2cc62dee589a031": "Уведомления о зависимостях, ресурсах и дополнительных инструментах, которые использует U3 Code.",
-  "e39a57514be028e9": "Ревью",
   "7c0512387c3a42ea": "Стабильный",
   "3476687eaa175b32": "Nightly",
   "cbf6a6bbc17e75e1": "Показывает всплывающее уведомление, если другой тред завершился, столкнулся с ошибкой или ждёт ввода либо подтверждения, пока приложение в фокусе.",

@@ -10,6 +10,7 @@ import {
   WorkItemDetail,
 } from "@t3tools/contracts";
 import {
+  AssigneeType,
   ChecklistItem,
   ProjectMemory,
   PulseBlocker,
@@ -117,13 +118,25 @@ const TeamHubGetWorkItemTool = Tool.make("team_hub_get_work_item", {
 const TeamHubUpdateWorkItemTool = Tool.make("team_hub_update_work_item", {
   ...shared,
   description:
-    "Update a Team Hub work item's stage, health, spec, or acceptance criteria (subject to workflow gates).",
+    "Update a Team Hub work item's title, stage, health, spec, preview URLs, lifecycle attributes, assignee, or acceptance criteria (subject to workflow gates).",
   parameters: Schema.Struct({
     workItemId: TrimmedNonEmptyString,
+    title: Schema.optionalKey(TrimmedNonEmptyString),
     stage: Schema.optionalKey(TrimmedNonEmptyString),
     health: Schema.optionalKey(WorkHealth),
     specMarkdown: Schema.optionalKey(Schema.String),
+    specUrl: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    previewUrls: Schema.optionalKey(Schema.Array(Schema.String)),
     checklistItems: Schema.optionalKey(Schema.Array(ChecklistItem)),
+    attributes: Schema.optionalKey(
+      Schema.Record(Schema.String, Schema.Json).annotate({
+        description:
+          "Partial lifecycle attributes patch merged into existing attributes (e.g. plannedStartAt, dueAt, prdStatus, prototypeStatus, prototypeUrl, designTier, designDocPath, githubIssueNumber, githubIssueUrl, githubLabels, branchTopology, branchName, targetBranch).",
+      }),
+    ),
+    assigneeType: Schema.optionalKey(AssigneeType),
+    assigneeUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    assigneeRunnerId: Schema.optionalKey(Schema.NullOr(Schema.String)),
     verifyAcIds: Schema.optionalKey(
       Schema.Array(TrimmedNonEmptyString).annotate({
         description: "Mark matching checklist item IDs verified without rewriting the whole list.",

@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type {
   CockpitOverview,
   EnvironmentId,
@@ -9,9 +10,15 @@ import type {
   TeamHubStatusResult,
 } from "@t3tools/contracts";
 import {
+  buildLifecycleAttributesPatch,
+  readWorkItemLifecycle,
   resolveLatestGateApprovals,
+  resolveWorkItemSchedule,
+  standardGitHubLabels,
+  type AssigneeType,
   type ChangeRequestAudit,
   type CockpitWorkItemCard,
+  type DesignTier,
   type ProjectDirective,
   type ReleaseCard,
   type TeamBoardMessage,
@@ -24,6 +31,9 @@ import { T, useGT, useMessages, Var } from "gt-react";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  BotIcon,
+  FileTextIcon,
+  GanttChartIcon,
   KanbanIcon,
   ListIcon,
   LogOutIcon,
@@ -73,13 +83,17 @@ import { SidebarInset } from "~/components/ui/sidebar";
 import { Textarea } from "~/components/ui/textarea";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { toastManager } from "~/components/ui/toast";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { isElectron } from "~/env";
+import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { cn } from "~/lib/utils";
+import { useProjects } from "~/state/entities";
 import { primaryEnvironmentIdAtom } from "~/state/primaryEnvironment";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CockpitBoardTab } from "./CockpitBoardTab";
 import { CockpitConnectCard } from "./CockpitConnectCard";
+import { CockpitGanttView } from "./CockpitGanttView";
 import { CockpitMembersTab } from "./CockpitMembersTab";
 import { CockpitMemoryTab } from "./CockpitMemoryTab";
 import { CockpitOverviewTab } from "./CockpitOverviewTab";
@@ -99,16 +113,118 @@ import {
 import { CockpitPullRequestPane } from "./CockpitPullRequestPane";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
 import { CockpitSettingsTab } from "./CockpitSettingsTab";
-import { deriveTeamRoster } from "./CockpitSwarmAvatar";
+import { CockpitSwarmAvatar, deriveTeamRoster, type CockpitTeamMember } from "./CockpitSwarmAvatar";
 import { CockpitTriageTab } from "./CockpitTriageTab";
 import { WorkItemDetailDialog } from "./WorkItemDetailDialog";
 import { formatCockpitCommandError } from "./cockpitError";
+import { buildPrdGenerationPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
 
 type CockpitTab = "overview" | "board" | "members" | "delivery" | "memory" | "setup";
-type DeliverySubTab = "kanban" | "triage" | "releases";
+type DeliverySubTab = "kanban" | "gantt" | "triage" | "releases";
 type BoardViewMode = "board" | "list";
 type BoardFilter = "all" | "blocked" | "has_pr";
 type TriageFilter = "all" | "blocked" | "human" | "unlinked";
+
+const DEFAULT_AGENT_RUNNER_ID = "claude-agent";
+
+function todayLocalIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysIsoDate(baseYmd: string, deltaDays: number): string {
+  const match = baseYmd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return baseYmd;
+  const utc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + deltaDays);
+  return new Date(utc).toISOString().slice(0, 10);
+}
+
+function formatShortDueDate(isoDate: string): string {
+  const ymd = isoDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  const parsed = new Date(`${ymd}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return ymd;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
+function designTierLabel(tier: DesignTier, gt: ReturnType<typeof useGT>): string {
+  switch (tier) {
+    case "small":
+      return gt("Small");
+    case "medium":
+      return gt("Medium");
+    case "large":
+      return gt("Large");
+    case "cross_repo":
+      return gt("Cross-repo");
+  }
+}
+
+function decodeAssigneeValue(value: string): {
+  readonly assigneeType: AssigneeType;
+  readonly assigneeUserId: string | null;
+  readonly assigneeRunnerId: string | null;
+} {
+  if (value.startsWith("human:")) {
+    const userId = value.slice("human:".length).trim();
+    if (userId) {
+      return { assigneeType: "human", assigneeUserId: userId, assigneeRunnerId: null };
+    }
+  }
+  if (value.startsWith("runner:")) {
+    const runnerId = value.slice("runner:".length).trim();
+    if (runnerId) {
+      return { assigneeType: "runner", assigneeUserId: null, assigneeRunnerId: runnerId };
+    }
+  }
+  return { assigneeType: "unassigned", assigneeUserId: null, assigneeRunnerId: null };
+}
+
+function resolveMemberHandle(
+  member: WorkspaceMember,
+  roster: ReadonlyArray<CockpitTeamMember>,
+): string {
+  const fromRoster = roster.find((entry) => entry.id === member.userId);
+  if (fromRoster) return fromRoster.handle;
+  const vcs = member.primaryVcsLogin?.trim();
+  if (vcs) return vcs.replace(/^@+/, "").toLowerCase();
+  const emailLocal = member.email?.split("@")[0]?.trim();
+  if (emailLocal) return emailLocal.toLowerCase();
+  return member.displayName.trim().toLowerCase().replace(/\s+/g, "-") || member.userId;
+}
+
+function resolveCardAssignee(
+  card: CockpitWorkItemCard,
+  roster: ReadonlyArray<CockpitTeamMember>,
+): {
+  readonly handle: string;
+  readonly displayName: string;
+  readonly kind: "human" | "agent";
+} | null {
+  if (card.workItem.assigneeType === "human" && card.workItem.assigneeUserId) {
+    const matched = roster.find((member) => member.id === card.workItem.assigneeUserId);
+    if (matched) {
+      return { handle: matched.handle, displayName: matched.displayName, kind: matched.kind };
+    }
+    return null;
+  }
+  if (card.workItem.assigneeType === "runner" && card.workItem.assigneeRunnerId) {
+    const runnerId = card.workItem.assigneeRunnerId.trim();
+    const matched = roster.find((member) => member.handle === runnerId.toLowerCase());
+    if (matched) {
+      return { handle: matched.handle, displayName: matched.displayName, kind: "agent" };
+    }
+    return { handle: runnerId, displayName: runnerId, kind: "agent" };
+  }
+  return null;
+}
 
 function workItemTypeLabel(itemType: WorkItemType, gt: ReturnType<typeof useGT>): string {
   switch (itemType) {
@@ -162,6 +278,8 @@ export function CockpitPage() {
   const gt = useGT();
   const resolveMessage = useMessages();
   const primaryEnvironmentId = useAtomValue(primaryEnvironmentIdAtom);
+  const localProjects = useProjects();
+  const handleNewThread = useNewThreadHandler();
   const [activeTab, setActiveTab] = useState<CockpitTab>("overview");
   const [deliverySubTab, setDeliverySubTab] = useState<DeliverySubTab>("kanban");
   const [boardView, setBoardView] = useState<BoardViewMode>("board");
@@ -187,8 +305,12 @@ export function CockpitPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<WorkItemType>("feature");
   const [newPriority, setNewPriority] = useState<WorkItemPriority>("p1");
+  const [newDesignTier, setNewDesignTier] = useState<DesignTier>("medium");
+  const [newAssignee, setNewAssignee] = useState<string>("unassigned");
+  const [newPlannedStartAt, setNewPlannedStartAt] = useState<string>(() => todayLocalIsoDate());
+  const [newDueAt, setNewDueAt] = useState<string>(() => addDaysIsoDate(todayLocalIsoDate(), 5));
   const [newSpec, setNewSpec] = useState("");
-  const [creatingItem, setCreatingItem] = useState(false);
+  const [creatingMode, setCreatingMode] = useState<"create" | "prd" | null>(null);
 
   const [generatingDigest, setGeneratingDigest] = useState(false);
   const [savingDirectives, setSavingDirectives] = useState(false);
@@ -485,9 +607,41 @@ export function CockpitPage() {
     }
   };
 
-  const handleCreateWorkItem = async () => {
+  const openCreateDialog = () => {
+    const today = todayLocalIsoDate();
+    setNewPlannedStartAt(today);
+    setNewDueAt(addDaysIsoDate(today, 5));
+    setCreateDialogOpen(true);
+  };
+
+  const handleUpdateSchedule = async (
+    workItemId: string,
+    plannedStartAt: string,
+    dueAt: string,
+  ) => {
+    if (!primaryEnvironmentId) return;
+    const res = await updateWorkItem({
+      environmentId: primaryEnvironmentId,
+      input: {
+        workItemId,
+        attributes: buildLifecycleAttributesPatch({ plannedStartAt, dueAt }),
+      },
+    });
+    if (res._tag === "Success") {
+      toastManager.add({ title: gt("Schedule updated"), type: "success" });
+      void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+    } else {
+      toastManager.add({
+        title: formatCockpitCommandError(res, gt("Failed to update schedule.")),
+        type: "error",
+      });
+    }
+  };
+
+  const handleCreateWorkItem = async (mode: "create" | "prd" = "create") => {
     if (!primaryEnvironmentId || !selectedProjectId || !newTitle.trim()) return;
-    setCreatingItem(true);
+    setCreatingMode(mode);
+    const decodedAssignee = decodeAssigneeValue(newAssignee);
     const res = await createWorkItem({
       environmentId: primaryEnvironmentId,
       input: {
@@ -495,16 +649,57 @@ export function CockpitPage() {
         title: newTitle.trim(),
         itemType: newType,
         priority: newPriority,
+        assigneeType: decodedAssignee.assigneeType,
+        assigneeUserId: decodedAssignee.assigneeUserId,
+        assigneeRunnerId: decodedAssignee.assigneeRunnerId,
         ...(newSpec.trim() ? { specMarkdown: newSpec.trim() } : {}),
+        attributes: buildLifecycleAttributesPatch({
+          plannedStartAt: newPlannedStartAt.trim() || null,
+          dueAt: newDueAt.trim() || null,
+          designTier: newDesignTier,
+          githubLabels: standardGitHubLabels(newType, newPriority),
+        }),
       },
     });
-    setCreatingItem(false);
+    setCreatingMode(null);
     if (res._tag === "Success") {
+      const createdWorkItem = res.value.workItem;
+      const today = todayLocalIsoDate();
       setCreateDialogOpen(false);
       setNewTitle("");
       setNewSpec("");
-      toastManager.add({ title: gt("Work item created"), type: "success" });
+      setNewDesignTier("medium");
+      setNewAssignee("unassigned");
+      setNewPlannedStartAt(today);
+      setNewDueAt(addDaysIsoDate(today, 5));
       void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
+
+      if (mode === "prd") {
+        const matchedLocalProject = pickMatchingWorkspaceProject(
+          localProjects,
+          overview?.repos ?? [],
+        );
+        if (matchedLocalProject) {
+          const prompt = buildPrdGenerationPrompt({
+            workItem: createdWorkItem,
+            project: overview?.project ?? null,
+            memory,
+          });
+          await handleNewThread(
+            scopeProjectRef(matchedLocalProject.environmentId, matchedLocalProject.id),
+            { prompt },
+          );
+          return;
+        }
+        toastManager.add({
+          title: gt("Work item created. Add a local repository to launch AI PRD threads."),
+          type: "info",
+        });
+        setSelectedWorkItemId(createdWorkItem.id);
+        return;
+      }
+
+      toastManager.add({ title: gt("Work item created"), type: "success" });
     } else {
       toastManager.add({
         title: formatCockpitCommandError(res, gt("Failed to create work item.")),
@@ -689,8 +884,18 @@ export function CockpitPage() {
   const isPullRequestPaneOpen = Boolean(
     isConnected && primaryEnvironmentId && selectedChangeRequest,
   );
-  const isKanbanColumnsView =
-    activeTab === "delivery" && deliverySubTab === "kanban" && boardView === "board";
+  const isWideDeliveryView =
+    activeTab === "delivery" &&
+    (deliverySubTab === "gantt" || (deliverySubTab === "kanban" && boardView === "board"));
+  const matchedIntakeProject = pickMatchingWorkspaceProject(localProjects, overview?.repos ?? []);
+  const memberSelectOptions = members.map((member) => ({
+    value: `human:${member.userId}`,
+    handle: resolveMemberHandle(member, roster),
+    displayName: member.displayName,
+  }));
+  const selectedNewAssigneeOption = newAssignee.startsWith("human:")
+    ? (memberSelectOptions.find((entry) => entry.value === newAssignee) ?? null)
+    : null;
   const hasActiveBlockers = Boolean(
     overview &&
     (overview.metrics.blockedWorkItems > 0 || overview.metrics.botBlockedChangeRequests > 0),
@@ -954,9 +1159,9 @@ export function CockpitPage() {
               className={
                 isPullRequestPaneOpen
                   ? "max-w-none px-5 py-5 sm:px-5"
-                  : cn("py-6 pb-12", isKanbanColumnsView && "max-w-[1600px]")
+                  : cn("py-6 pb-12", isWideDeliveryView && "max-w-[1600px]")
               }
-              width={isKanbanColumnsView ? "expanded" : "readable"}
+              width={isWideDeliveryView ? "expanded" : "readable"}
             >
               {errorMessage ? (
                 <CockpitInlineAlert tone="error">{errorMessage}</CockpitInlineAlert>
@@ -973,6 +1178,7 @@ export function CockpitPage() {
                   onNavigateDelivery={handleNavigateDelivery}
                   onNavigateMembers={() => setActiveTab("members")}
                   onOpenChangeRequest={handleOpenChangeRequest}
+                  {...(selectedProjectId ? { onOpenIntake: openCreateDialog } : {})}
                   onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
                 />
               ) : null}
@@ -1012,19 +1218,28 @@ export function CockpitPage() {
                       variant="segmented"
                       onValueChange={(next) => {
                         const value = next[0];
-                        if (value === "kanban" || value === "triage" || value === "releases") {
+                        if (
+                          value === "kanban" ||
+                          value === "gantt" ||
+                          value === "triage" ||
+                          value === "releases"
+                        ) {
                           setDeliverySubTab(value);
                         }
                       }}
                     >
                       <Toggle value="kanban">
                         <KanbanIcon />
-                        <T>Work Items</T>
+                        <T>Kanban</T>
                         {allCards.length > 0 ? (
                           <span className="font-mono text-2xs tabular-nums opacity-70">
                             {allCards.length}
                           </span>
                         ) : null}
+                      </Toggle>
+                      <Toggle value="gantt">
+                        <GanttChartIcon />
+                        <T>Gantt</T>
                       </Toggle>
                       <Toggle value="triage">
                         <PullRequestGlyph.pullRequest />
@@ -1041,8 +1256,9 @@ export function CockpitPage() {
                       </Toggle>
                     </ToggleGroup>
 
-                    {deliverySubTab === "kanban" && activeProject ? (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {(deliverySubTab === "kanban" || deliverySubTab === "gantt") &&
+                    activeProject ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{activeProject.workflowConfig.preset}</span>
                         <span aria-hidden className="opacity-40">
                           ·
@@ -1052,6 +1268,12 @@ export function CockpitPage() {
                             <Var>{overview?.repos.length ?? 0}</Var> repos
                           </T>
                         </span>
+                        {deliverySubTab === "gantt" && selectedProjectId ? (
+                          <Button size="xs" variant="default" onClick={openCreateDialog}>
+                            <PlusIcon />
+                            <T>New Item</T>
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1147,11 +1369,7 @@ export function CockpitPage() {
                             </ToggleGroup>
 
                             {selectedProjectId ? (
-                              <Button
-                                size="xs"
-                                variant="default"
-                                onClick={() => setCreateDialogOpen(true)}
-                              >
+                              <Button size="xs" variant="default" onClick={openCreateDialog}>
                                 <PlusIcon />
                                 <T>New Item</T>
                               </Button>
@@ -1211,6 +1429,7 @@ export function CockpitPage() {
                                         key={card.workItem.id}
                                         card={card}
                                         gates={gates}
+                                        roster={roster}
                                         selectedChangeRequestId={selectedChangeRequestId}
                                         stages={stages}
                                         onApproveGate={(gateKey) =>
@@ -1259,6 +1478,7 @@ export function CockpitPage() {
                                           key={card.workItem.id}
                                           card={card}
                                           gates={gates}
+                                          roster={roster}
                                           selectedChangeRequestId={selectedChangeRequestId}
                                           stages={stages}
                                           onApproveGate={(gateKey) =>
@@ -1282,6 +1502,18 @@ export function CockpitPage() {
                         )}
                       </div>
                     )
+                  ) : null}
+
+                  {deliverySubTab === "gantt" ? (
+                    <CockpitGanttView
+                      cards={allCards}
+                      releases={releases}
+                      roster={roster}
+                      stages={stages}
+                      {...(selectedProjectId ? { onCreateItem: openCreateDialog } : {})}
+                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                      onUpdateSchedule={handleUpdateSchedule}
+                    />
                   ) : null}
 
                   {deliverySubTab === "triage" ? (
@@ -1387,13 +1619,16 @@ export function CockpitPage() {
       </div>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogPopup>
+        <DialogPopup className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
               <T>New Work Item</T>
             </DialogTitle>
             <DialogDescription>
-              <T>Create a cross-repository work item tracked in Team Cockpit.</T>
+              <T>
+                Capture requirement scope, design tier, owner, and timeline, or launch an AI PRD
+                thread right away.
+              </T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -1409,14 +1644,15 @@ export function CockpitPage() {
                   value={newTitle}
                   onChange={(event) => setNewTitle(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && newTitle.trim() && !creatingItem) {
+                    if (event.key === "Enter" && newTitle.trim() && creatingMode === null) {
                       event.preventDefault();
-                      void handleCreateWorkItem();
+                      void handleCreateWorkItem("create");
                     }
                   }}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <CockpitFieldLabel htmlFor="wi-type">
                     <T>Type</T>
@@ -1447,6 +1683,7 @@ export function CockpitPage() {
                     </SelectPopup>
                   </Select>
                 </div>
+
                 <div>
                   <CockpitFieldLabel htmlFor="wi-priority">
                     <T>Priority</T>
@@ -1480,14 +1717,116 @@ export function CockpitPage() {
                     </SelectPopup>
                   </Select>
                 </div>
+
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-design-tier">
+                    <T>Design Tier</T>
+                  </CockpitFieldLabel>
+                  <Select
+                    value={newDesignTier}
+                    onValueChange={(value) => {
+                      if (
+                        value === "small" ||
+                        value === "medium" ||
+                        value === "large" ||
+                        value === "cross_repo"
+                      ) {
+                        setNewDesignTier(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="wi-design-tier" size="sm">
+                      <SelectValue>{designTierLabel(newDesignTier, gt)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      <SelectItem value="small">{gt("Small")}</SelectItem>
+                      <SelectItem value="medium">{gt("Medium")}</SelectItem>
+                      <SelectItem value="large">{gt("Large")}</SelectItem>
+                      <SelectItem value="cross_repo">{gt("Cross-repo")}</SelectItem>
+                    </SelectPopup>
+                  </Select>
+                </div>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-assignee">
+                    <T>Assignee</T>
+                  </CockpitFieldLabel>
+                  <Select
+                    value={newAssignee}
+                    onValueChange={(value) => {
+                      if (value) setNewAssignee(value);
+                    }}
+                  >
+                    <SelectTrigger id="wi-assignee" size="sm">
+                      <SelectValue>
+                        {newAssignee === "unassigned" ? (
+                          <T>Unassigned</T>
+                        ) : newAssignee.startsWith("runner:") ? (
+                          <span className="inline-flex items-center gap-1.5 truncate">
+                            <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate font-mono text-xs">
+                              @{DEFAULT_AGENT_RUNNER_ID}
+                            </span>
+                          </span>
+                        ) : selectedNewAssigneeOption ? (
+                          <span className="truncate font-mono text-xs">
+                            @{selectedNewAssigneeOption.handle}
+                          </span>
+                        ) : (
+                          <T>Unassigned</T>
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup>
+                      <SelectItem value="unassigned">{gt("Unassigned")}</SelectItem>
+                      {memberSelectOptions.map((member) => (
+                        <SelectItem key={member.value} value={member.value}>
+                          @{member.handle} · {member.displayName}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value={`runner:${DEFAULT_AGENT_RUNNER_ID}`}>
+                        {gt("Coding Agent ({runnerId})", { runnerId: DEFAULT_AGENT_RUNNER_ID })}
+                      </SelectItem>
+                    </SelectPopup>
+                  </Select>
+                </div>
+
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-start-date">
+                    <T>Planned Start</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="wi-start-date"
+                    size="sm"
+                    type="date"
+                    value={newPlannedStartAt}
+                    onChange={(event) => setNewPlannedStartAt(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-due-date">
+                    <T>Due Date</T>
+                  </CockpitFieldLabel>
+                  <Input
+                    id="wi-due-date"
+                    size="sm"
+                    type="date"
+                    value={newDueAt}
+                    onChange={(event) => setNewDueAt(event.target.value)}
+                  />
+                </div>
+              </div>
+
               <div>
                 <CockpitFieldLabel htmlFor="wi-spec">
-                  <T>Spec / Acceptance Criteria (Markdown)</T>
+                  <T>Requirement Brief / Problem Statement</T>
                 </CockpitFieldLabel>
                 <Textarea
                   id="wi-spec"
-                  placeholder={gt("Outline requirements, edge cases, and acceptance criteria")}
+                  placeholder={gt("Describe user problem, target outcomes, and edge cases")}
                   rows={4}
                   value={newSpec}
                   onChange={(event) => setNewSpec(event.target.value)}
@@ -1500,11 +1839,23 @@ export function CockpitPage() {
               <T>Cancel</T>
             </DialogClose>
             <Button
-              disabled={creatingItem || !newTitle.trim()}
-              variant="default"
-              onClick={() => void handleCreateWorkItem()}
+              disabled={creatingMode !== null || !newTitle.trim() || !matchedIntakeProject}
+              variant="outline"
+              onClick={() => void handleCreateWorkItem("prd")}
             >
-              {creatingItem ? <T>Creating...</T> : <T>Create</T>}
+              <FileTextIcon />
+              {creatingMode === "prd" ? (
+                <T>Launching PRD...</T>
+              ) : (
+                <T>Create &amp; Draft PRD with AI</T>
+              )}
+            </Button>
+            <Button
+              disabled={creatingMode !== null || !newTitle.trim()}
+              variant="default"
+              onClick={() => void handleCreateWorkItem("create")}
+            >
+              {creatingMode === "create" ? <T>Creating...</T> : <T>Create Item</T>}
             </Button>
           </DialogFooter>
         </DialogPopup>
@@ -1514,9 +1865,11 @@ export function CockpitPage() {
         <WorkItemDetailDialog
           environmentId={primaryEnvironmentId}
           gates={gates}
+          members={members}
           memory={memory}
           project={activeProject}
           repos={overview?.repos ?? []}
+          roster={roster}
           stages={stages}
           workItemId={selectedWorkItemId}
           onClose={() => setSelectedWorkItemId(null)}
@@ -1560,6 +1913,7 @@ function CockpitLiveEventsBridge({
 
 interface WorkItemCardViewProps {
   readonly card: CockpitWorkItemCard;
+  readonly roster: ReadonlyArray<CockpitTeamMember>;
   readonly stages: ReadonlyArray<{ readonly id: string; readonly label: string }>;
   readonly gates: ReadonlyArray<{
     readonly key: string;
@@ -1576,6 +1930,7 @@ interface WorkItemCardViewProps {
 
 function WorkItemCardView({
   card,
+  roster,
   stages,
   gates,
   selectedChangeRequestId,
@@ -1586,6 +1941,20 @@ function WorkItemCardView({
 }: WorkItemCardViewProps) {
   const gt = useGT();
   const latestGates = resolveLatestGateApprovals(card.gateApprovals);
+  const lifecycle = readWorkItemLifecycle(card.workItem);
+  const schedule = resolveWorkItemSchedule(card.workItem);
+  const assignee = resolveCardAssignee(card, roster);
+  const hasPrd = lifecycle.prdStatus !== "none";
+  const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
+  const issueNumber = lifecycle.githubIssueNumber;
+  const dueDateDisplay = lifecycle.dueAt
+    ? formatShortDueDate(lifecycle.dueAt)
+    : schedule.isOverdue
+      ? formatShortDueDate(schedule.dueDate)
+      : null;
+  const hasQuietLifecycleCues =
+    hasPrd || hasProto || issueNumber !== null || dueDateDisplay !== null;
+
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
   const pendingGatesForNext = nextStage
@@ -1619,17 +1988,32 @@ function WorkItemCardView({
             {card.workItem.code}
           </button>
         </div>
-        {card.workItem.health !== "on_track" ? (
-          card.workItem.health === "blocked" ? (
-            <Badge size="sm" variant="error">
-              <T>Blocked</T>
-            </Badge>
-          ) : (
-            <Badge size="sm" variant="warning">
-              <T>At Risk</T>
-            </Badge>
-          )
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {card.workItem.health !== "on_track" ? (
+            card.workItem.health === "blocked" ? (
+              <Badge size="sm" variant="error">
+                <T>Blocked</T>
+              </Badge>
+            ) : (
+              <Badge size="sm" variant="warning">
+                <T>At Risk</T>
+              </Badge>
+            )
+          ) : null}
+          {assignee ? (
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex" />}>
+                <CockpitSwarmAvatar
+                  displayName={assignee.displayName}
+                  handle={assignee.handle}
+                  kind={assignee.kind}
+                  size="sm"
+                />
+              </TooltipTrigger>
+              <TooltipPopup>@{assignee.handle}</TooltipPopup>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
 
       <button
@@ -1639,6 +2023,36 @@ function WorkItemCardView({
       >
         {card.workItem.title}
       </button>
+
+      {hasQuietLifecycleCues ? (
+        <div className="flex flex-wrap items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+          {hasPrd ? (
+            <span className="rounded bg-muted/45 px-1.5 py-0.5">
+              <T>PRD</T>
+            </span>
+          ) : null}
+          {hasProto ? (
+            <span className="rounded bg-muted/45 px-1.5 py-0.5">
+              <T>Proto</T>
+            </span>
+          ) : null}
+          {issueNumber !== null ? (
+            <span className="rounded bg-muted/45 px-1.5 py-0.5">#{issueNumber}</span>
+          ) : null}
+          {dueDateDisplay ? (
+            <span
+              className={cn(
+                "tabular-nums",
+                schedule.isOverdue
+                  ? "rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
+                  : "text-muted-foreground",
+              )}
+            >
+              {dueDateDisplay}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {card.checklistTotalCount > 0 ? (
         <div className="flex items-center gap-2">
@@ -1743,6 +2157,7 @@ function WorkItemCardView({
 
 function WorkItemListRowView({
   card,
+  roster,
   stages,
   gates,
   selectedChangeRequestId,
@@ -1752,6 +2167,18 @@ function WorkItemListRowView({
   onOpenChangeRequest,
 }: WorkItemCardViewProps) {
   const latestGates = resolveLatestGateApprovals(card.gateApprovals);
+  const lifecycle = readWorkItemLifecycle(card.workItem);
+  const schedule = resolveWorkItemSchedule(card.workItem);
+  const assignee = resolveCardAssignee(card, roster);
+  const hasPrd = lifecycle.prdStatus !== "none";
+  const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
+  const issueNumber = lifecycle.githubIssueNumber;
+  const dueDateDisplay = lifecycle.dueAt
+    ? formatShortDueDate(lifecycle.dueAt)
+    : schedule.isOverdue
+      ? formatShortDueDate(schedule.dueDate)
+      : null;
+
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
   const pendingGatesForNext = nextStage
@@ -1799,6 +2226,46 @@ function WorkItemListRowView({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {hasPrd ? (
+          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+            <T>PRD</T>
+          </span>
+        ) : null}
+        {hasProto ? (
+          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+            <T>Proto</T>
+          </span>
+        ) : null}
+        {issueNumber !== null ? (
+          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+            #{issueNumber}
+          </span>
+        ) : null}
+        {dueDateDisplay ? (
+          <span
+            className={cn(
+              "font-mono text-2xs tabular-nums",
+              schedule.isOverdue
+                ? "rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {dueDateDisplay}
+          </span>
+        ) : null}
+        {assignee ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex" />}>
+              <CockpitSwarmAvatar
+                displayName={assignee.displayName}
+                handle={assignee.handle}
+                kind={assignee.kind}
+                size="sm"
+              />
+            </TooltipTrigger>
+            <TooltipPopup>@{assignee.handle}</TooltipPopup>
+          </Tooltip>
+        ) : null}
         {card.checklistTotalCount > 0 ? (
           <span className="font-mono text-2xs tabular-nums text-muted-foreground">
             <T>

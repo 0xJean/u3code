@@ -1,6 +1,7 @@
 export * from "./auth.ts";
 export * from "./board.ts";
 export * from "./cockpit.ts";
+export * from "./lifecycle.ts";
 export * from "./memory.ts";
 export * from "./notifications.ts";
 export * from "./plugins.ts";

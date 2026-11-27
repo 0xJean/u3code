@@ -1,16 +1,19 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type {
-  ChangeRequestAudit,
-  CockpitWorkItemCard,
-  Project,
-  ProjectMemory,
-  ProjectRepo,
+import {
+  readWorkItemLifecycle,
+  recommendPrMergeStrategy,
+  type ChangeRequestAudit,
+  type CockpitWorkItemCard,
+  type Project,
+  type ProjectMemory,
+  type ProjectRepo,
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
 import {
   AlertTriangleIcon,
   BotIcon,
+  CheckCircle2Icon,
   ExternalLinkIcon,
   GitBranchIcon,
   Link2Icon,
@@ -77,6 +80,10 @@ export interface CockpitPullRequestPaneProps {
 }
 
 type PaneView = "native" | "triage";
+
+type PullRequestAgentMode = "fix" | "review" | "audit_and_comment";
+
+const PR_DIFF_GUARDRAIL_LINES = 400;
 
 function getShortcutContext() {
   return {
@@ -177,7 +184,7 @@ export function CockpitPullRequestPane({
     {},
   );
   const [selectedWorkItemId, setSelectedWorkItemId] = useState("");
-  const [startingAgent, setStartingAgent] = useState<"fix" | "review" | null>(null);
+  const [startingAgent, setStartingAgent] = useState<PullRequestAgentMode | null>(null);
 
   const envLocalProjects = localProjects.filter((p) => p.environmentId === environmentId);
   const candidateProjects = envLocalProjects.length > 0 ? envLocalProjects : localProjects;
@@ -194,6 +201,7 @@ export function CockpitPullRequestPane({
   const linkedCard = changeRequest.workItemId
     ? (cards.find((c) => c.workItem.id === changeRequest.workItemId) ?? null)
     : null;
+  const linkedLifecycle = linkedCard ? readWorkItemLifecycle(linkedCard.workItem) : null;
   const effectiveLinkTargetId =
     (selectedWorkItemId && cards.some((c) => c.workItem.id === selectedWorkItemId)
       ? selectedWorkItemId
@@ -201,11 +209,18 @@ export function CockpitPullRequestPane({
   const hasBlockers =
     changeRequest.automatedReview.status === "blocking" ||
     changeRequest.qualitySignals.ciStatus === "failure";
+  const needsFix = hasBlockers || changeRequest.humanReviewState === "changes_requested";
+  const changedLines = changeRequest.additions + changeRequest.deletions;
+  const exceedsDiffGuardrail = changedLines > PR_DIFF_GUARDRAIL_LINES;
+  const mergeStrategy = recommendPrMergeStrategy({
+    headBranch: changeRequest.headBranch,
+    baseBranch: changeRequest.baseBranch,
+  });
   const host = hostFromPullRequestUrl(changeRequest.url);
   const qualitySignals = Object.values(changeRequest.qualitySignals.signals);
   const ciTone = ciStatusTone(changeRequest.qualitySignals.ciStatus);
 
-  const handleLaunchAgentThread = async (mode: "fix" | "review") => {
+  const handleLaunchAgentThread = async (mode: PullRequestAgentMode) => {
     if (!selectedLocalProject) {
       toastManager.add({
         title: gt("Add a local workspace repository first to run an Agent thread."),
@@ -424,6 +439,74 @@ export function CockpitPullRequestPane({
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/55 bg-card/30 px-3 py-2 text-2xs">
+            {mergeStrategy.isBackMerge ? (
+              <Badge size="sm" variant="warning">
+                <PullRequestGlyph.merged />
+                <T>Back-merge: Merge commit only!</T>
+              </Badge>
+            ) : mergeStrategy.method === "merge_commit" ? (
+              <Badge size="sm" variant="info">
+                <PullRequestGlyph.merged />
+                <T>
+                  Merge commit → <Var>{changeRequest.baseBranch}</Var>
+                </T>
+              </Badge>
+            ) : (
+              <Badge size="sm" variant="secondary">
+                <PullRequestGlyph.merged />
+                <T>
+                  Squash → <Var>{changeRequest.baseBranch}</Var>
+                </T>
+              </Badge>
+            )}
+
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 tabular-nums",
+                exceedsDiffGuardrail
+                  ? "font-medium text-warning-foreground"
+                  : "text-success-foreground",
+              )}
+            >
+              {exceedsDiffGuardrail ? (
+                <AlertTriangleIcon aria-hidden className="size-3 shrink-0" />
+              ) : (
+                <CheckCircle2Icon aria-hidden className="size-3 shrink-0" />
+              )}
+              <span>
+                {exceedsDiffGuardrail
+                  ? gt("{count} lines (>400: consider splitting)", { count: changedLines })
+                  : gt("{count} lines (<= 400 OK)", { count: changedLines })}
+              </span>
+            </span>
+
+            {linkedCard ? (
+              <button
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                type="button"
+                onClick={() => onOpenWorkItem(linkedCard.workItem.id)}
+              >
+                <CockpitStatusDot tone="success" />
+                <span>
+                  <T>
+                    Linked <Var>{linkedCard.workItem.code}</Var>
+                  </T>
+                  {linkedLifecycle?.githubIssueNumber ? (
+                    <span className="ml-1 font-mono text-muted-foreground/80">
+                      #{linkedLifecycle.githubIssueNumber}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-warning-foreground">
+                <CockpitStatusDot tone="warning" />
+                <T>Unlinked PR</T>
+              </span>
+            )}
+          </div>
+
           <CockpitSurface className="space-y-3" padding="md" variant="subtle">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
@@ -462,7 +545,7 @@ export function CockpitPullRequestPane({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {hasBlockers ? (
+              {needsFix ? (
                 <Button
                   disabled={startingAgent !== null || !selectedLocalProject}
                   size="sm"
@@ -476,37 +559,25 @@ export function CockpitPullRequestPane({
                     <T>Fix Findings with Agent</T>
                   )}
                 </Button>
-              ) : (
-                <Button
-                  disabled={startingAgent !== null || !selectedLocalProject}
-                  size="sm"
-                  variant="default"
-                  onClick={() => void handleLaunchAgentThread("review")}
-                >
-                  <MessageSquareCodeIcon />
-                  {startingAgent === "review" ? (
-                    <T>Starting Review Thread...</T>
-                  ) : (
-                    <T>Review PR with Agent</T>
-                  )}
-                </Button>
-              )}
-
-              {hasBlockers ? (
-                <Button
-                  disabled={startingAgent !== null || !selectedLocalProject}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void handleLaunchAgentThread("review")}
-                >
-                  <MessageSquareCodeIcon />
-                  <T>Review with Agent</T>
-                </Button>
               ) : null}
+
+              <Button
+                disabled={startingAgent !== null || !selectedLocalProject}
+                size="sm"
+                variant={needsFix ? "outline" : "default"}
+                onClick={() => void handleLaunchAgentThread("audit_and_comment")}
+              >
+                <MessageSquareCodeIcon />
+                {startingAgent === "audit_and_comment" ? (
+                  <T>Starting Auto-Review...</T>
+                ) : (
+                  <T>AI Auto-Review & Comment</T>
+                )}
+              </Button>
 
               <Button size="sm" variant="outline" onClick={() => setPaneView("native")}>
                 <PullRequestGlyph.pullRequest />
-                <T>Open Native Diff & Actions</T>
+                <T>Diff, Review & Merge</T>
               </Button>
             </div>
 

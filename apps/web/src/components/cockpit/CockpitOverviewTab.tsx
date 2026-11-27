@@ -1,15 +1,25 @@
 import {
+  deriveWorkItemPipelinePhase,
+  readWorkItemLifecycle,
   resolveLatestGateApprovals,
+  resolveWorkItemSchedule,
   type ChangeRequestAudit,
   type CockpitOverview,
   type CockpitWorkItemCard,
+  type PipelinePhase,
   type ReleaseCard,
   type ReleaseStatus,
   type TeamBoardMessage,
 } from "@u3code/hub-contracts";
 import { Plural, T, useGT, Var } from "gt-react";
-import { AtSignIcon, ChevronDownIcon, ChevronRightIcon, MessageSquareIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  AtSignIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  MessageSquareIcon,
+  PlusIcon,
+} from "lucide-react";
+import { Fragment, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -28,6 +38,8 @@ import {
   type CockpitTeamMember,
 } from "./CockpitSwarmAvatar";
 
+export type OverviewDeliverySubView = "kanban" | "gantt" | "triage" | "releases";
+
 export interface CockpitOverviewTabProps {
   readonly overview: CockpitOverview | null;
   readonly reviewItems: readonly ChangeRequestAudit[];
@@ -36,12 +48,48 @@ export interface CockpitOverviewTabProps {
   readonly boardMessages: readonly TeamBoardMessage[];
   readonly onOpenWorkItem: (workItemId: string) => void;
   readonly onOpenChangeRequest: (cr: ChangeRequestAudit) => void;
-  readonly onNavigateDelivery: (subView: "kanban" | "triage" | "releases") => void;
+  readonly onNavigateDelivery: (subView: OverviewDeliverySubView) => void;
   readonly onNavigateBoard: (opts?: { mentionHandle?: string; filterHandle?: string }) => void;
   readonly onNavigateMembers: () => void;
+  readonly onOpenIntake?: (() => void) | undefined;
 }
 
 const STANDARD_RELEASE_GATES = ["qa_ac_pass", "security_clear", "prod_go"] as const;
+
+const PIPELINE_STEPS: readonly {
+  readonly phase: Exclude<PipelinePhase, "done">;
+  readonly targetSubView: OverviewDeliverySubView;
+}[] = [
+  { phase: "intake", targetSubView: "kanban" },
+  { phase: "prd", targetSubView: "kanban" },
+  { phase: "prototype", targetSubView: "kanban" },
+  { phase: "dev", targetSubView: "kanban" },
+  { phase: "review", targetSubView: "triage" },
+  { phase: "release", targetSubView: "releases" },
+];
+
+const MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
+
+interface LifecycleCue {
+  readonly key: string;
+  readonly text: string;
+  readonly tone: "muted" | "success" | "error";
+}
 
 type ActiveNowRow =
   | {
@@ -50,6 +98,7 @@ type ActiveNowRow =
       readonly tone: CockpitTone;
       readonly title: string;
       readonly detail: string;
+      readonly cues: readonly LifecycleCue[];
       readonly ownerHandle: string | null;
       readonly ownerDisplayName: string;
       readonly ownerKind: "human" | "agent";
@@ -62,12 +111,44 @@ type ActiveNowRow =
       readonly tone: CockpitTone;
       readonly title: string;
       readonly detail: string;
+      readonly cues: readonly LifecycleCue[];
       readonly ownerHandle: string | null;
       readonly ownerDisplayName: string;
       readonly ownerKind: "human" | "agent";
       readonly memberHandles: ReadonlySet<string>;
       readonly cr: ChangeRequestAudit;
     };
+
+function formatShortIsoDate(isoDate: string | null | undefined): string | null {
+  if (!isoDate) return null;
+  const match = ISO_DATE_PREFIX.exec(isoDate.trim());
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const monthLabel = MONTH_SHORT[month - 1];
+  if (!monthLabel || day < 1 || day > 31) return null;
+  return `${monthLabel} ${day}`;
+}
+
+function pipelinePhaseLabel(
+  phase: Exclude<PipelinePhase, "done">,
+  gt: ReturnType<typeof useGT>,
+): string {
+  switch (phase) {
+    case "intake":
+      return gt("Intake");
+    case "prd":
+      return gt("AI PRD");
+    case "prototype":
+      return gt("Prototype");
+    case "dev":
+      return gt("Dev");
+    case "review":
+      return gt("PR Review");
+    case "release":
+      return gt("Release");
+  }
+}
 
 function releaseStatusLabel(status: ReleaseStatus, gt: ReturnType<typeof useGT>): string {
   switch (status) {
@@ -124,6 +205,52 @@ function getLatestBoardMessage(messages: readonly TeamBoardMessage[]): TeamBoard
   return latest;
 }
 
+function buildWorkItemCues(
+  card: CockpitWorkItemCard,
+  schedule: { readonly dueDate: string; readonly isOverdue: boolean },
+  gt: ReturnType<typeof useGT>,
+): LifecycleCue[] {
+  const lifecycle = readWorkItemLifecycle(card.workItem);
+  const cues: LifecycleCue[] = [];
+
+  if (lifecycle.dueAt || schedule.isOverdue) {
+    const formattedDue = formatShortIsoDate(lifecycle.dueAt ?? schedule.dueDate);
+    if (formattedDue) {
+      cues.push({
+        key: "due",
+        text: gt("Due {date}", { date: formattedDue }),
+        tone: schedule.isOverdue ? "error" : "muted",
+      });
+    }
+  }
+
+  if (lifecycle.githubIssueNumber !== null) {
+    cues.push({
+      key: "issue",
+      text: gt("Issue #{num}", { num: lifecycle.githubIssueNumber }),
+      tone: "muted",
+    });
+  }
+
+  if (lifecycle.prdStatus !== "none") {
+    cues.push({
+      key: "prd",
+      text: gt("PRD"),
+      tone: lifecycle.prdStatus === "approved" ? "success" : "muted",
+    });
+  }
+
+  if (lifecycle.prototypeStatus !== "none") {
+    cues.push({
+      key: "proto",
+      text: gt("Proto"),
+      tone: lifecycle.prototypeStatus === "approved" ? "success" : "muted",
+    });
+  }
+
+  return cues.slice(0, 3);
+}
+
 export function CockpitOverviewTab({
   overview,
   reviewItems,
@@ -135,6 +262,7 @@ export function CockpitOverviewTab({
   onNavigateDelivery,
   onNavigateBoard,
   onNavigateMembers,
+  onOpenIntake,
 }: CockpitOverviewTabProps) {
   const gt = useGT();
   const [selectedHandle, setSelectedHandle] = useState<string | null>(null);
@@ -145,6 +273,59 @@ export function CockpitOverviewTab({
   const doneItems = cards.filter((card) => isWorkItemDoneStage(card.workItem.stage));
   const activeCards = cards.filter((card) => !isWorkItemDoneStage(card.workItem.stage));
   const blockedCards = activeCards.filter((card) => card.workItem.health === "blocked");
+
+  const scheduleByCardId = new Map<
+    string,
+    {
+      readonly startDate: string;
+      readonly dueDate: string;
+      readonly isEstimated: boolean;
+      readonly isOverdue: boolean;
+    }
+  >();
+  let overdueCount = 0;
+  let explicitScheduleCount = 0;
+  let earliestStart: string | null = null;
+  let latestDue: string | null = null;
+
+  const phaseStats = new Map<
+    Exclude<PipelinePhase, "done">,
+    { count: number; blocked: number; overdue: number }
+  >();
+  for (const step of PIPELINE_STEPS) {
+    phaseStats.set(step.phase, { count: 0, blocked: 0, overdue: 0 });
+  }
+
+  for (const card of cards) {
+    const schedule = resolveWorkItemSchedule(card.workItem);
+    scheduleByCardId.set(card.workItem.id, schedule);
+    if (schedule.isOverdue) {
+      overdueCount += 1;
+    }
+    if (!schedule.isEstimated) {
+      explicitScheduleCount += 1;
+    }
+    if (!earliestStart || schedule.startDate < earliestStart) {
+      earliestStart = schedule.startDate;
+    }
+    if (!latestDue || schedule.dueDate > latestDue) {
+      latestDue = schedule.dueDate;
+    }
+
+    const phase = deriveWorkItemPipelinePhase(card);
+    if (phase !== "done") {
+      const bucket = phaseStats.get(phase);
+      if (bucket) {
+        bucket.count += 1;
+        if (card.workItem.health === "blocked") {
+          bucket.blocked += 1;
+        }
+        if (schedule.isOverdue) {
+          bucket.overdue += 1;
+        }
+      }
+    }
+  }
 
   const verifiedAcCount = cards.reduce((sum, card) => sum + card.checklistVerifiedCount, 0);
   const totalAcCount = cards.reduce((sum, card) => sum + card.checklistTotalCount, 0);
@@ -202,12 +383,17 @@ export function CockpitOverviewTab({
       card.changeRequests[0]?.automatedReview.reviewers[0]?.bodyExcerpt.trim() ||
       gt("Stage: {stage}", { stage: card.workItem.stage });
 
+    const schedule =
+      scheduleByCardId.get(card.workItem.id) ?? resolveWorkItemSchedule(card.workItem);
+    const cues = buildWorkItemCues(card, schedule, gt);
+
     allActiveRows.push({
       key: `wi:${card.workItem.id}`,
       kind: "work_item",
       tone: workItemHealthTone(card.workItem.health),
       title: `${card.workItem.code} · ${card.workItem.title}`,
       detail: pulseSummary,
+      cues,
       ownerHandle: owner?.handle ?? null,
       ownerDisplayName: owner?.displayName ?? "",
       ownerKind: owner?.kind ?? "human",
@@ -235,7 +421,7 @@ export function CockpitOverviewTab({
     const topFinding = cr.automatedReview.reviewers[0];
     const detail = topFinding
       ? `${topFinding.reviewerName}: ${topFinding.bodyExcerpt}`
-      : `${cr.headBranch} → ${cr.baseBranch}`;
+      : `${cr.headBranch} -> ${cr.baseBranch}`;
 
     allActiveRows.push({
       key: `cr:${cr.id}`,
@@ -243,6 +429,7 @@ export function CockpitOverviewTab({
       tone: changeRequestTone(cr),
       title: `${cr.repoFullName}#${cr.number} · ${cr.title}`,
       detail,
+      cues: [],
       ownerHandle: author?.handle ?? (cr.authorVcsLogin.trim().toLowerCase() || null),
       ownerDisplayName: author?.displayName ?? cr.authorVcsLogin,
       ownerKind: author?.kind ?? "human",
@@ -283,12 +470,109 @@ export function CockpitOverviewTab({
       ).length
     : 0;
 
+  const formattedStartRange = formatShortIsoDate(earliestStart);
+  const formattedEndRange = formatShortIsoDate(latestDue);
+  const scheduleSpanLabel =
+    formattedStartRange && formattedEndRange
+      ? `${formattedStartRange} - ${formattedEndRange}`
+      : null;
+
   const latestBoardMessage = getLatestBoardMessage(boardMessages);
   const workingMembersCount = roster.filter((member) => member.state === "working").length;
   const leadMember = roster.find((member) => member.isOwner) ?? roster[0] ?? null;
 
   return (
     <div className="space-y-6">
+      <section aria-label={gt("Delivery Pipeline")}>
+        <CockpitSurface variant="grouped">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/45 px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-medium text-muted-foreground">
+                <T>Delivery Pipeline</T>
+              </h2>
+              {doneItems.length > 0 ? (
+                <span className="font-mono text-2xs tabular-nums text-success-foreground">
+                  <T>
+                    <Var>{doneItems.length}</Var> shipped
+                  </T>
+                </span>
+              ) : null}
+            </div>
+            {onOpenIntake ? (
+              <Button size="xs" variant="outline" onClick={onOpenIntake}>
+                <PlusIcon />
+                <T>New Requirement</T>
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-1 overflow-x-auto px-3 py-2.5">
+            {PIPELINE_STEPS.map((step, index) => {
+              const stat = phaseStats.get(step.phase) ?? { count: 0, blocked: 0, overdue: 0 };
+              const hasBottleneck = stat.blocked > 0 || stat.overdue > 0;
+              const isActive = stat.count > 0;
+              const dotTone: CockpitTone =
+                stat.blocked > 0
+                  ? "error"
+                  : stat.overdue > 0
+                    ? "warning"
+                    : isActive
+                      ? "info"
+                      : "neutral";
+
+              return (
+                <Fragment key={step.phase}>
+                  <button
+                    className={cn(
+                      "flex min-w-[92px] flex-1 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      hasBottleneck
+                        ? "border-destructive/35 bg-destructive/6 hover:bg-destructive/10"
+                        : isActive
+                          ? "border-border/60 bg-background/65 hover:bg-accent/45"
+                          : "border-transparent bg-transparent hover:border-border/45 hover:bg-accent/25",
+                    )}
+                    type="button"
+                    onClick={() => onNavigateDelivery(step.targetSubView)}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <CockpitStatusDot tone={dotTone} />
+                      <span
+                        className={cn(
+                          "truncate text-xs",
+                          isActive ? "font-medium text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {pipelinePhaseLabel(step.phase, gt)}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 font-mono text-xs tabular-nums",
+                        stat.blocked > 0
+                          ? "font-semibold text-destructive"
+                          : stat.overdue > 0
+                            ? "font-semibold text-warning-foreground"
+                            : isActive
+                              ? "font-medium text-foreground"
+                              : "text-muted-foreground/60",
+                      )}
+                    >
+                      {stat.count}
+                    </span>
+                  </button>
+                  {index < PIPELINE_STEPS.length - 1 ? (
+                    <ChevronRightIcon
+                      aria-hidden
+                      className="size-3.5 shrink-0 text-muted-foreground/45"
+                    />
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </div>
+        </CockpitSurface>
+      </section>
+
       <section aria-label={gt("Active Now")}>
         <CockpitSurface variant="grouped">
           <div className="flex items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
@@ -348,7 +632,28 @@ export function CockpitOverviewTab({
                       <div className="truncate text-sm font-medium text-foreground">
                         {row.title}
                       </div>
-                      <div className="truncate text-xs text-muted-foreground">{row.detail}</div>
+                      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                        <span className="truncate">{row.detail}</span>
+                        {row.cues.length > 0 ? (
+                          <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs sm:inline-flex">
+                            {row.cues.map((cue) => (
+                              <span
+                                key={cue.key}
+                                className={cn(
+                                  "rounded-sm border px-1.5 py-px tabular-nums",
+                                  cue.tone === "error"
+                                    ? "border-destructive/35 bg-destructive/8 text-destructive"
+                                    : cue.tone === "success"
+                                      ? "border-success/30 bg-success/8 text-success-foreground"
+                                      : "border-border/45 bg-muted/20 text-muted-foreground",
+                                )}
+                              >
+                                {cue.text}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -413,6 +718,20 @@ export function CockpitOverviewTab({
                 <span className="text-muted-foreground tabular-nums">
                   <T>
                     · <Var>{verifiedAcCount}</Var>/<Var>{totalAcCount}</Var> ACs verified
+                  </T>
+                </span>
+              ) : null}
+              {overdueCount > 0 ? (
+                <span className="font-medium text-destructive tabular-nums">
+                  <T>
+                    · <Var>{overdueCount}</Var> overdue
+                  </T>
+                </span>
+              ) : null}
+              {readyForReviewPrs.length > 0 ? (
+                <span className="text-info-foreground tabular-nums">
+                  <T>
+                    · <Var>{readyForReviewPrs.length}</Var> ready for review
                   </T>
                 </span>
               ) : null}
@@ -495,8 +814,8 @@ export function CockpitOverviewTab({
         </CockpitSurface>
       </section>
 
-      <section aria-label={gt("Tracks")} className="space-y-1.5">
-        <CockpitSectionHeader title={<T>Tracks</T>} />
+      <section aria-label={gt("Delivery Tracks")} className="space-y-1.5">
+        <CockpitSectionHeader title={<T>Delivery Tracks</T>} />
         <CockpitSurface divided variant="grouped">
           <button
             className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -510,7 +829,7 @@ export function CockpitOverviewTab({
                 }
               />
               <span className="text-sm font-medium text-foreground">
-                <T>Work Items</T>
+                <T>Kanban Board</T>
               </span>
               <span className="truncate text-xs text-muted-foreground">
                 {blockedCards.length > 0 ? (
@@ -540,6 +859,40 @@ export function CockpitOverviewTab({
               <span className="font-mono text-xs tabular-nums text-muted-foreground">
                 {activeCards.length}/{totalItems}
               </span>
+              <ChevronRightIcon className="size-4 text-muted-foreground/70" />
+            </div>
+          </button>
+
+          <button
+            className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            type="button"
+            onClick={() => onNavigateDelivery("gantt")}
+          >
+            <div className="flex min-w-0 items-center gap-2.5">
+              <CockpitStatusDot
+                tone={overdueCount > 0 ? "error" : totalItems > 0 ? "success" : "neutral"}
+              />
+              <span className="text-sm font-medium text-foreground">
+                <T>Gantt Timeline</T>
+              </span>
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {scheduleSpanLabel ?? <T>No schedule yet</T>}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2.5">
+              {overdueCount > 0 ? (
+                <span className="font-mono text-xs font-medium tabular-nums text-destructive">
+                  <T>
+                    <Var>{overdueCount}</Var> overdue
+                  </T>
+                </span>
+              ) : (
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  <T>
+                    <Var>{explicitScheduleCount}</Var>/<Var>{totalItems}</Var> dated
+                  </T>
+                </span>
+              )}
               <ChevronRightIcon className="size-4 text-muted-foreground/70" />
             </div>
           </button>

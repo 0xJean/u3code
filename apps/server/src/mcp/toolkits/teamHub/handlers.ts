@@ -101,10 +101,19 @@ export const layer = McpToolAccess.toLayer(TeamHubToolkit, {
       return yield* teamHub
         .updateWorkItem({
           workItemId: input.workItemId,
+          ...(input.title !== undefined ? { title: input.title } : {}),
           ...(input.stage !== undefined ? { stage: input.stage } : {}),
           ...(input.health !== undefined ? { health: input.health } : {}),
           ...(input.specMarkdown !== undefined ? { specMarkdown: input.specMarkdown } : {}),
+          ...(input.specUrl !== undefined ? { specUrl: input.specUrl } : {}),
+          ...(input.previewUrls !== undefined ? { previewUrls: input.previewUrls } : {}),
           ...(checklistItems !== undefined ? { checklistItems } : {}),
+          ...(input.attributes !== undefined ? { attributes: input.attributes } : {}),
+          ...(input.assigneeType !== undefined ? { assigneeType: input.assigneeType } : {}),
+          ...(input.assigneeUserId !== undefined ? { assigneeUserId: input.assigneeUserId } : {}),
+          ...(input.assigneeRunnerId !== undefined
+            ? { assigneeRunnerId: input.assigneeRunnerId }
+            : {}),
         })
         .pipe(Effect.mapError(mapTeamHubError));
     }),

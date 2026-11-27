@@ -1,7 +1,11 @@
 import type { ChangeRequestAudit, Project, ProjectMemory, WorkItem } from "@u3code/hub-contracts";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  buildIssueDispatchPrompt,
+  buildPrdGenerationPrompt,
+  buildPrototypeGenerationPrompt,
   buildPullRequestActionPrompt,
+  buildRepoGovernanceBootstrapPrompt,
   buildWorkItemThreadPrompt,
   findMatchingWorkspaceProject,
   pickMatchingWorkspaceProject,
@@ -37,9 +41,27 @@ const sampleMemory: ProjectMemory = {
   id: "mem_1",
   projectId: "prj_1",
   version: 2,
-  architectureDecisions: [],
+  architectureDecisions: [
+    {
+      id: "adr_1",
+      date: "2026-11-27",
+      repoFullName: "acme/nexus-go",
+      summary: "Transactional outbox",
+      rationale: "Guarantees at-least-once delivery.",
+      sourceRef: null,
+    },
+  ],
   moduleMap: [],
-  recurringRisks: [],
+  recurringRisks: [
+    {
+      id: "risk_1",
+      title: "Duplicate webhook replay",
+      severity: "high",
+      occurrences: 2,
+      mitigation: "Enforce unique idempotency key index.",
+      active: true,
+    },
+  ],
   directives: [
     {
       id: "d1",
@@ -148,9 +170,18 @@ describe("workItemPrompt", () => {
     ).toBe("p1");
   });
 
-  it("formats spec, ACs, active directives, and Team Hub sync hints into prompt", () => {
+  it("formats spec, ACs, branch cut command, guardrails, and Team Hub sync hints", () => {
+    const richWorkItem: WorkItem = {
+      ...sampleWorkItem,
+      previewUrls: ["https://preview.example.com/core-42"],
+      attributes: {
+        githubIssueNumber: 88,
+        githubIssueUrl: "https://github.com/acme/nexus-go/issues/88",
+        prototypeUrl: "https://preview.example.com/core-42",
+      },
+    };
     const prompt = buildWorkItemThreadPrompt({
-      workItem: sampleWorkItem,
+      workItem: richWorkItem,
       memory: sampleMemory,
     });
 
@@ -160,8 +191,113 @@ describe("workItemPrompt", () => {
     expect(prompt).toContain("- [ ] AC-2: Retry backoff bounded");
     expect(prompt).toContain("Never auto-merge main.");
     expect(prompt).not.toContain("Old inactive rule.");
+    expect(prompt).toContain("git fetch origin dev && git switch --no-track -c");
+    expect(prompt).toContain("FETCH_HEAD^{commit}");
+    expect(prompt).toContain("https://preview.example.com/core-42");
+    expect(prompt).toContain("Closes #88");
+    expect(prompt).toContain("<= 400 changed lines");
+    expect(prompt).toContain("Conventional Commits");
     expect(prompt).toContain("team_hub_update_work_item");
+    expect(prompt).toContain("team_hub_publish_pulse");
+    expect(prompt).toContain("hub_board_post");
     expect(prompt).toContain("wi_42");
+  });
+
+  it("switches branch cut base to origin main for single-trunk topology", () => {
+    const prompt = buildWorkItemThreadPrompt({
+      workItem: sampleWorkItem,
+      topology: "single_trunk",
+    });
+
+    expect(prompt).toContain("git fetch origin main && git switch --no-track -c");
+    expect(prompt).toContain("Branch topology: `single_trunk`");
+  });
+
+  it("builds a structured PRD generation prompt with design tier guidance and hub sync", () => {
+    const prompt = buildPrdGenerationPrompt({
+      workItem: sampleWorkItem,
+      project: sampleProject,
+      memory: sampleMemory,
+    });
+
+    expect(prompt).toContain("[CORE-42] Idempotent settlement outbox");
+    expect(prompt).toContain("Hub Project: CORE (Core Settlement)");
+    expect(prompt).toContain("Technical Design Tier");
+    expect(prompt).toContain("`small`");
+    expect(prompt).toContain("`medium`");
+    expect(prompt).toContain("`large`");
+    expect(prompt).toContain("`cross_repo`");
+    expect(prompt).toContain("team_hub_update_work_item");
+    expect(prompt).toContain('prdStatus: "draft"');
+    expect(prompt).toContain("hub_board_post");
+    expect(prompt).toContain("Transactional outbox");
+    expect(prompt).toContain("Duplicate webhook replay");
+    expect(prompt).not.toContain("Old inactive rule.");
+  });
+
+  it("builds a prototype generation prompt recording previewUrls and board handoff", () => {
+    const prompt = buildPrototypeGenerationPrompt({
+      workItem: sampleWorkItem,
+      project: sampleProject,
+      memory: sampleMemory,
+    });
+
+    expect(prompt).toContain("Build Interactive UI Prototype for [CORE-42]");
+    expect(prompt).toContain("Use transactional outbox table.");
+    expect(prompt).toContain("team_hub_update_work_item");
+    expect(prompt).toContain("previewUrls");
+    expect(prompt).toContain('prototypeStatus: "draft"');
+    expect(prompt).toContain("prototypeUrl");
+    expect(prompt).toContain("hub_board_post");
+  });
+
+  it("builds a GitHub issue dispatch prompt with standard labels, assignee, and board handoff", () => {
+    const prompt = buildIssueDispatchPrompt({
+      workItem: sampleWorkItem,
+      project: sampleProject,
+      repoFullName: "acme/nexus-go",
+      assigneeHandle: "alice",
+      assigneeDisplayName: "Alice Chen",
+    });
+
+    expect(prompt).toContain("gh issue create");
+    expect(prompt).toContain('--repo "acme/nexus-go"');
+    expect(prompt).toContain('--label "type:feature"');
+    expect(prompt).toContain('--label "priority:p0"');
+    expect(prompt).toContain('--assignee "alice"');
+    expect(prompt).toContain("githubIssueNumber");
+    expect(prompt).toContain("githubIssueUrl");
+    expect(prompt).toContain("team_hub_update_work_item");
+    expect(prompt).toContain("hub_board_post");
+    expect(prompt).toContain("@alice");
+  });
+
+  it("builds a non-destructive repo governance bootstrap prompt for dual-trunk and single-trunk", () => {
+    const dualPrompt = buildRepoGovernanceBootstrapPrompt({
+      project: sampleProject,
+      repoFullName: "acme/nexus-go",
+      topology: "dual_trunk",
+    });
+
+    expect(dualPrompt).toContain("Standard Dual-Trunk");
+    expect(dualPrompt).toContain("pr-dev.yml");
+    expect(dualPrompt).toContain("pr-main.yml");
+    expect(dualPrompt).toContain("sync-main-to-dev.yml");
+    expect(dualPrompt).toContain("CODEOWNERS");
+    expect(dualPrompt).toContain("AGENTS.md");
+    expect(dualPrompt).toContain("<= 200 lines");
+    expect(dualPrompt).toContain("init-labels.sh");
+    expect(dualPrompt).toContain("type:hotfix");
+
+    const singlePrompt = buildRepoGovernanceBootstrapPrompt({
+      project: sampleProject,
+      repoFullName: "acme/nexus-go",
+      topology: "single_trunk",
+    });
+
+    expect(singlePrompt).toContain("Lite Single-Trunk");
+    expect(singlePrompt).toContain("pr-main.yml");
+    expect(singlePrompt).not.toContain("sync-main-to-dev.yml");
   });
 
   it("builds a PR fix prompt with bot findings, linked work item ACs, and active directives only", () => {
@@ -223,5 +359,35 @@ describe("workItemPrompt", () => {
     expect(prompt).not.toContain("Old inactive rule.");
     expect(prompt).toContain("Inspect PR #101 (`feat/CORE-42-outbox` -> `main`)");
     expect(prompt).toContain("actionable review feedback");
+  });
+
+  it("builds an audit_and_comment PR prompt with merge strategy, >400 line guardrail, and gh pr review guidance", () => {
+    const oversizedBackMerge: ChangeRequestAudit = {
+      ...sampleChangeRequest,
+      headBranch: "main",
+      baseBranch: "dev",
+      additions: 360,
+      deletions: 90,
+      isOversized: true,
+    };
+
+    const prompt = buildPullRequestActionPrompt({
+      mode: "audit_and_comment",
+      changeRequest: oversizedBackMerge,
+      linkedWorkItem: sampleWorkItem,
+      project: sampleProject,
+      memory: sampleMemory,
+    });
+
+    expect(prompt).toContain("Auto-Audit & Review Pull Request acme/nexus-go#101");
+    expect(prompt).toContain("Merge commit -> dev");
+    expect(prompt).toContain("NEVER squash back-merges into dev!");
+    expect(prompt).toContain("exceeds <= 400 lines guardrail");
+    expect(prompt).toContain("gh pr review 101 --repo acme/nexus-go");
+    expect(prompt).toContain("--approve");
+    expect(prompt).toContain("--request-changes");
+    expect(prompt).toContain("--comment");
+    expect(prompt).toContain("hub_board_post");
+    expect(prompt).toContain("@alice");
   });
 });

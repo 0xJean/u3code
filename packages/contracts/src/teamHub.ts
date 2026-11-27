@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import {
+  AssigneeType,
   ChangeRequestAudit,
   ChecklistItem,
   CockpitDigest,
@@ -131,7 +132,13 @@ export const TeamHubCreateWorkItemInput = Schema.Struct({
   priority: Schema.optional(WorkItemPriority),
   stage: Schema.optional(Schema.String),
   specMarkdown: Schema.optional(Schema.String),
+  specUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  previewUrls: Schema.optional(Schema.Array(Schema.String)),
   checklistItems: Schema.optional(Schema.Array(ChecklistItem)),
+  attributes: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  assigneeType: Schema.optional(AssigneeType),
+  assigneeUserId: Schema.optional(Schema.NullOr(Schema.String)),
+  assigneeRunnerId: Schema.optional(Schema.NullOr(Schema.String)),
 });
 export type TeamHubCreateWorkItemInput = typeof TeamHubCreateWorkItemInput.Type;
 
@@ -146,7 +153,13 @@ export const TeamHubUpdateWorkItemInput = Schema.Struct({
   stage: Schema.optional(Schema.String),
   health: Schema.optional(WorkHealth),
   specMarkdown: Schema.optional(Schema.String),
+  specUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  previewUrls: Schema.optional(Schema.Array(Schema.String)),
   checklistItems: Schema.optional(Schema.Array(ChecklistItem)),
+  attributes: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  assigneeType: Schema.optional(AssigneeType),
+  assigneeUserId: Schema.optional(Schema.NullOr(Schema.String)),
+  assigneeRunnerId: Schema.optional(Schema.NullOr(Schema.String)),
 });
 export type TeamHubUpdateWorkItemInput = typeof TeamHubUpdateWorkItemInput.Type;
 
@@ -444,6 +457,7 @@ export const TeamHubPostBoardMessageResult = Schema.Struct({
 export type TeamHubPostBoardMessageResult = typeof TeamHubPostBoardMessageResult.Type;
 
 export {
+  AssigneeType,
   CockpitOverview,
   HubWsEvent,
   PulseDraft,

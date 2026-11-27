@@ -6,13 +6,17 @@ import {
   type ReleaseCard,
   type ReleaseStatus,
 } from "@u3code/hub-contracts";
-import { T, useGT, Var } from "gt-react";
+import * as Schema from "effect/Schema";
+import { msg, T, useGT, useMessages, Var } from "gt-react";
 import {
   ArrowRightIcon,
   CheckCircle2Icon,
+  CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CopyIcon,
   FileTextIcon,
+  GitBranchIcon,
   GitCommitHorizontalIcon,
   ListChecksIcon,
   PackageCheckIcon,
@@ -20,13 +24,14 @@ import {
   RotateCcwIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
+  TerminalIcon,
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { CheckboxMark } from "~/components/ui/checkbox";
+import { Checkbox, CheckboxMark } from "~/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -49,6 +54,8 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -81,6 +88,83 @@ const RELEASE_GATES = [
 ] as const;
 
 const PIPELINE_STEPS: ReadonlyArray<ReleaseStatus> = ["planning", "staging", "ready", "released"];
+
+const RELEASE_CHECKLIST_STORAGE_KEY = "u3code:cockpit-release-checklist:v1";
+const releaseChecklistStorageSchema = Schema.Record(Schema.String, Schema.Array(Schema.String));
+
+const RELEASE_CHECKLIST_ITEMS = [
+  {
+    key: "ci_green",
+    label: msg("CI green on all target PRs"),
+  },
+  {
+    key: "staging_qa",
+    label: msg("Staging QA verified (qa-approved)"),
+  },
+  {
+    key: "db_rollback",
+    label: msg("DB migrations and rollback verified"),
+  },
+  {
+    key: "env_flags",
+    label: msg("Environment variables and feature flags confirmed"),
+  },
+  {
+    key: "changelog",
+    label: msg("Changelog and release notes ready"),
+  },
+  {
+    key: "owners",
+    label: msg("Release Manager and rollback owner confirmed"),
+  },
+  {
+    key: "sli_monitoring",
+    label: msg("Post-release SLI monitoring ready"),
+  },
+] as const;
+
+interface ReleaseGitRefs {
+  readonly tagVersion: string;
+  readonly rcTag: string;
+  readonly releaseBranch: string;
+  readonly syncBranch: string;
+}
+
+function deriveReleaseGitRefs(versionLabel: string): ReleaseGitRefs {
+  const sanitized = versionLabel.trim().replace(/\s+/g, "-");
+  const withoutRc = sanitized.replace(/-rc\.\d+$/i, "");
+  const tagVersion = withoutRc
+    ? withoutRc.startsWith("v") || withoutRc.startsWith("V")
+      ? `v${withoutRc.slice(1)}`
+      : `v${withoutRc}`
+    : "v1.0.0";
+  const rcTag = /-rc\.\d+$/i.test(sanitized) ? sanitized : `${tagVersion}-rc.1`;
+  const releaseBranch = `release/${tagVersion}`;
+  const syncBranch = `sync/main-to-dev-${tagVersion}`;
+  return { tagVersion, rcTag, releaseBranch, syncBranch };
+}
+
+interface ReleaseGitCommandItem {
+  readonly key: "rc" | "prod" | "backmerge";
+  readonly command: string;
+}
+
+function buildReleaseGitCommands(refs: ReleaseGitRefs): ReadonlyArray<ReleaseGitCommandItem> {
+  return [
+    {
+      key: "rc",
+      command: `git fetch origin ${refs.releaseBranch} && git tag -a ${refs.rcTag} "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" -m "Release candidate ${refs.rcTag}" && git push origin ${refs.rcTag}`,
+    },
+    {
+      key: "prod",
+      command: `git fetch origin main && git tag -a ${refs.tagVersion} "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" -m "Release ${refs.tagVersion}" && git push origin ${refs.tagVersion}`,
+    },
+    {
+      key: "backmerge",
+      command: `git fetch origin dev && git switch --no-track -c ${refs.syncBranch} "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" && git fetch origin main && git merge --no-ff "$(git rev-parse --verify 'FETCH_HEAD^{commit}')" -m "chore: back-merge main (${refs.tagVersion}) into dev" && git push -u origin HEAD`,
+    },
+  ];
+}
 
 interface InlineToken {
   readonly id: string;
@@ -297,6 +381,7 @@ export function CockpitReleasesTab({
   onOpenWorkItem,
 }: CockpitReleasesTabProps) {
   const gt = useGT();
+  const resolveMessage = useMessages();
   const [releases, setReleases] = useState<ReadonlyArray<ReleaseCard>>([]);
   const [filter, setFilter] = useState<ReleaseFilter>("all");
   const [createOpen, setCreateOpen] = useState(false);
@@ -317,6 +402,21 @@ export function CockpitReleasesTab({
   const [expandedDetailsOverrides, setExpandedDetailsOverrides] = useState<
     Readonly<Record<string, boolean>>
   >({});
+  const [checkedByRelease, setCheckedByRelease] = useLocalStorage(
+    RELEASE_CHECKLIST_STORAGE_KEY,
+    {},
+    releaseChecklistStorageSchema,
+  );
+  const [lastCopiedCommandKey, setLastCopiedCommandKey] = useState<string | null>(null);
+  const { copyToClipboard, isCopied } = useCopyToClipboard<string>({
+    onCopy: (key) => {
+      setLastCopiedCommandKey(key);
+      toastManager.add({ title: gt("Git command copied to clipboard"), type: "success" });
+    },
+    onError: () => {
+      toastManager.add({ title: gt("Failed to copy git command."), type: "error" });
+    },
+  });
 
   const listReleases = useAtomCommand(teamHubEnvironment.listReleases, { reportFailure: false });
   const createRelease = useAtomCommand(teamHubEnvironment.createRelease, { reportFailure: false });
@@ -399,6 +499,32 @@ export function CockpitReleasesTab({
       ...prev,
       [releaseId]: !currentlyExpanded,
     }));
+  };
+
+  const handleToggleChecklistItem = (releaseId: string, itemKey: string, nextChecked: boolean) => {
+    setCheckedByRelease((prev) => {
+      const existing = prev[releaseId] ?? [];
+      const nextItems = nextChecked
+        ? existing.includes(itemKey)
+          ? [...existing]
+          : [...existing, itemKey]
+        : existing.filter((key) => key !== itemKey);
+      return {
+        ...prev,
+        [releaseId]: nextItems,
+      };
+    });
+  };
+
+  const gitCommandLabel = (key: ReleaseGitCommandItem["key"]) => {
+    switch (key) {
+      case "rc":
+        return gt("Tag RC (staging)");
+      case "prod":
+        return gt("Tag Production (main)");
+      case "backmerge":
+        return gt("Back-merge main → dev (Merge commit)");
+    }
   };
 
   const handleToggleWorkItem = (workItemId: string) => {
@@ -655,11 +781,74 @@ export function CockpitReleasesTab({
               : approvedCount === RELEASE_GATES.length
                 ? "success"
                 : "neutral";
-            const hasDetails = Boolean(card.release.releaseNotesMd || card.release.rollbackPlan);
-            const defaultDetailsExpanded =
-              visibleReleases.length === 1 && isActiveReleaseStatus(card.release.status);
+            const isActiveRelease = isActiveReleaseStatus(card.release.status);
+            const defaultDetailsExpanded = visibleReleases.length === 1 && isActiveRelease;
             const detailsExpanded =
               expandedDetailsOverrides[card.release.id] ?? defaultDetailsExpanded;
+            const gitRefs = deriveReleaseGitRefs(card.release.versionLabel);
+            const gitCommands = buildReleaseGitCommands(gitRefs);
+            const checkedKeys = new Set(checkedByRelease[card.release.id] ?? []);
+            const checkedCount = RELEASE_CHECKLIST_ITEMS.filter((item) =>
+              checkedKeys.has(item.key),
+            ).length;
+            const qaApproved = latestGates.get("qa_ac_pass")?.status === "approved";
+            const devBranchLabel = "dev";
+            const qaApprovedLabel = "qa-approved";
+            const dualTrunkSteps: ReadonlyArray<{
+              readonly key: string;
+              readonly label: ReactNode;
+              readonly hint?: ReactNode;
+              readonly state: "done" | "current" | "upcoming";
+            }> = [
+              {
+                key: "dev",
+                label: <span className="font-mono">{devBranchLabel}</span>,
+                state: "done",
+              },
+              {
+                key: "freeze",
+                label: <span className="font-mono">{gitRefs.releaseBranch}</span>,
+                hint: <T>freeze</T>,
+                state: card.release.status === "planning" ? "current" : "done",
+              },
+              {
+                key: "rc",
+                label: <span className="font-mono">{gitRefs.rcTag}</span>,
+                hint: <T>staging</T>,
+                state:
+                  card.release.status === "planning"
+                    ? "upcoming"
+                    : card.release.status === "staging"
+                      ? "current"
+                      : "done",
+              },
+              {
+                key: "qa",
+                label: <span className="font-mono">{qaApprovedLabel}</span>,
+                state:
+                  qaApproved || card.release.status === "ready"
+                    ? "done"
+                    : card.release.status === "staging"
+                      ? "current"
+                      : "upcoming",
+              },
+              {
+                key: "merge_main",
+                label: <T>Merge commit → main</T>,
+                state: card.release.status === "ready" ? "current" : "upcoming",
+              },
+              {
+                key: "prod_tag",
+                label: <span className="font-mono">{gitRefs.tagVersion}</span>,
+                hint: <T>tag</T>,
+                state: "upcoming",
+              },
+              {
+                key: "backmerge",
+                label: <T>Merge commit main → dev</T>,
+                state: "upcoming",
+              },
+            ];
 
             return (
               <CockpitSurface
@@ -747,6 +936,43 @@ export function CockpitReleasesTab({
                         </div>
                       );
                     })}
+                  </div>
+                ) : null}
+
+                {isActiveRelease ? (
+                  <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 bg-background/30 px-6 py-2 text-2xs">
+                    <span className="mr-1 inline-flex shrink-0 items-center gap-1 font-medium text-muted-foreground">
+                      <GitBranchIcon aria-hidden className="size-3 shrink-0 opacity-75" />
+                      <T>Dual-Trunk Flow</T>
+                    </span>
+                    {dualTrunkSteps.map((step, idx) => (
+                      <Fragment key={step.key}>
+                        {idx > 0 ? (
+                          <ChevronRightIcon
+                            aria-hidden
+                            className="size-3 shrink-0 text-muted-foreground/45"
+                          />
+                        ) : null}
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap",
+                            step.state === "done"
+                              ? "text-success-foreground"
+                              : step.state === "current"
+                                ? "font-medium text-foreground"
+                                : "text-muted-foreground/65",
+                          )}
+                        >
+                          {step.state === "done" ? (
+                            <CheckIcon aria-hidden className="size-2.5 shrink-0" />
+                          ) : null}
+                          <span>{step.label}</span>
+                          {step.hint ? (
+                            <span className="text-muted-foreground/65">({step.hint})</span>
+                          ) : null}
+                        </span>
+                      </Fragment>
+                    ))}
                   </div>
                 ) : null}
 
@@ -964,62 +1190,157 @@ export function CockpitReleasesTab({
                     </div>
                   ) : null}
 
-                  {hasDetails ? (
-                    <div className="border-t border-border/50 pt-4">
-                      <button
-                        aria-expanded={detailsExpanded}
-                        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                        type="button"
-                        onClick={() => handleToggleReleaseDetails(card.release.id, detailsExpanded)}
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          {detailsExpanded ? (
-                            <ChevronDownIcon className="size-3.5 shrink-0 opacity-75" />
-                          ) : (
-                            <ChevronRightIcon className="size-3.5 shrink-0 opacity-75" />
+                  <div className="border-t border-border/50 pt-4">
+                    <button
+                      aria-expanded={detailsExpanded}
+                      className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      type="button"
+                      onClick={() => handleToggleReleaseDetails(card.release.id, detailsExpanded)}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {detailsExpanded ? (
+                          <ChevronDownIcon className="size-3.5 shrink-0 opacity-75" />
+                        ) : (
+                          <ChevronRightIcon className="size-3.5 shrink-0 opacity-75" />
+                        )}
+                        <T>Release Notes, Checklist &amp; Git Commands</T>
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-2.5 text-2xs font-normal text-muted-foreground/75">
+                        <span
+                          className={cn(
+                            "font-mono tabular-nums",
+                            checkedCount === RELEASE_CHECKLIST_ITEMS.length
+                              ? "text-success-foreground"
+                              : "text-muted-foreground",
                           )}
-                          {card.release.releaseNotesMd && card.release.rollbackPlan ? (
-                            <T>Release Notes & Rollback Plan</T>
-                          ) : card.release.releaseNotesMd ? (
-                            <T>Release Notes</T>
-                          ) : (
-                            <T>Rollback Plan</T>
-                          )}
+                        >
+                          <T>
+                            <Var>{checkedCount}</Var>/<Var>{RELEASE_CHECKLIST_ITEMS.length}</Var>{" "}
+                            checked
+                          </T>
                         </span>
-                        <span className="text-2xs font-normal text-muted-foreground/70">
-                          {detailsExpanded ? <T>Hide</T> : <T>Show</T>}
-                        </span>
-                      </button>
+                        <span>{detailsExpanded ? <T>Hide</T> : <T>Show</T>}</span>
+                      </span>
+                    </button>
 
-                      {detailsExpanded ? (
-                        <div className="mt-3.5 space-y-4 px-1">
-                          {card.release.releaseNotesMd ? (
-                            <div className="space-y-1.5">
-                              {card.release.rollbackPlan ? (
-                                <div className="text-2xs font-medium text-muted-foreground">
-                                  <T>Release Notes</T>
-                                </div>
-                              ) : null}
-                              <ReleaseNotesProse markdown={card.release.releaseNotesMd} />
+                    {detailsExpanded ? (
+                      <div className="mt-3.5 space-y-5 px-1">
+                        {card.release.releaseNotesMd ? (
+                          <div className="space-y-1.5">
+                            <div className="text-2xs font-medium text-muted-foreground">
+                              <T>Release Notes</T>
                             </div>
-                          ) : null}
+                            <ReleaseNotesProse markdown={card.release.releaseNotesMd} />
+                          </div>
+                        ) : null}
 
-                          {card.release.rollbackPlan ? (
-                            <div className="space-y-1.5">
-                              <div className="text-2xs font-medium text-muted-foreground">
-                                <T>Rollback Plan</T>
-                              </div>
-                              <div className="rounded-lg border border-border/50 bg-muted/20 px-3.5 py-2.5">
-                                <p className="text-xs leading-6 whitespace-pre-wrap text-muted-foreground">
-                                  {card.release.rollbackPlan}
-                                </p>
-                              </div>
+                        {card.release.rollbackPlan ? (
+                          <div className="space-y-1.5">
+                            <div className="text-2xs font-medium text-muted-foreground">
+                              <T>Rollback Plan</T>
                             </div>
-                          ) : null}
+                            <div className="rounded-lg border border-border/50 bg-muted/20 px-3.5 py-2.5">
+                              <p className="text-xs leading-6 whitespace-pre-wrap text-muted-foreground">
+                                {card.release.rollbackPlan}
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+                              <ListChecksIcon aria-hidden className="size-3.5 shrink-0" />
+                              <T>Release Readiness Checklist</T>
+                            </div>
+                            <span
+                              className={cn(
+                                "font-mono text-2xs tabular-nums",
+                                checkedCount === RELEASE_CHECKLIST_ITEMS.length
+                                  ? "text-success-foreground"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              <T>
+                                <Var>{checkedCount}</Var>/
+                                <Var>{RELEASE_CHECKLIST_ITEMS.length}</Var> checked
+                              </T>
+                            </span>
+                          </div>
+                          <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-background/40">
+                            {RELEASE_CHECKLIST_ITEMS.map((item) => {
+                              const checked = checkedKeys.has(item.key);
+                              return (
+                                <label
+                                  key={item.key}
+                                  className="flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-xs transition-colors hover:bg-accent/25"
+                                >
+                                  <Checkbox
+                                    checked={checked}
+                                    onCheckedChange={(next) =>
+                                      handleToggleChecklistItem(
+                                        card.release.id,
+                                        item.key,
+                                        Boolean(next),
+                                      )
+                                    }
+                                  />
+                                  <span
+                                    className={cn(
+                                      "min-w-0 flex-1 leading-snug",
+                                      checked
+                                        ? "text-muted-foreground line-through"
+                                        : "text-foreground",
+                                    )}
+                                  >
+                                    {resolveMessage(item.label)}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
                         </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+                              <TerminalIcon aria-hidden className="size-3.5 shrink-0" />
+                              <T>Safe Git Tag &amp; Back-Merge Commands</T>
+                            </div>
+                            <span className="text-2xs text-warning-foreground">
+                              <T>Never squash-merge main → dev; tags are immutable.</T>
+                            </span>
+                          </div>
+                          <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-background/40">
+                            {gitCommands.map((cmd) => {
+                              const copyKey = `${card.release.id}:${cmd.key}`;
+                              const copied = isCopied && lastCopiedCommandKey === copyKey;
+                              return (
+                                <div key={cmd.key} className="space-y-1.5 px-3.5 py-2.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-foreground">
+                                      {gitCommandLabel(cmd.key)}
+                                    </span>
+                                    <Button
+                                      size="micro"
+                                      variant="outline"
+                                      onClick={() => copyToClipboard(cmd.command, copyKey)}
+                                    >
+                                      {copied ? <CheckIcon /> : <CopyIcon />}
+                                      {copied ? <T>Copied</T> : <T>Copy</T>}
+                                    </Button>
+                                  </div>
+                                  <pre className="overflow-x-auto rounded-md border border-border/40 bg-muted/20 px-2.5 py-1.5 font-mono text-2xs text-muted-foreground select-all">
+                                    <code>{cmd.command}</code>
+                                  </pre>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </CockpitSurface>
             );
