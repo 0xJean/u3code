@@ -18,21 +18,19 @@ import {
   type ProjectRepo,
   type WorkHealth,
   type WorkItem,
+  type WorkItemType,
   type WorkspaceMember,
 } from "@u3code/hub-contracts";
 import { T, useGT, useLocale, Var } from "gt-react";
 import {
   ActivityIcon,
+  ArrowRightIcon,
   BotIcon,
   CheckIcon,
   CheckSquareIcon,
   ChevronRightIcon,
-  CircleDotIcon,
   CopyIcon,
   ExternalLinkIcon,
-  FileTextIcon,
-  GitBranchIcon,
-  LayoutTemplateIcon,
   PlusIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
@@ -71,14 +69,22 @@ import { useProjects } from "~/state/entities";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
+  CockpitArtifactIcon,
+  CockpitStageArtworkIcon,
+  type CockpitArtifactArtKind,
+  type CockpitStageArtKind,
+} from "./CockpitArtwork";
+import {
   CockpitDiffStat,
   CockpitFieldLabel,
   CockpitHealthDot,
+  CockpitIconBadge,
   CockpitInlineAlert,
   CockpitPriorityDot,
   CockpitSectionHeader,
   CockpitSurface,
   CockpitSurfaceRow,
+  type CockpitIconBadgeTone,
 } from "./CockpitPrimitives";
 import { CockpitSwarmAvatar, type CockpitTeamMember } from "./CockpitSwarmAvatar";
 import { formatCockpitCommandError } from "./cockpitError";
@@ -165,6 +171,47 @@ function artifactStatusLabel(status: ArtifactStatus, gt: ReturnType<typeof useGT
     case "approved":
       return gt("Approved");
   }
+}
+
+function workItemTypeArtKind(itemType: WorkItemType): CockpitArtifactArtKind {
+  switch (itemType) {
+    case "feature":
+      return "feature";
+    case "bug":
+      return "bug";
+    case "refactor":
+      return "refactor";
+    case "chore":
+      return "chore";
+    case "security":
+      return "security";
+  }
+}
+
+function workItemTypeBadgeTone(itemType: WorkItemType): CockpitIconBadgeTone {
+  switch (itemType) {
+    case "feature":
+      return "primary";
+    case "bug":
+      return "error";
+    case "refactor":
+      return "violet";
+    case "chore":
+      return "neutral";
+    case "security":
+      return "warning";
+  }
+}
+
+function gitHubLabelBadgeVariant(
+  label: string,
+): "error" | "warning" | "info" | "secondary" | "outline" {
+  const normalized = label.toLowerCase();
+  if (normalized === "priority:p0" || normalized === "type:bug") return "error";
+  if (normalized === "priority:p1" || normalized === "type:security") return "warning";
+  if (normalized === "type:feature" || normalized === "priority:p2") return "info";
+  if (normalized === "type:refactor") return "secondary";
+  return "outline";
 }
 
 function encodeAssigneeValue(
@@ -561,7 +608,12 @@ export function WorkItemDetailDialog({
   const isReviewDone = hasMergedPr || currentPhase === "release" || currentPhase === "done";
   const isReleaseDone = currentPhase === "done";
 
-  const rawLifecycleSteps = [
+  const rawLifecycleSteps: ReadonlyArray<{
+    readonly id: CockpitStageArtKind;
+    readonly label: string;
+    readonly done: boolean;
+    readonly focusId: string;
+  }> = [
     { id: "intake", label: gt("Intake"), done: true, focusId: "wid-title" },
     { id: "prd", label: gt("AI PRD"), done: hasPrdArtifact, focusId: "wid-spec" },
     {
@@ -574,11 +626,59 @@ export function WorkItemDetailDialog({
     { id: "dev", label: gt("Dev Branch"), done: hasDevBranch, focusId: "wid-branch" },
     { id: "review", label: gt("PR & Review"), done: isReviewDone, focusId: "wid-prs" },
     { id: "release", label: gt("Release"), done: isReleaseDone, focusId: "wid-gates" },
-  ] as const;
+  ];
 
   const firstPendingStepIdx = rawLifecycleSteps.findIndex((step) => !step.done);
   const activeStepIndex =
     firstPendingStepIdx === -1 ? rawLifecycleSteps.length - 1 : firstPendingStepIdx;
+
+  const isHotfixBranch = activeDetail
+    ? activeDetail.workItem.priority === "p0" &&
+      (activeDetail.workItem.itemType === "bug" || activeDetail.workItem.itemType === "security")
+    : false;
+  const branchTopologyPill =
+    branchTopology === "single_trunk" || isHotfixBranch ? "origin/main" : "origin/dev -> main";
+  const hasValidIssueUrl = Boolean(parsedIssue.url && isSafeExternalUrl(parsedIssue.url));
+  const hasIssueLinked = parsedIssue.number !== null || hasValidIssueUrl;
+  const hasValidPrototypeUrl = isSafeExternalUrl(prototypeUrl);
+  const hasPrototypeLinked = prototypeUrl.trim().length > 0;
+
+  const deliveryActionTiles: ReadonlyArray<{
+    readonly action: PipelineActionKind;
+    readonly stage: CockpitStageArtKind;
+    readonly tone: CockpitIconBadgeTone;
+    readonly title: string;
+    readonly caption: string;
+  }> = [
+    {
+      action: "prd",
+      stage: "prd",
+      tone: "info",
+      title: gt("AI Draft PRD"),
+      caption: gt("Generate spec, design tier, and acceptance criteria"),
+    },
+    {
+      action: "prototype",
+      stage: "prototype",
+      tone: "violet",
+      title: gt("AI Prototype"),
+      caption: gt("Build a clickable UI preview from the PRD"),
+    },
+    {
+      action: "issue",
+      stage: "issue",
+      tone: "warning",
+      title: gt("Submit GitHub Issue"),
+      caption: gt("Create a labeled issue and assign handoff"),
+    },
+    {
+      action: "dev",
+      stage: "dev",
+      tone: "primary",
+      title: gt("Start Dev Branch"),
+      caption: gt("Open a governed branch and implement AC"),
+    },
+  ];
 
   const handleToggleChecklist = (itemId: string) => {
     setChecklistItems((prev) =>
@@ -791,25 +891,44 @@ export function WorkItemDetailDialog({
     >
       <DialogPopup className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>
-            {activeDetail ? (
-              <span className="flex flex-wrap items-center gap-2">
-                <CockpitPriorityDot priority={activeDetail.workItem.priority} />
-                <span className="font-mono text-xs text-muted-foreground">
-                  {activeDetail.workItem.code}
-                </span>
-                <span className="min-w-0">{activeDetail.workItem.title}</span>
-              </span>
-            ) : (
-              <T>Work Item Details</T>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            <T>
-              Drive end-to-end delivery from requirement intake, AI PRD, and prototype to GitHub
-              issue, dev branch, PR review, and release.
-            </T>
-          </DialogDescription>
+          {activeDetail ? (
+            <div className="flex items-start gap-3">
+              <CockpitIconBadge
+                size="lg"
+                tone={workItemTypeBadgeTone(activeDetail.workItem.itemType)}
+              >
+                <CockpitArtifactIcon kind={workItemTypeArtKind(activeDetail.workItem.itemType)} />
+              </CockpitIconBadge>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/45 px-1.5 py-0.5 font-mono text-2xs font-medium text-foreground/90">
+                    {activeDetail.workItem.code}
+                  </span>
+                  <CockpitPriorityDot priority={activeDetail.workItem.priority} />
+                  <CockpitHealthDot health={health} label={workHealthLabel(health, gt)} />
+                </div>
+                <DialogTitle>{activeDetail.workItem.title}</DialogTitle>
+                <DialogDescription>
+                  <T>
+                    Drive end-to-end delivery from requirement intake, AI PRD, and prototype to
+                    GitHub issue, dev branch, PR review, and release.
+                  </T>
+                </DialogDescription>
+              </div>
+            </div>
+          ) : (
+            <>
+              <DialogTitle>
+                <T>Work Item Details</T>
+              </DialogTitle>
+              <DialogDescription>
+                <T>
+                  Drive end-to-end delivery from requirement intake, AI PRD, and prototype to GitHub
+                  issue, dev branch, PR review, and release.
+                </T>
+              </DialogDescription>
+            </>
+          )}
         </DialogHeader>
 
         <DialogPanel>
@@ -822,36 +941,39 @@ export function WorkItemDetailDialog({
           ) : activeDetail ? (
             <div className="space-y-5">
               <nav aria-label={gt("Delivery lifecycle")} className="overflow-x-auto">
-                <ol className="flex min-w-max items-center gap-1 rounded-xl border border-border/50 bg-muted/15 px-2.5 py-2">
+                <ol className="flex min-w-max items-center gap-1 rounded-xl border border-border/55 bg-muted/15 p-2">
                   {rawLifecycleSteps.map((step, index) => {
                     const isCurrent = index === activeStepIndex && !step.done;
                     return (
                       <li key={step.id} className="flex items-center gap-1">
                         <button
                           className={cn(
-                            "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                            "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                             isCurrent
-                              ? "bg-accent/70 font-medium text-foreground"
+                              ? "border-primary/35 bg-primary/8 font-medium text-foreground shadow-2xs"
                               : step.done
-                                ? "text-foreground/90 hover:bg-accent/40"
-                                : "text-muted-foreground hover:bg-accent/30 hover:text-foreground",
+                                ? "border-success/25 bg-success/6 text-foreground/95 hover:bg-success/12"
+                                : "border-transparent bg-transparent text-muted-foreground hover:border-border/50 hover:bg-accent/35 hover:text-foreground",
                           )}
                           type="button"
                           onClick={() => focusElementById(step.focusId)}
                         >
-                          <span
-                            className={cn(
-                              "inline-flex size-4 shrink-0 items-center justify-center rounded-full font-mono text-3xs tabular-nums",
-                              step.done
-                                ? "bg-success/16 text-success-foreground"
-                                : isCurrent
-                                  ? "bg-primary/16 font-semibold text-primary"
-                                  : "bg-muted text-muted-foreground",
-                            )}
+                          <CockpitIconBadge
+                            size="sm"
+                            tone={step.done ? "success" : isCurrent ? "primary" : "neutral"}
                           >
-                            {step.done ? <CheckIcon className="size-2.5" /> : index + 1}
+                            {step.done ? (
+                              <CheckIcon />
+                            ) : (
+                              <CockpitStageArtworkIcon stage={step.id} />
+                            )}
+                          </CockpitIconBadge>
+                          <span className="flex flex-col leading-tight">
+                            <span className="font-mono text-3xs tabular-nums text-muted-foreground/80">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
+                            <span className="whitespace-nowrap">{step.label}</span>
                           </span>
-                          <span className="whitespace-nowrap">{step.label}</span>
                         </button>
                         {index < rawLifecycleSteps.length - 1 ? (
                           <ChevronRightIcon
@@ -868,17 +990,21 @@ export function WorkItemDetailDialog({
               <CockpitSurface padding="sm" variant="subtle">
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                        <GitBranchIcon className="size-3.5 text-muted-foreground" />
-                        <T>AI Delivery Actions</T>
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <CockpitIconBadge size="md" tone="primary">
+                        <CockpitArtifactIcon kind="prompt_template" />
+                      </CockpitIconBadge>
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="text-xs font-medium text-foreground">
+                          <T>AI Delivery Actions</T>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          <T>
+                            Launch a scoped U3 Code agent thread with live spec, acceptance
+                            criteria, and branch workflow guardrails.
+                          </T>
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        <T>
-                          Launch a scoped U3 Code agent thread with live spec, acceptance criteria,
-                          and branch workflow guardrails.
-                        </T>
-                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {onOpenPromptSettings ? (
@@ -890,34 +1016,40 @@ export function WorkItemDetailDialog({
                             onOpenPromptSettings();
                           }}
                         >
+                          <CockpitArtifactIcon kind="prompt_template" />
                           <T>Manage Prompts</T>
                         </Button>
                       ) : null}
                       {localProjects.length > 0 && selectedLocalProject ? (
-                        <div className="w-48">
-                          <Select
-                            value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
-                            onValueChange={(value) => {
-                              if (value) setChosenLocalProjectId(value);
-                            }}
-                          >
-                            <SelectTrigger
-                              aria-label={gt("Local workspace project")}
-                              size="compact"
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-2xs font-medium text-muted-foreground">
+                            <T>Workspace</T>
+                          </span>
+                          <div className="w-48">
+                            <Select
+                              value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
+                              onValueChange={(value) => {
+                                if (value) setChosenLocalProjectId(value);
+                              }}
                             >
-                              <SelectValue>{selectedLocalProject.title}</SelectValue>
-                            </SelectTrigger>
-                            <SelectPopup>
-                              {localProjects.map((proj) => (
-                                <SelectItem
-                                  key={`${proj.environmentId}:${proj.id}`}
-                                  value={`${proj.environmentId}:${proj.id}`}
-                                >
-                                  {proj.title}
-                                </SelectItem>
-                              ))}
-                            </SelectPopup>
-                          </Select>
+                              <SelectTrigger
+                                aria-label={gt("Local workspace project")}
+                                size="compact"
+                              >
+                                <SelectValue>{selectedLocalProject.title}</SelectValue>
+                              </SelectTrigger>
+                              <SelectPopup>
+                                {localProjects.map((proj) => (
+                                  <SelectItem
+                                    key={`${proj.environmentId}:${proj.id}`}
+                                    value={`${proj.environmentId}:${proj.id}`}
+                                  >
+                                    {proj.title}
+                                  </SelectItem>
+                                ))}
+                              </SelectPopup>
+                            </Select>
+                          </div>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">
@@ -927,43 +1059,50 @@ export function WorkItemDetailDialog({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-2.5">
-                    <Button
-                      disabled={!selectedLocalProject || launchingAction !== null}
-                      size="xs"
-                      variant="outline"
-                      onClick={() => void handleLaunchPipelineAction("prd")}
-                    >
-                      <FileTextIcon />
-                      {launchingAction === "prd" ? <T>Opening...</T> : <T>AI Draft PRD</T>}
-                    </Button>
-                    <Button
-                      disabled={!selectedLocalProject || launchingAction !== null}
-                      size="xs"
-                      variant="outline"
-                      onClick={() => void handleLaunchPipelineAction("prototype")}
-                    >
-                      <LayoutTemplateIcon />
-                      {launchingAction === "prototype" ? <T>Opening...</T> : <T>AI Prototype</T>}
-                    </Button>
-                    <Button
-                      disabled={!selectedLocalProject || launchingAction !== null}
-                      size="xs"
-                      variant="outline"
-                      onClick={() => void handleLaunchPipelineAction("issue")}
-                    >
-                      <CircleDotIcon />
-                      {launchingAction === "issue" ? <T>Opening...</T> : <T>Submit GitHub Issue</T>}
-                    </Button>
-                    <Button
-                      disabled={!selectedLocalProject || launchingAction !== null}
-                      size="xs"
-                      variant="secondary"
-                      onClick={() => void handleLaunchPipelineAction("dev")}
-                    >
-                      <GitBranchIcon />
-                      {launchingAction === "dev" ? <T>Opening...</T> : <T>Start Dev Branch</T>}
-                    </Button>
+                  <div className="grid gap-2.5 border-t border-border/45 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {deliveryActionTiles.map((tile) => {
+                      const isLaunching = launchingAction === tile.action;
+                      const isDisabled = !selectedLocalProject || launchingAction !== null;
+                      return (
+                        <button
+                          key={tile.action}
+                          className={cn(
+                            "group flex min-w-0 flex-col justify-between gap-2.5 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                            isLaunching
+                              ? "border-primary/45 bg-primary/8"
+                              : isDisabled
+                                ? "cursor-not-allowed border-border/45 bg-card/30 opacity-55"
+                                : "cursor-pointer border-border/55 bg-card/75 hover:border-border hover:bg-accent/45",
+                          )}
+                          disabled={isDisabled}
+                          type="button"
+                          onClick={() => void handleLaunchPipelineAction(tile.action)}
+                        >
+                          <div className="flex w-full items-center justify-between gap-2">
+                            <CockpitIconBadge size="md" tone={tile.tone}>
+                              <CockpitStageArtworkIcon stage={tile.stage} />
+                            </CockpitIconBadge>
+                            <ArrowRightIcon
+                              aria-hidden
+                              className={cn(
+                                "size-3.5 shrink-0 transition-transform",
+                                isLaunching
+                                  ? "translate-x-0.5 text-primary"
+                                  : "text-muted-foreground/55 group-hover:translate-x-0.5 group-hover:text-foreground",
+                              )}
+                            />
+                          </div>
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="truncate text-xs font-semibold text-foreground">
+                              {isLaunching ? <T>Opening...</T> : tile.title}
+                            </div>
+                            <p className="line-clamp-2 text-2xs leading-snug text-muted-foreground">
+                              {tile.caption}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </CockpitSurface>
@@ -1196,25 +1335,46 @@ export function WorkItemDetailDialog({
                 </div>
               </div>
 
-              <CockpitSurface padding="sm" variant="subtle">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-44 flex-1">
+              <section className="space-y-2.5">
+                <CockpitSectionHeader
+                  icon={
+                    <CockpitIconBadge size="sm" tone="primary">
+                      <CockpitArtifactIcon kind="branch" />
+                    </CockpitIconBadge>
+                  }
+                  title={<T>Git &amp; Delivery Artifacts</T>}
+                />
+
+                <CockpitSurface divided variant="grouped">
+                  <CockpitSurfaceRow className="space-y-2.5" density="compact">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <CockpitIconBadge size="sm" tone="primary">
+                          <CockpitArtifactIcon kind="branch" />
+                        </CockpitIconBadge>
+                        <label className="text-xs font-medium text-foreground" htmlFor="wid-branch">
+                          <T>Development Branch</T>
+                        </label>
+                      </div>
+                      <span className="inline-flex items-center rounded-md border border-border/55 bg-muted/40 px-2 py-0.5 font-mono text-2xs text-muted-foreground">
+                        {branchTopologyPill}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="min-w-48 flex-1">
                         <Input
-                          aria-label={gt("Development branch")}
                           font="mono"
                           id="wid-branch"
                           placeholder={suggestedBranch}
-                          size="compact"
+                          size="sm"
                           value={branchName}
                           onChange={(event) => setBranchName(event.target.value)}
                         />
                       </div>
                       <Button
                         disabled={!effectiveBranchName}
-                        size="xs"
+                        size="sm"
                         variant="outline"
                         onClick={() => void handleCopyBranchCommand()}
                       >
@@ -1222,85 +1382,140 @@ export function WorkItemDetailDialog({
                         <T>Copy Branch Command</T>
                       </Button>
                     </div>
-                    {standardLabels.length > 0 ? (
+                  </CockpitSurfaceRow>
+
+                  {standardLabels.length > 0 ? (
+                    <CockpitSurfaceRow
+                      className="flex flex-wrap items-center justify-between gap-2.5 bg-muted/10"
+                      density="compact"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <CockpitIconBadge size="sm" tone="neutral">
+                          <CockpitArtifactIcon kind="labels" />
+                        </CockpitIconBadge>
+                        <span className="text-xs font-medium text-foreground">
+                          <T>Standard GitHub Labels</T>
+                        </span>
+                      </div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {standardLabels.map((label) => (
-                          <Badge key={label} size="sm" variant="outline">
+                          <Badge key={label} size="sm" variant={gitHubLabelBadgeVariant(label)}>
                             {label}
                           </Badge>
                         ))}
                       </div>
-                    ) : null}
-                  </div>
+                    </CockpitSurfaceRow>
+                  ) : null}
 
-                  <div className="grid gap-3 border-t border-border/40 pt-3 sm:grid-cols-2">
-                    <div>
-                      <CockpitFieldLabel htmlFor="wid-issue">
-                        <T>GitHub Issue URL or #Number</T>
-                      </CockpitFieldLabel>
-                      <div className="flex items-center gap-1.5">
-                        <div className="min-w-0 flex-1">
-                          <Input
-                            font="mono"
-                            id="wid-issue"
-                            placeholder={gt("#42 or https://github.com/org/repo/issues/42")}
-                            size="sm"
-                            value={githubIssueInput}
-                            onChange={(event) => setGithubIssueInput(event.target.value)}
-                          />
+                  <CockpitSurfaceRow density="compact">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="flex flex-col gap-2.5 rounded-lg border border-border/55 bg-background/70 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <CockpitIconBadge size="sm" tone="info">
+                              <CockpitArtifactIcon kind="github_issue" />
+                            </CockpitIconBadge>
+                            <label
+                              className="truncate text-xs font-medium text-foreground"
+                              htmlFor="wid-issue"
+                            >
+                              <T>GitHub Issue</T>
+                            </label>
+                          </div>
+                          <Badge size="sm" variant={hasIssueLinked ? "success" : "secondary"}>
+                            {hasIssueLinked ? <T>Linked</T> : <T>Not linked</T>}
+                          </Badge>
                         </div>
-                        {parsedIssue.url && isSafeExternalUrl(parsedIssue.url) ? (
-                          <Button
-                            aria-label={gt("Open GitHub Issue")}
-                            render={
-                              <a href={parsedIssue.url} rel="noreferrer" target="_blank">
-                                <ExternalLinkIcon />
-                              </a>
-                            }
-                            size="icon-xs"
-                            variant="outline"
-                          />
-                        ) : null}
+
+                        <div className="flex items-center gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            <Input
+                              font="mono"
+                              id="wid-issue"
+                              placeholder={gt("#42 or https://github.com/org/repo/issues/42")}
+                              size="sm"
+                              value={githubIssueInput}
+                              onChange={(event) => setGithubIssueInput(event.target.value)}
+                            />
+                          </div>
+                          {parsedIssue.url && isSafeExternalUrl(parsedIssue.url) ? (
+                            <Button
+                              aria-label={gt("Open GitHub Issue")}
+                              render={
+                                <a href={parsedIssue.url} rel="noreferrer" target="_blank">
+                                  <ExternalLinkIcon />
+                                  {gt("Open", { $context: "verb, opens an external link" })}
+                                </a>
+                              }
+                              size="sm"
+                              variant="outline"
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2.5 rounded-lg border border-border/55 bg-background/70 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <CockpitIconBadge size="sm" tone="violet">
+                              <CockpitArtifactIcon kind="prototype" />
+                            </CockpitIconBadge>
+                            <label
+                              className="truncate text-xs font-medium text-foreground"
+                              htmlFor="wid-prototype-url"
+                            >
+                              <T>Prototype &amp; Preview</T>
+                            </label>
+                          </div>
+                          <Badge size="sm" variant={hasPrototypeLinked ? "success" : "secondary"}>
+                            {hasPrototypeLinked ? <T>Linked</T> : <T>Not linked</T>}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            <Input
+                              font="mono"
+                              id="wid-prototype-url"
+                              placeholder={gt("https://preview.example.com/prototype")}
+                              size="sm"
+                              value={prototypeUrl}
+                              onChange={(event) => setPrototypeUrl(event.target.value)}
+                            />
+                          </div>
+                          {hasValidPrototypeUrl ? (
+                            <Button
+                              aria-label={gt("Open Prototype Preview")}
+                              render={
+                                <a href={prototypeUrl.trim()} rel="noreferrer" target="_blank">
+                                  <ExternalLinkIcon />
+                                  {gt("Open", { $context: "verb, opens an external link" })}
+                                </a>
+                              }
+                              size="sm"
+                              variant="outline"
+                            />
+                          ) : null}
+                        </div>
                       </div>
                     </div>
+                  </CockpitSurfaceRow>
+                </CockpitSurface>
+              </section>
 
-                    <div>
-                      <CockpitFieldLabel htmlFor="wid-prototype-url">
-                        <T>Prototype / Preview URL</T>
-                      </CockpitFieldLabel>
-                      <div className="flex items-center gap-1.5">
-                        <div className="min-w-0 flex-1">
-                          <Input
-                            font="mono"
-                            id="wid-prototype-url"
-                            placeholder={gt("https://preview.example.com/prototype")}
-                            size="sm"
-                            value={prototypeUrl}
-                            onChange={(event) => setPrototypeUrl(event.target.value)}
-                          />
-                        </div>
-                        {isSafeExternalUrl(prototypeUrl) ? (
-                          <Button
-                            aria-label={gt("Open Prototype Preview")}
-                            render={
-                              <a href={prototypeUrl.trim()} rel="noreferrer" target="_blank">
-                                <ExternalLinkIcon />
-                              </a>
-                            }
-                            size="icon-xs"
-                            variant="outline"
-                          />
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CockpitSurface>
-
-              <div>
-                <CockpitFieldLabel htmlFor="wid-spec">
-                  <T>Specification (Markdown)</T>
-                </CockpitFieldLabel>
+              <section className="space-y-2">
+                <CockpitSectionHeader
+                  icon={
+                    <CockpitIconBadge size="sm" tone="info">
+                      <CockpitStageArtworkIcon stage="prd" />
+                    </CockpitIconBadge>
+                  }
+                  title={
+                    <label className="cursor-pointer" htmlFor="wid-spec">
+                      <T>Specification (Markdown)</T>
+                    </label>
+                  }
+                />
                 <Textarea
                   id="wid-spec"
                   placeholder={gt("Write requirements, architecture notes, or rollout constraints")}
@@ -1308,7 +1523,7 @@ export function WorkItemDetailDialog({
                   value={specMarkdown}
                   onChange={(event) => setSpecMarkdown(event.target.value)}
                 />
-              </div>
+              </section>
 
               <section className="space-y-2">
                 <CockpitSectionHeader
@@ -1317,16 +1532,25 @@ export function WorkItemDetailDialog({
                       {verifiedCount}/{checklistItems.length}
                     </span>
                   }
-                  icon={<CheckSquareIcon />}
+                  icon={
+                    <CockpitIconBadge size="sm" tone="success">
+                      <CheckSquareIcon />
+                    </CockpitIconBadge>
+                  }
                   title={<T>Acceptance Criteria</T>}
                 />
 
                 <CockpitSurface divided variant="grouped">
                   {checklistItems.length === 0 ? (
                     <CockpitSurfaceRow density="compact">
-                      <p className="py-1 text-xs text-muted-foreground">
-                        <T>No acceptance criteria yet. Add one below.</T>
-                      </p>
+                      <div className="flex items-center gap-2.5 py-1">
+                        <CockpitIconBadge size="sm" tone="neutral">
+                          <CheckSquareIcon />
+                        </CockpitIconBadge>
+                        <p className="text-xs text-muted-foreground">
+                          <T>No acceptance criteria yet. Add one below.</T>
+                        </p>
+                      </div>
                     </CockpitSurfaceRow>
                   ) : (
                     checklistItems.map((item) => {
@@ -1400,7 +1624,11 @@ export function WorkItemDetailDialog({
                 <section className="space-y-2" id="wid-gates">
                   <CockpitSectionHeader
                     count={gates.length}
-                    icon={<ShieldCheckIcon />}
+                    icon={
+                      <CockpitIconBadge size="sm" tone="warning">
+                        <CockpitArtifactIcon kind="governance" />
+                      </CockpitIconBadge>
+                    }
                     title={<T>Workflow Gates</T>}
                   />
                   <CockpitSurface divided variant="grouped">
@@ -1514,17 +1742,26 @@ export function WorkItemDetailDialog({
               <section className="space-y-2" id="wid-prs">
                 <CockpitSectionHeader
                   count={activeDetail.changeRequests.length}
-                  icon={<PullRequestGlyph.pullRequest />}
+                  icon={
+                    <CockpitIconBadge size="sm" tone="violet">
+                      <CockpitStageArtworkIcon stage="pr" />
+                    </CockpitIconBadge>
+                  }
                   title={<T>Linked Pull Requests</T>}
                 />
                 {activeDetail.changeRequests.length === 0 ? (
                   <CockpitSurface padding="sm" variant="subtle">
-                    <p className="text-xs text-muted-foreground">
-                      <T>
-                        No PRs linked yet. Mention the work item code in a PR title or branch, or
-                        link an orphan PR from Review Triage.
-                      </T>
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <CockpitIconBadge size="md" tone="neutral">
+                        <CockpitStageArtworkIcon stage="pr" />
+                      </CockpitIconBadge>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        <T>
+                          No PRs linked yet. Mention the work item code in a PR title or branch, or
+                          link an orphan PR from Review Triage.
+                        </T>
+                      </p>
+                    </div>
                   </CockpitSurface>
                 ) : (
                   <CockpitSurface divided variant="grouped">
@@ -1613,14 +1850,23 @@ export function WorkItemDetailDialog({
               <section className="space-y-2">
                 <CockpitSectionHeader
                   count={activeDetail.pulses.length}
-                  icon={<ActivityIcon />}
+                  icon={
+                    <CockpitIconBadge size="sm" tone="info">
+                      <ActivityIcon />
+                    </CockpitIconBadge>
+                  }
                   title={<T>Pulse History</T>}
                 />
                 {activeDetail.pulses.length === 0 ? (
                   <CockpitSurface padding="sm" variant="subtle">
-                    <p className="text-xs text-muted-foreground">
-                      <T>No pulses published yet. Sync a pulse from an active coding thread.</T>
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <CockpitIconBadge size="md" tone="neutral">
+                        <ActivityIcon />
+                      </CockpitIconBadge>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        <T>No pulses published yet. Sync a pulse from an active coding thread.</T>
+                      </p>
+                    </div>
                   </CockpitSurface>
                 ) : (
                   <CockpitSurface className="max-h-56 overflow-y-auto" divided variant="grouped">

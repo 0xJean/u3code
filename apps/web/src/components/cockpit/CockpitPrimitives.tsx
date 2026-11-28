@@ -5,6 +5,58 @@ import { cn } from "~/lib/utils";
 
 export type CockpitTone = "neutral" | "success" | "info" | "warning" | "error";
 
+export type CockpitIconBadgeTone =
+  | "neutral"
+  | "primary"
+  | "success"
+  | "info"
+  | "warning"
+  | "error"
+  | "violet";
+
+const ICON_BADGE_TONE_CLASS: Record<CockpitIconBadgeTone, string> = {
+  neutral: "border-border/60 bg-muted/50 text-muted-foreground",
+  primary: "border-primary/20 bg-primary/10 text-primary",
+  success: "border-success/20 bg-success/10 text-success-foreground",
+  info: "border-info/20 bg-info/10 text-info-foreground",
+  warning: "border-warning/20 bg-warning/10 text-warning-foreground",
+  error: "border-destructive/20 bg-destructive/10 text-destructive",
+  violet: "border-guest/25 bg-guest/12 text-guest-foreground",
+};
+
+const ICON_BADGE_SIZE_CLASS = {
+  sm: "size-6 rounded-md [&_svg]:size-3.5",
+  md: "size-7 rounded-lg [&_svg]:size-4",
+  lg: "size-9 rounded-xl [&_svg]:size-5",
+} as const;
+
+export function CockpitIconBadge({
+  tone = "neutral",
+  size = "md",
+  className,
+  children,
+}: {
+  readonly tone?: CockpitIconBadgeTone;
+  readonly size?: "sm" | "md" | "lg";
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center border shadow-2xs",
+        ICON_BADGE_TONE_CLASS[tone],
+        ICON_BADGE_SIZE_CLASS[size],
+        className,
+      )}
+      data-slot="cockpit-icon-badge"
+    >
+      {children}
+    </span>
+  );
+}
+
 const DOT_TONE_CLASS: Record<CockpitTone, string> = {
   neutral: "bg-muted-foreground/45",
   success: "bg-success",

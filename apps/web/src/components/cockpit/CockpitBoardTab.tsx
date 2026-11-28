@@ -6,8 +6,10 @@ import type {
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
 import {
+  ActivityIcon,
   ArrowRightIcon,
-  MessageSquareIcon,
+  ArrowRightLeftIcon,
+  BotIcon,
   ReplyIcon,
   SearchIcon,
   SendIcon,
@@ -35,8 +37,10 @@ import {
 } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { cn } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
-import { CockpitSurface } from "./CockpitPrimitives";
+import { CockpitIllustration, CockpitStageArtworkIcon } from "./CockpitArtwork";
+import { CockpitIconBadge, CockpitSurface } from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
   parseMessageTokens,
@@ -72,6 +76,15 @@ function matchesKindFilter(kind: TeamBoardMessageKind, filter: BoardKindFilter):
   return kind === "review" || kind === "release";
 }
 
+type BoardBadgeTone = "neutral" | "primary" | "success" | "info" | "warning" | "error" | "violet";
+
+interface BoardMessageMarker {
+  readonly tone: BoardBadgeTone;
+  readonly iconKind: "handoff" | "pulse" | "review" | "release" | "system";
+  readonly accentClass: string;
+  readonly rowTintClass?: string;
+}
+
 function kindBadgeLabel(kind: TeamBoardMessageKind, gt: ReturnType<typeof useGT>): string | null {
   switch (kind) {
     case "handoff":
@@ -82,6 +95,8 @@ function kindBadgeLabel(kind: TeamBoardMessageKind, gt: ReturnType<typeof useGT>
       return gt("Review");
     case "release":
       return gt("Release");
+    case "system":
+      return gt("System");
     default:
       return null;
   }
@@ -89,7 +104,7 @@ function kindBadgeLabel(kind: TeamBoardMessageKind, gt: ReturnType<typeof useGT>
 
 function kindBadgeVariant(
   kind: TeamBoardMessageKind,
-): "info" | "secondary" | "warning" | "success" {
+): "info" | "secondary" | "warning" | "success" | "outline" {
   switch (kind) {
     case "handoff":
       return "info";
@@ -97,8 +112,74 @@ function kindBadgeVariant(
       return "warning";
     case "release":
       return "success";
+    case "system":
+      return "outline";
     default:
       return "secondary";
+  }
+}
+
+function resolveBoardMessageMarker(message: TeamBoardMessage): BoardMessageMarker | null {
+  switch (message.kind) {
+    case "handoff":
+      return {
+        tone: "info",
+        iconKind: "handoff",
+        accentClass: "border-l-2 border-l-info/60",
+        rowTintClass: "bg-info/3",
+      };
+    case "review":
+      return {
+        tone: "warning",
+        iconKind: "review",
+        accentClass: "border-l-2 border-l-warning/60",
+        rowTintClass: "bg-warning/3",
+      };
+    case "release":
+      return {
+        tone: "success",
+        iconKind: "release",
+        accentClass: "border-l-2 border-l-success/60",
+        rowTintClass: "bg-success/3",
+      };
+    case "pulse":
+      return {
+        tone: "violet",
+        iconKind: "pulse",
+        accentClass: "border-l-2 border-l-guest/55",
+      };
+    case "system":
+      return {
+        tone: "primary",
+        iconKind: "system",
+        accentClass: "border-l-2 border-l-primary/50",
+        rowTintClass: "bg-muted/15",
+      };
+    case "message":
+      if (message.authorType === "system") {
+        return {
+          tone: "primary",
+          iconKind: "system",
+          accentClass: "border-l-2 border-l-primary/50",
+          rowTintClass: "bg-muted/15",
+        };
+      }
+      return null;
+  }
+}
+
+function renderBoardMarkerIcon(iconKind: BoardMessageMarker["iconKind"]) {
+  switch (iconKind) {
+    case "handoff":
+      return <ArrowRightLeftIcon />;
+    case "pulse":
+      return <ActivityIcon />;
+    case "review":
+      return <CockpitStageArtworkIcon stage="review" />;
+    case "release":
+      return <CockpitStageArtworkIcon stage="release" />;
+    case "system":
+      return <CockpitStageArtworkIcon stage="governance" />;
   }
 }
 
@@ -378,9 +459,15 @@ export function CockpitBoardTab({
 
       {filteredMessages.length === 0 ? (
         <Empty size="compact">
-          <EmptyMedia variant="icon">
-            {hasActiveFilters ? <SearchIcon /> : <MessageSquareIcon />}
-          </EmptyMedia>
+          {hasActiveFilters ? (
+            <EmptyMedia variant="icon">
+              <SearchIcon />
+            </EmptyMedia>
+          ) : (
+            <EmptyMedia variant="default">
+              <CockpitIllustration kind="empty_board" />
+            </EmptyMedia>
+          )}
           <EmptyHeader>
             <EmptyTitle>
               {hasActiveFilters ? <T>No matching board posts</T> : <T>Team board is quiet</T>}
@@ -390,8 +477,8 @@ export function CockpitBoardTab({
                 <T>Try clearing your search or filter to see the full team feed.</T>
               ) : (
                 <T>
-                  Share a handoff, mention teammates or agents with @handle, or reference a work
-                  item above.
+                  Use @mentions to coordinate teammates and agents. Reassignments, PR gates, and
+                  release handoffs post here automatically.
                 </T>
               )}
             </EmptyDescription>
@@ -420,6 +507,7 @@ export function CockpitBoardTab({
             const avatarKind: "human" | "agent" =
               message.authorType === "agent" || rosterMember?.kind === "agent" ? "agent" : "human";
             const badgeText = kindBadgeLabel(message.kind, gt);
+            const marker = resolveBoardMessageMarker(message);
             const tokens = parseMessageTokens(message.body);
             const timeLabel = formatShortTimestamp(message.createdAt, "locale");
             const linkedHeaderCr = message.changeRequestId
@@ -427,15 +515,28 @@ export function CockpitBoardTab({
               : null;
 
             return (
-              <article key={message.id} className="flex items-start gap-3 px-4 py-3.5">
-                <CockpitSwarmAvatar
-                  className="mt-0.5"
-                  displayName={message.authorDisplayName}
-                  handle={authorHandle}
-                  kind={avatarKind}
-                  presence={rosterMember?.state}
-                  size="md"
-                />
+              <article
+                key={message.id}
+                className={cn(
+                  "flex items-start gap-3 px-4 py-3.5",
+                  marker?.accentClass,
+                  marker?.rowTintClass,
+                )}
+              >
+                {message.authorType === "system" ? (
+                  <CockpitIconBadge className="mt-0.5" size="lg" tone={marker?.tone ?? "neutral"}>
+                    {renderBoardMarkerIcon(marker?.iconKind ?? "system")}
+                  </CockpitIconBadge>
+                ) : (
+                  <CockpitSwarmAvatar
+                    className="mt-0.5"
+                    displayName={message.authorDisplayName}
+                    handle={authorHandle}
+                    kind={avatarKind}
+                    presence={rosterMember?.state}
+                    size="md"
+                  />
+                )}
 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -447,6 +548,13 @@ export function CockpitBoardTab({
                       >
                         @{authorHandle}
                       </button>
+
+                      {avatarKind === "agent" && message.authorType !== "system" ? (
+                        <Badge size="sm" variant="info">
+                          <BotIcon />
+                          <T>Agent</T>
+                        </Badge>
+                      ) : null}
 
                       {message.mentions.length > 0 ? (
                         <span className="inline-flex flex-wrap items-center gap-1">
@@ -467,7 +575,18 @@ export function CockpitBoardTab({
                         </span>
                       ) : null}
 
-                      {badgeText ? (
+                      {marker && message.authorType !== "system" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <CockpitIconBadge size="sm" tone={marker.tone}>
+                            {renderBoardMarkerIcon(marker.iconKind)}
+                          </CockpitIconBadge>
+                          {badgeText ? (
+                            <Badge size="sm" variant={kindBadgeVariant(message.kind)}>
+                              {badgeText}
+                            </Badge>
+                          ) : null}
+                        </span>
+                      ) : badgeText ? (
                         <Badge size="sm" variant={kindBadgeVariant(message.kind)}>
                           {badgeText}
                         </Badge>

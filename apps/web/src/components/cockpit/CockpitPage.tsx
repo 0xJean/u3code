@@ -98,7 +98,13 @@ import { CockpitMembersTab } from "./CockpitMembersTab";
 import { CockpitMemoryTab } from "./CockpitMemoryTab";
 import { CockpitOverviewTab } from "./CockpitOverviewTab";
 import {
+  CockpitArtifactIcon,
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+} from "./CockpitArtwork";
+import {
   CockpitFieldLabel,
+  CockpitIconBadge,
   CockpitInlineAlert,
   CockpitPriorityDot,
   CockpitSectionHeader,
@@ -238,6 +244,21 @@ function workItemTypeLabel(itemType: WorkItemType, gt: ReturnType<typeof useGT>)
       return gt("Chore");
     case "security":
       return gt("Security");
+  }
+}
+
+function workItemTypeIconClass(itemType: WorkItemType): string {
+  switch (itemType) {
+    case "feature":
+      return "text-primary";
+    case "bug":
+      return "text-destructive";
+    case "security":
+      return "text-warning-foreground";
+    case "refactor":
+      return "text-info-foreground";
+    case "chore":
+      return "text-muted-foreground";
   }
 }
 
@@ -1306,8 +1327,8 @@ export function CockpitPage() {
                     stages.length === 0 ? (
                       <CockpitSurface variant="grouped">
                         <Empty size="compact">
-                          <EmptyMedia variant="icon">
-                            <KanbanIcon />
+                          <EmptyMedia>
+                            <CockpitIllustration kind="empty_work_items" />
                           </EmptyMedia>
                           <EmptyHeader>
                             <EmptyTitle>
@@ -1330,6 +1351,33 @@ export function CockpitPage() {
                               <T>Open Setup</T>
                             </Button>
                           </EmptyContent>
+                        </Empty>
+                      </CockpitSurface>
+                    ) : allCards.length === 0 ? (
+                      <CockpitSurface variant="grouped">
+                        <Empty size="compact">
+                          <EmptyMedia>
+                            <CockpitIllustration kind="empty_work_items" />
+                          </EmptyMedia>
+                          <EmptyHeader>
+                            <EmptyTitle>
+                              <T>No work items yet</T>
+                            </EmptyTitle>
+                            <EmptyDescription>
+                              <T>
+                                Create your first requirement to kick off PRD drafting, prototypes,
+                                pull requests, and workflow gates.
+                              </T>
+                            </EmptyDescription>
+                          </EmptyHeader>
+                          {selectedProjectId ? (
+                            <EmptyContent>
+                              <Button size="sm" variant="default" onClick={openCreateDialog}>
+                                <PlusIcon />
+                                <T>New Work Item</T>
+                              </Button>
+                            </EmptyContent>
+                          ) : null}
                         </Empty>
                       </CockpitSurface>
                     ) : (
@@ -1404,8 +1452,8 @@ export function CockpitPage() {
                         {filteredCards.length === 0 && boardFilter !== "all" ? (
                           <CockpitSurface variant="grouped">
                             <Empty size="compact">
-                              <EmptyMedia variant="icon">
-                                <KanbanIcon />
+                              <EmptyMedia>
+                                <CockpitIllustration kind="empty_work_items" />
                               </EmptyMedia>
                               <EmptyHeader>
                                 <EmptyTitle>
@@ -1648,18 +1696,25 @@ export function CockpitPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogPopup className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>
-              <T>New Work Item</T>
-            </DialogTitle>
-            <DialogDescription>
-              <T>
-                Capture requirement scope, design tier, owner, and timeline, or launch an AI PRD
-                thread right away.
-              </T>
-            </DialogDescription>
+            <div className="flex items-start gap-3 pr-8">
+              <CockpitIconBadge className="mt-0.5 shrink-0" size="lg" tone="primary">
+                <CockpitStageArtworkIcon stage="intake" />
+              </CockpitIconBadge>
+              <div className="min-w-0 flex-1 space-y-1">
+                <DialogTitle>
+                  <T>New Work Item</T>
+                </DialogTitle>
+                <DialogDescription>
+                  <T>
+                    Capture requirement scope, design tier, owner, and timeline, or launch an AI PRD
+                    thread right away.
+                  </T>
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <DialogPanel>
-            <div className="space-y-3.5">
+            <div className="space-y-4">
               <div>
                 <CockpitFieldLabel htmlFor="wi-title">
                   <T>Title</T>
@@ -1679,213 +1734,277 @@ export function CockpitPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-type">
-                    <T>Type</T>
-                  </CockpitFieldLabel>
-                  <Select
-                    value={newType}
-                    onValueChange={(value) => {
-                      if (
-                        value === "feature" ||
-                        value === "refactor" ||
-                        value === "bug" ||
-                        value === "chore" ||
-                        value === "security"
-                      ) {
-                        setNewType(value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger id="wi-type" size="sm">
-                      <SelectValue>{workItemTypeLabel(newType, gt)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      <SelectItem value="feature">{gt("Feature")}</SelectItem>
-                      <SelectItem value="refactor">{gt("Refactor")}</SelectItem>
-                      <SelectItem value="bug">{gt("Bug")}</SelectItem>
-                      <SelectItem value="chore">{gt("Chore")}</SelectItem>
-                      <SelectItem value="security">{gt("Security")}</SelectItem>
-                    </SelectPopup>
-                  </Select>
+              <div className="space-y-3 rounded-xl border border-border/50 bg-muted/15 p-3.5">
+                <div className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <T>Scope &amp; Schedule</T>
                 </div>
 
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-priority">
-                    <T>Priority</T>
-                  </CockpitFieldLabel>
-                  <Select
-                    value={newPriority}
-                    onValueChange={(value) => {
-                      if (value === "p0" || value === "p1" || value === "p2" || value === "p3") {
-                        setNewPriority(value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger id="wi-priority" size="sm">
-                      <SelectValue>
-                        <CockpitPriorityDot priority={newPriority} />
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      <SelectItem value="p0">
-                        <CockpitPriorityDot priority="p0" />
-                      </SelectItem>
-                      <SelectItem value="p1">
-                        <CockpitPriorityDot priority="p1" />
-                      </SelectItem>
-                      <SelectItem value="p2">
-                        <CockpitPriorityDot priority="p2" />
-                      </SelectItem>
-                      <SelectItem value="p3">
-                        <CockpitPriorityDot priority="p3" />
-                      </SelectItem>
-                    </SelectPopup>
-                  </Select>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-type">
+                      <T>Type</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={newType}
+                      onValueChange={(value) => {
+                        if (
+                          value === "feature" ||
+                          value === "refactor" ||
+                          value === "bug" ||
+                          value === "chore" ||
+                          value === "security"
+                        ) {
+                          setNewType(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="wi-type" size="sm">
+                        <SelectValue>
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass(newType))}
+                              kind={newType}
+                            />
+                            <span>{workItemTypeLabel(newType, gt)}</span>
+                          </span>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        <SelectItem value="feature">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass("feature"))}
+                              kind="feature"
+                            />
+                            <span>{gt("Feature")}</span>
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="refactor">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass("refactor"))}
+                              kind="refactor"
+                            />
+                            <span>{gt("Refactor")}</span>
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="bug">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass("bug"))}
+                              kind="bug"
+                            />
+                            <span>{gt("Bug")}</span>
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="chore">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass("chore"))}
+                              kind="chore"
+                            />
+                            <span>{gt("Chore")}</span>
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="security">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CockpitArtifactIcon
+                              className={cn("size-3.5 shrink-0", workItemTypeIconClass("security"))}
+                              kind="security"
+                            />
+                            <span>{gt("Security")}</span>
+                          </span>
+                        </SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-priority">
+                      <T>Priority</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={newPriority}
+                      onValueChange={(value) => {
+                        if (value === "p0" || value === "p1" || value === "p2" || value === "p3") {
+                          setNewPriority(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="wi-priority" size="sm">
+                        <SelectValue>
+                          <CockpitPriorityDot priority={newPriority} />
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        <SelectItem value="p0">
+                          <CockpitPriorityDot priority="p0" />
+                        </SelectItem>
+                        <SelectItem value="p1">
+                          <CockpitPriorityDot priority="p1" />
+                        </SelectItem>
+                        <SelectItem value="p2">
+                          <CockpitPriorityDot priority="p2" />
+                        </SelectItem>
+                        <SelectItem value="p3">
+                          <CockpitPriorityDot priority="p3" />
+                        </SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-design-tier">
+                      <T>Design Tier</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={newDesignTier}
+                      onValueChange={(value) => {
+                        if (
+                          value === "small" ||
+                          value === "medium" ||
+                          value === "large" ||
+                          value === "cross_repo"
+                        ) {
+                          setNewDesignTier(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="wi-design-tier" size="sm">
+                        <SelectValue>{designTierLabel(newDesignTier, gt)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        <SelectItem value="small">{gt("Small")}</SelectItem>
+                        <SelectItem value="medium">{gt("Medium")}</SelectItem>
+                        <SelectItem value="large">{gt("Large")}</SelectItem>
+                        <SelectItem value="cross_repo">{gt("Cross-repo")}</SelectItem>
+                      </SelectPopup>
+                    </Select>
+                  </div>
                 </div>
 
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-design-tier">
-                    <T>Design Tier</T>
-                  </CockpitFieldLabel>
-                  <Select
-                    value={newDesignTier}
-                    onValueChange={(value) => {
-                      if (
-                        value === "small" ||
-                        value === "medium" ||
-                        value === "large" ||
-                        value === "cross_repo"
-                      ) {
-                        setNewDesignTier(value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger id="wi-design-tier" size="sm">
-                      <SelectValue>{designTierLabel(newDesignTier, gt)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      <SelectItem value="small">{gt("Small")}</SelectItem>
-                      <SelectItem value="medium">{gt("Medium")}</SelectItem>
-                      <SelectItem value="large">{gt("Large")}</SelectItem>
-                      <SelectItem value="cross_repo">{gt("Cross-repo")}</SelectItem>
-                    </SelectPopup>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-assignee">
-                    <T>Assignee</T>
-                  </CockpitFieldLabel>
-                  <Select
-                    value={newAssignee}
-                    onValueChange={(value) => {
-                      if (value) setNewAssignee(value);
-                    }}
-                  >
-                    <SelectTrigger id="wi-assignee" size="sm">
-                      <SelectValue>
-                        {newAssignee === "unassigned" ? (
-                          <T>Unassigned</T>
-                        ) : newAssignee.startsWith("runner:") ? (
-                          <span className="inline-flex items-center gap-1.5 truncate">
-                            <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate font-mono text-xs">
-                              @{DEFAULT_AGENT_RUNNER_ID}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-assignee">
+                      <T>Assignee</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={newAssignee}
+                      onValueChange={(value) => {
+                        if (value) setNewAssignee(value);
+                      }}
+                    >
+                      <SelectTrigger id="wi-assignee" size="sm">
+                        <SelectValue>
+                          {newAssignee === "unassigned" ? (
+                            <T>Unassigned</T>
+                          ) : newAssignee.startsWith("runner:") ? (
+                            <span className="inline-flex items-center gap-1.5 truncate">
+                              <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate font-mono text-xs">
+                                @{DEFAULT_AGENT_RUNNER_ID}
+                              </span>
                             </span>
-                          </span>
-                        ) : selectedNewAssigneeOption ? (
-                          <span className="truncate font-mono text-xs">
-                            @{selectedNewAssigneeOption.handle}
-                          </span>
-                        ) : (
-                          <T>Unassigned</T>
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      <SelectItem value="unassigned">{gt("Unassigned")}</SelectItem>
-                      {memberSelectOptions.map((member) => (
-                        <SelectItem key={member.value} value={member.value}>
-                          @{member.handle} · {member.displayName}
+                          ) : selectedNewAssigneeOption ? (
+                            <span className="truncate font-mono text-xs">
+                              @{selectedNewAssigneeOption.handle}
+                            </span>
+                          ) : (
+                            <T>Unassigned</T>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        <SelectItem value="unassigned">{gt("Unassigned")}</SelectItem>
+                        {memberSelectOptions.map((member) => (
+                          <SelectItem key={member.value} value={member.value}>
+                            @{member.handle} · {member.displayName}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value={`runner:${DEFAULT_AGENT_RUNNER_ID}`}>
+                          {gt("Coding Agent ({runnerId})", { runnerId: DEFAULT_AGENT_RUNNER_ID })}
                         </SelectItem>
-                      ))}
-                      <SelectItem value={`runner:${DEFAULT_AGENT_RUNNER_ID}`}>
-                        {gt("Coding Agent ({runnerId})", { runnerId: DEFAULT_AGENT_RUNNER_ID })}
-                      </SelectItem>
-                    </SelectPopup>
-                  </Select>
-                </div>
+                      </SelectPopup>
+                    </Select>
+                  </div>
 
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-start-date">
-                    <T>Planned Start</T>
-                  </CockpitFieldLabel>
-                  <Input
-                    id="wi-start-date"
-                    size="sm"
-                    type="date"
-                    value={newPlannedStartAt}
-                    onChange={(event) => setNewPlannedStartAt(event.target.value)}
-                  />
-                </div>
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-start-date">
+                      <T>Planned Start</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="wi-start-date"
+                      size="sm"
+                      type="date"
+                      value={newPlannedStartAt}
+                      onChange={(event) => setNewPlannedStartAt(event.target.value)}
+                    />
+                  </div>
 
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-due-date">
-                    <T>Due Date</T>
-                  </CockpitFieldLabel>
-                  <Input
-                    id="wi-due-date"
-                    size="sm"
-                    type="date"
-                    value={newDueAt}
-                    onChange={(event) => setNewDueAt(event.target.value)}
-                  />
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-due-date">
+                      <T>Due Date</T>
+                    </CockpitFieldLabel>
+                    <Input
+                      id="wi-due-date"
+                      size="sm"
+                      type="date"
+                      value={newDueAt}
+                      onChange={(event) => setNewDueAt(event.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {localProjects.length > 0 && selectedIntakeProject ? (
-                <div>
-                  <CockpitFieldLabel htmlFor="wi-local-repo">
-                    <T>Target Local Repository (for AI PRD)</T>
-                  </CockpitFieldLabel>
-                  <Select
-                    value={`${selectedIntakeProject.environmentId}:${selectedIntakeProject.id}`}
-                    onValueChange={(value) => {
-                      if (value) setChosenIntakeLocalProjectKey(value);
-                    }}
-                  >
-                    <SelectTrigger id="wi-local-repo" size="sm">
-                      <SelectValue>{selectedIntakeProject.title}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {localProjects.map((proj) => (
-                        <SelectItem
-                          key={`${proj.environmentId}:${proj.id}`}
-                          value={`${proj.environmentId}:${proj.id}`}
-                        >
-                          {proj.title}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
+              <div className="space-y-3 rounded-xl border border-border/50 bg-card/40 p-3.5">
+                <div className="flex items-center gap-1.5 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <CockpitStageArtworkIcon
+                    className="size-3.5 shrink-0 text-info-foreground"
+                    stage="prd"
+                  />
+                  <T>Context &amp; Requirement Brief</T>
                 </div>
-              ) : null}
 
-              <div>
-                <CockpitFieldLabel htmlFor="wi-spec">
-                  <T>Requirement Brief / Problem Statement</T>
-                </CockpitFieldLabel>
-                <Textarea
-                  id="wi-spec"
-                  placeholder={gt("Describe user problem, target outcomes, and edge cases")}
-                  rows={4}
-                  value={newSpec}
-                  onChange={(event) => setNewSpec(event.target.value)}
-                />
+                {localProjects.length > 0 && selectedIntakeProject ? (
+                  <div>
+                    <CockpitFieldLabel htmlFor="wi-local-repo">
+                      <T>Target Local Repository (for AI PRD)</T>
+                    </CockpitFieldLabel>
+                    <Select
+                      value={`${selectedIntakeProject.environmentId}:${selectedIntakeProject.id}`}
+                      onValueChange={(value) => {
+                        if (value) setChosenIntakeLocalProjectKey(value);
+                      }}
+                    >
+                      <SelectTrigger id="wi-local-repo" size="sm">
+                        <SelectValue>{selectedIntakeProject.title}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {localProjects.map((proj) => (
+                          <SelectItem
+                            key={`${proj.environmentId}:${proj.id}`}
+                            value={`${proj.environmentId}:${proj.id}`}
+                          >
+                            {proj.title}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                ) : null}
+
+                <div>
+                  <CockpitFieldLabel htmlFor="wi-spec">
+                    <T>Requirement Brief / Problem Statement</T>
+                  </CockpitFieldLabel>
+                  <Textarea
+                    id="wi-spec"
+                    placeholder={gt("Describe user problem, target outcomes, and edge cases")}
+                    rows={4}
+                    value={newSpec}
+                    onChange={(event) => setNewSpec(event.target.value)}
+                  />
+                </div>
               </div>
             </div>
           </DialogPanel>
@@ -2007,13 +2126,14 @@ function WorkItemCardView({
   const hasPrd = lifecycle.prdStatus !== "none";
   const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
   const issueNumber = lifecycle.githubIssueNumber;
+  const branchName = lifecycle.branchName;
   const dueDateDisplay = lifecycle.dueAt
     ? formatShortDueDate(lifecycle.dueAt)
     : schedule.isOverdue
       ? formatShortDueDate(schedule.dueDate)
       : null;
   const hasQuietLifecycleCues =
-    hasPrd || hasProto || issueNumber !== null || dueDateDisplay !== null;
+    hasPrd || hasProto || issueNumber !== null || branchName !== null || dueDateDisplay !== null;
 
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
@@ -2038,8 +2158,17 @@ function WorkItemCardView({
       variant="card"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <CockpitPriorityDot priority={card.workItem.priority} />
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0 items-center" />}>
+              <CockpitArtifactIcon
+                className={cn("size-3.5 shrink-0", workItemTypeIconClass(card.workItem.itemType))}
+                kind={card.workItem.itemType}
+              />
+            </TooltipTrigger>
+            <TooltipPopup>{workItemTypeLabel(card.workItem.itemType, gt)}</TooltipPopup>
+          </Tooltip>
           <button
             className="cursor-pointer truncate font-mono text-2xs font-medium text-muted-foreground hover:text-foreground hover:underline"
             type="button"
@@ -2087,24 +2216,56 @@ function WorkItemCardView({
       {hasQuietLifecycleCues ? (
         <div className="flex flex-wrap items-center gap-1.5 font-mono text-2xs text-muted-foreground">
           {hasPrd ? (
-            <span className="rounded bg-muted/45 px-1.5 py-0.5">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5",
+                lifecycle.prdStatus === "approved"
+                  ? "border-success/30 bg-success/10 text-success-foreground"
+                  : "border-info/25 bg-info/10 text-info-foreground",
+              )}
+            >
+              <CockpitStageArtworkIcon className="size-3 shrink-0" stage="prd" />
               <T>PRD</T>
             </span>
           ) : null}
           {hasProto ? (
-            <span className="rounded bg-muted/45 px-1.5 py-0.5">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5",
+                lifecycle.prototypeStatus === "approved"
+                  ? "border-success/30 bg-success/10 text-success-foreground"
+                  : "border-border/55 bg-muted/40 text-muted-foreground",
+              )}
+            >
+              <CockpitArtifactIcon className="size-3 shrink-0" kind="prototype" />
               <T>Proto</T>
             </span>
           ) : null}
           {issueNumber !== null ? (
-            <span className="rounded bg-muted/45 px-1.5 py-0.5">#{issueNumber}</span>
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 text-muted-foreground">
+              <CockpitArtifactIcon className="size-3 shrink-0" kind="github_issue" />
+              <span>#{issueNumber}</span>
+            </span>
+          ) : null}
+          {branchName !== null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex max-w-36 items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 text-muted-foreground" />
+                }
+              >
+                <CockpitArtifactIcon className="size-3 shrink-0" kind="branch" />
+                <span className="truncate">{branchName}</span>
+              </TooltipTrigger>
+              <TooltipPopup>{branchName}</TooltipPopup>
+            </Tooltip>
           ) : null}
           {dueDateDisplay ? (
             <span
               className={cn(
                 "tabular-nums",
                 schedule.isOverdue
-                  ? "rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
+                  ? "rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
                   : "text-muted-foreground",
               )}
             >
@@ -2226,6 +2387,7 @@ function WorkItemListRowView({
   onOpenDetail,
   onOpenChangeRequest,
 }: WorkItemCardViewProps) {
+  const gt = useGT();
   const latestGates = resolveLatestGateApprovals(card.gateApprovals);
   const lifecycle = readWorkItemLifecycle(card.workItem);
   const schedule = resolveWorkItemSchedule(card.workItem);
@@ -2233,6 +2395,7 @@ function WorkItemListRowView({
   const hasPrd = lifecycle.prdStatus !== "none";
   const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
   const issueNumber = lifecycle.githubIssueNumber;
+  const branchName = lifecycle.branchName;
   const dueDateDisplay = lifecycle.dueAt
     ? formatShortDueDate(lifecycle.dueAt)
     : schedule.isOverdue
@@ -2256,8 +2419,17 @@ function WorkItemListRowView({
       density="default"
       interactive
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <CockpitPriorityDot priority={card.workItem.priority} />
+        <Tooltip>
+          <TooltipTrigger render={<span className="inline-flex shrink-0 items-center" />}>
+            <CockpitArtifactIcon
+              className={cn("size-3.5 shrink-0", workItemTypeIconClass(card.workItem.itemType))}
+              kind={card.workItem.itemType}
+            />
+          </TooltipTrigger>
+          <TooltipPopup>{workItemTypeLabel(card.workItem.itemType, gt)}</TooltipPopup>
+        </Tooltip>
         <button
           className="shrink-0 cursor-pointer font-mono text-2xs font-medium text-muted-foreground hover:text-foreground"
           type="button"
@@ -2285,28 +2457,58 @@ function WorkItemListRowView({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         {hasPrd ? (
-          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-2xs",
+              lifecycle.prdStatus === "approved"
+                ? "border-success/30 bg-success/10 text-success-foreground"
+                : "border-info/25 bg-info/10 text-info-foreground",
+            )}
+          >
+            <CockpitStageArtworkIcon className="size-3 shrink-0" stage="prd" />
             <T>PRD</T>
           </span>
         ) : null}
         {hasProto ? (
-          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-2xs",
+              lifecycle.prototypeStatus === "approved"
+                ? "border-success/30 bg-success/10 text-success-foreground"
+                : "border-border/55 bg-muted/40 text-muted-foreground",
+            )}
+          >
+            <CockpitArtifactIcon className="size-3 shrink-0" kind="prototype" />
             <T>Proto</T>
           </span>
         ) : null}
         {issueNumber !== null ? (
-          <span className="rounded bg-muted/45 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-            #{issueNumber}
+          <span className="inline-flex items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
+            <CockpitArtifactIcon className="size-3 shrink-0" kind="github_issue" />
+            <span>#{issueNumber}</span>
           </span>
+        ) : null}
+        {branchName !== null ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex max-w-32 items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground" />
+              }
+            >
+              <CockpitArtifactIcon className="size-3 shrink-0" kind="branch" />
+              <span className="truncate">{branchName}</span>
+            </TooltipTrigger>
+            <TooltipPopup>{branchName}</TooltipPopup>
+          </Tooltip>
         ) : null}
         {dueDateDisplay ? (
           <span
             className={cn(
               "font-mono text-2xs tabular-nums",
               schedule.isOverdue
-                ? "rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
+                ? "rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
                 : "text-muted-foreground",
             )}
           >

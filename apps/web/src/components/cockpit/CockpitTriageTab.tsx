@@ -8,15 +8,10 @@ import { T, useGT, Var } from "gt-react";
 import {
   AlertTriangleIcon,
   BotIcon,
-  CheckCircle2Icon,
   ExternalLinkIcon,
-  EyeIcon,
-  GitBranchIcon,
   Link2Icon,
   MessageSquareCodeIcon,
   SearchIcon,
-  ShieldAlertIcon,
-  UnlinkIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -36,7 +31,13 @@ import { Input } from "~/components/ui/input";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
 import {
+  CockpitArtifactIcon,
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+} from "./CockpitArtwork";
+import {
   CockpitDiffStat,
+  CockpitIconBadge,
   CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
@@ -86,21 +87,35 @@ function triageBucketLabel(bucket: string, gt: ReturnType<typeof useGT>): string
   }
 }
 
-function BucketIcon({ bucket }: { readonly bucket: string }) {
+function bucketBadgeTone(bucket: string) {
   switch (bucket) {
     case "bot_blocked":
-      return <BotIcon aria-hidden className="text-destructive" />;
     case "ci_blocked":
-      return <ShieldAlertIcon aria-hidden className="text-destructive" />;
+      return "error" as const;
     case "ready_for_human_review":
-      return <EyeIcon aria-hidden className="text-info-foreground" />;
+      return "info" as const;
     case "orphan":
-      return <UnlinkIcon aria-hidden className="text-warning-foreground" />;
+      return "warning" as const;
     case "auto_merged_integration":
-      return <CheckCircle2Icon aria-hidden className="text-success-foreground" />;
+      return "success" as const;
     default:
-      return <PullRequestGlyph.pullRequest aria-hidden />;
+      return "neutral" as const;
   }
+}
+
+function BucketIcon({ bucket }: { readonly bucket: string }) {
+  const stage =
+    bucket === "bot_blocked" || bucket === "ready_for_human_review"
+      ? ("review" as const)
+      : bucket === "ci_blocked"
+        ? ("governance" as const)
+        : ("pr" as const);
+
+  return (
+    <CockpitIconBadge size="sm" tone={bucketBadgeTone(bucket)}>
+      <CockpitStageArtworkIcon stage={stage} />
+    </CockpitIconBadge>
+  );
 }
 
 function ciStatusTone(ciStatus: ChangeRequestAudit["qualitySignals"]["ciStatus"]): CockpitTone {
@@ -186,22 +201,24 @@ export function CockpitTriageTab({
 
   if (allEntries.length === 0) {
     return (
-      <Empty size="compact">
-        <EmptyMedia variant="icon">
-          <CheckCircle2Icon />
-        </EmptyMedia>
-        <EmptyHeader>
-          <EmptyTitle>
-            <T>Review queue is clear</T>
-          </EmptyTitle>
-          <EmptyDescription>
-            <T>
-              No open pull requests require triage right now. Sync a repository in Setup or open a
-              PR to see live review signals here.
-            </T>
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <CockpitSurface variant="grouped">
+        <Empty size="compact">
+          <EmptyMedia>
+            <CockpitIllustration kind="empty_triage" />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>
+              <T>Review queue is clear</T>
+            </EmptyTitle>
+            <EmptyDescription>
+              <T>
+                No open pull requests require triage right now. Sync a repository in Setup or open a
+                PR to see live review signals here.
+              </T>
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </CockpitSurface>
     );
   }
 
@@ -334,6 +351,19 @@ export function CockpitTriageTab({
                       headBranch: cr.headBranch,
                       baseBranch: cr.baseBranch,
                     });
+                    const rowBadgeTone = isBlockedBucket
+                      ? ("error" as const)
+                      : bucket === "ready_for_human_review"
+                        ? ("info" as const)
+                        : exceedsDiffGuardrail || cr.isOversized || !linkedCard
+                          ? ("warning" as const)
+                          : bucket === "auto_merged_integration"
+                            ? ("success" as const)
+                            : ("neutral" as const);
+                    const rowBadgeStage =
+                      isBlockedBucket || bucket === "ready_for_human_review"
+                        ? ("review" as const)
+                        : ("pr" as const);
 
                     return (
                       <CockpitSurfaceRow
@@ -343,107 +373,120 @@ export function CockpitTriageTab({
                         selected={selected}
                       >
                         <button
-                          className="min-w-0 flex-1 cursor-pointer space-y-1 text-left focus-visible:outline-none"
+                          className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-left focus-visible:outline-none"
                           type="button"
                           onClick={() => onSelectChangeRequest(cr)}
                         >
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                              {cr.repoFullName}#{cr.number}
-                            </span>
-                            <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                              {cr.title}
-                            </span>
-                            {!linkedCard ? (
-                              <Badge size="sm" variant="warning">
-                                <T>Unlinked</T>
-                              </Badge>
-                            ) : null}
-                            {cr.isOversized ? (
-                              <Badge size="sm" variant="warning">
-                                <AlertTriangleIcon />
-                                <T>Oversized</T>
-                              </Badge>
-                            ) : null}
-                          </div>
+                          <CockpitIconBadge
+                            className="mt-0.5 shrink-0"
+                            size="md"
+                            tone={rowBadgeTone}
+                          >
+                            <CockpitStageArtworkIcon stage={rowBadgeStage} />
+                          </CockpitIconBadge>
 
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-                            <span>@{cr.authorVcsLogin}</span>
-                            <span className="inline-flex min-w-0 items-center gap-1 font-mono">
-                              <GitBranchIcon className="size-3 shrink-0 opacity-70" />
-                              <span className="truncate">
-                                {cr.headBranch} → {cr.baseBranch}
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                                {cr.repoFullName}#{cr.number}
                               </span>
-                            </span>
-                            {mergeStrategy.method === "merge_commit" ? (
-                              <Badge
-                                size="sm"
-                                variant={mergeStrategy.isBackMerge ? "warning" : "info"}
-                              >
-                                <PullRequestGlyph.merged />
-                                {mergeStrategy.isBackMerge ? (
-                                  <T>Back-merge: Merge commit</T>
-                                ) : (
-                                  <T>Merge commit</T>
-                                )}
-                              </Badge>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-muted-foreground/80">
-                                <PullRequestGlyph.merged
-                                  aria-hidden
-                                  className="size-3 shrink-0 opacity-70"
-                                />
-                                <T>Squash</T>
+                              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                                {cr.title}
                               </span>
-                            )}
-                            <CockpitDiffStat additions={cr.additions} deletions={cr.deletions} />
-                            {exceedsDiffGuardrail ? (
-                              <span className="inline-flex items-center gap-1 font-mono text-warning-foreground">
-                                <AlertTriangleIcon aria-hidden className="size-3 shrink-0" />
-                                <span>{gt(">400 lines")}</span>
-                              </span>
-                            ) : null}
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1.5",
-                                ciTone === "error"
-                                  ? "text-destructive"
-                                  : ciTone === "success"
-                                    ? "text-success-foreground"
-                                    : "text-muted-foreground",
-                              )}
-                            >
-                              <CockpitStatusDot tone={ciTone} />
-                              <T>
-                                CI: <Var>{ciStatusLabel(cr.qualitySignals.ciStatus, gt)}</Var>
-                              </T>
-                            </span>
-                          </div>
-
-                          {topFinding ? (
-                            <div className="flex items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
-                              <BotIcon
-                                className={cn(
-                                  "size-3.5 shrink-0",
-                                  topFinding.state === "changes_requested"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground",
-                                )}
-                              />
-                              <span className="line-clamp-1 min-w-0">
-                                <span className="font-medium text-foreground">
-                                  {topFinding.reviewerName}
-                                </span>
-                                {": "}
-                                {topFinding.bodyExcerpt}
-                              </span>
-                              {cr.automatedReview.reviewers.length > 1 ? (
-                                <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/70">
-                                  +{cr.automatedReview.reviewers.length - 1}
-                                </span>
+                              {!linkedCard ? (
+                                <Badge size="sm" variant="warning">
+                                  <T>Unlinked</T>
+                                </Badge>
+                              ) : null}
+                              {cr.isOversized ? (
+                                <Badge size="sm" variant="warning">
+                                  <AlertTriangleIcon />
+                                  <T>Oversized</T>
+                                </Badge>
                               ) : null}
                             </div>
-                          ) : null}
+
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                              <span>@{cr.authorVcsLogin}</span>
+                              <span className="inline-flex min-w-0 items-center gap-1 font-mono">
+                                <CockpitArtifactIcon
+                                  className="size-3 shrink-0 opacity-75"
+                                  kind="branch"
+                                />
+                                <span className="truncate">
+                                  {cr.headBranch} → {cr.baseBranch}
+                                </span>
+                              </span>
+                              {mergeStrategy.method === "merge_commit" ? (
+                                <Badge
+                                  size="sm"
+                                  variant={mergeStrategy.isBackMerge ? "warning" : "info"}
+                                >
+                                  <PullRequestGlyph.merged />
+                                  {mergeStrategy.isBackMerge ? (
+                                    <T>Back-merge: Merge commit</T>
+                                  ) : (
+                                    <T>Merge commit</T>
+                                  )}
+                                </Badge>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-muted-foreground/80">
+                                  <PullRequestGlyph.merged
+                                    aria-hidden
+                                    className="size-3 shrink-0 opacity-70"
+                                  />
+                                  <T>Squash</T>
+                                </span>
+                              )}
+                              <CockpitDiffStat additions={cr.additions} deletions={cr.deletions} />
+                              {exceedsDiffGuardrail ? (
+                                <span className="inline-flex items-center gap-1 font-mono text-warning-foreground">
+                                  <AlertTriangleIcon aria-hidden className="size-3 shrink-0" />
+                                  <span>{gt(">400 lines")}</span>
+                                </span>
+                              ) : null}
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1.5",
+                                  ciTone === "error"
+                                    ? "text-destructive"
+                                    : ciTone === "success"
+                                      ? "text-success-foreground"
+                                      : "text-muted-foreground",
+                                )}
+                              >
+                                <CockpitStatusDot tone={ciTone} />
+                                <T>
+                                  CI: <Var>{ciStatusLabel(cr.qualitySignals.ciStatus, gt)}</Var>
+                                </T>
+                              </span>
+                            </div>
+
+                            {topFinding ? (
+                              <div className="flex items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
+                                <BotIcon
+                                  className={cn(
+                                    "size-3.5 shrink-0",
+                                    topFinding.state === "changes_requested"
+                                      ? "text-destructive"
+                                      : "text-muted-foreground",
+                                  )}
+                                />
+                                <span className="line-clamp-1 min-w-0">
+                                  <span className="font-medium text-foreground">
+                                    {topFinding.reviewerName}
+                                  </span>
+                                  {": "}
+                                  {topFinding.bodyExcerpt}
+                                </span>
+                                {cr.automatedReview.reviewers.length > 1 ? (
+                                  <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/70">
+                                    +{cr.automatedReview.reviewers.length - 1}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
                         </button>
 
                         <div className="flex shrink-0 items-center gap-1.5">

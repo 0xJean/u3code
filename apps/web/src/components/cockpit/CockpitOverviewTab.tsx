@@ -6,26 +6,34 @@ import {
   type ChangeRequestAudit,
   type CockpitOverview,
   type CockpitWorkItemCard,
-  type PipelinePhase,
   type ReleaseCard,
   type ReleaseStatus,
   type TeamBoardMessage,
+  type WorkItemType,
 } from "@u3code/hub-contracts";
 import { Plural, T, useGT, Var } from "gt-react";
 import {
   AtSignIcon,
+  CalendarClockIcon,
+  CalendarRangeIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   MessageSquareIcon,
   PlusIcon,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import {
+  CockpitArtifactIcon,
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+} from "./CockpitArtwork";
+import {
   CockpitDiffStat,
+  CockpitIconBadge,
   CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
@@ -56,16 +64,30 @@ export interface CockpitOverviewTabProps {
 
 const STANDARD_RELEASE_GATES = ["qa_ac_pass", "security_clear", "prod_go"] as const;
 
+type OverviewFunnelStage = "intake" | "prd" | "prototype" | "issue" | "dev" | "review" | "release";
+
+type OverviewBadgeTone =
+  | "neutral"
+  | "primary"
+  | "success"
+  | "info"
+  | "warning"
+  | "error"
+  | "violet";
+
 const PIPELINE_STEPS: readonly {
-  readonly phase: Exclude<PipelinePhase, "done">;
+  readonly stage: OverviewFunnelStage;
   readonly targetSubView: OverviewDeliverySubView;
+  readonly activeTone: OverviewBadgeTone;
+  readonly barClass: string;
 }[] = [
-  { phase: "intake", targetSubView: "kanban" },
-  { phase: "prd", targetSubView: "kanban" },
-  { phase: "prototype", targetSubView: "kanban" },
-  { phase: "dev", targetSubView: "kanban" },
-  { phase: "review", targetSubView: "triage" },
-  { phase: "release", targetSubView: "releases" },
+  { stage: "intake", targetSubView: "kanban", activeTone: "primary", barClass: "bg-primary" },
+  { stage: "prd", targetSubView: "kanban", activeTone: "violet", barClass: "bg-guest" },
+  { stage: "prototype", targetSubView: "kanban", activeTone: "info", barClass: "bg-info" },
+  { stage: "issue", targetSubView: "kanban", activeTone: "primary", barClass: "bg-primary/80" },
+  { stage: "dev", targetSubView: "kanban", activeTone: "info", barClass: "bg-info" },
+  { stage: "review", targetSubView: "triage", activeTone: "warning", barClass: "bg-warning" },
+  { stage: "release", targetSubView: "releases", activeTone: "success", barClass: "bg-success" },
 ];
 
 const MONTH_SHORT = [
@@ -87,6 +109,7 @@ const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/;
 
 interface LifecycleCue {
   readonly key: string;
+  readonly iconKind: "due" | "prd" | "prototype" | "issue" | "branch";
   readonly text: string;
   readonly tone: "muted" | "success" | "error";
 }
@@ -130,17 +153,16 @@ function formatShortIsoDate(isoDate: string | null | undefined): string | null {
   return `${monthLabel} ${day}`;
 }
 
-function pipelinePhaseLabel(
-  phase: Exclude<PipelinePhase, "done">,
-  gt: ReturnType<typeof useGT>,
-): string {
-  switch (phase) {
+function pipelineStageLabel(stage: OverviewFunnelStage, gt: ReturnType<typeof useGT>): string {
+  switch (stage) {
     case "intake":
       return gt("Intake");
     case "prd":
       return gt("AI PRD");
     case "prototype":
       return gt("Prototype");
+    case "issue":
+      return gt("Issue");
     case "dev":
       return gt("Dev");
     case "review":
@@ -148,6 +170,24 @@ function pipelinePhaseLabel(
     case "release":
       return gt("Release");
   }
+}
+
+function resolveFunnelStage(card: CockpitWorkItemCard): OverviewFunnelStage | "done" {
+  const basePhase = deriveWorkItemPipelinePhase(card);
+  if (basePhase === "done") return "done";
+  if (basePhase === "release" || basePhase === "review" || basePhase === "dev") {
+    return basePhase;
+  }
+  const lifecycle = readWorkItemLifecycle(card.workItem);
+  const rawStage = card.workItem.stage.trim().toLowerCase();
+  if (
+    rawStage === "issue" ||
+    lifecycle.githubIssueNumber !== null ||
+    lifecycle.githubIssueUrl !== null
+  ) {
+    return "issue";
+  }
+  return basePhase;
 }
 
 function releaseStatusLabel(status: ReleaseStatus, gt: ReturnType<typeof useGT>): string {
@@ -171,11 +211,50 @@ function workItemHealthTone(health: string): CockpitTone {
   return "info";
 }
 
+function workItemBadgeTone(itemType: WorkItemType, health: string): OverviewBadgeTone {
+  if (health === "blocked") return "error";
+  if (health === "at_risk") return "warning";
+  switch (itemType) {
+    case "bug":
+      return "error";
+    case "security":
+      return "warning";
+    case "refactor":
+      return "violet";
+    case "chore":
+      return "neutral";
+    case "feature":
+      return "primary";
+  }
+}
+
 function changeRequestTone(cr: ChangeRequestAudit): CockpitTone {
   if (cr.triageBucket === "bot_blocked" || cr.triageBucket === "ci_blocked") return "error";
   if (cr.triageBucket === "orphan") return "warning";
   if (cr.triageBucket === "ready_for_human_review") return "info";
   return "neutral";
+}
+
+function changeRequestBadgeTone(cr: ChangeRequestAudit): OverviewBadgeTone {
+  if (cr.triageBucket === "bot_blocked" || cr.triageBucket === "ci_blocked") return "error";
+  if (cr.triageBucket === "orphan") return "warning";
+  if (cr.triageBucket === "ready_for_human_review") return "info";
+  return "neutral";
+}
+
+function renderCueIcon(iconKind: LifecycleCue["iconKind"]) {
+  switch (iconKind) {
+    case "due":
+      return <CalendarClockIcon aria-hidden className="size-3 shrink-0" />;
+    case "prd":
+      return <CockpitStageArtworkIcon className="size-3 shrink-0" stage="prd" />;
+    case "prototype":
+      return <CockpitArtifactIcon className="size-3 shrink-0" kind="prototype" />;
+    case "issue":
+      return <CockpitArtifactIcon className="size-3 shrink-0" kind="github_issue" />;
+    case "branch":
+      return <CockpitArtifactIcon className="size-3 shrink-0" kind="branch" />;
+  }
 }
 
 function findMemberByUserId(
@@ -218,23 +297,17 @@ function buildWorkItemCues(
     if (formattedDue) {
       cues.push({
         key: "due",
+        iconKind: "due",
         text: gt("Due {date}", { date: formattedDue }),
         tone: schedule.isOverdue ? "error" : "muted",
       });
     }
   }
 
-  if (lifecycle.githubIssueNumber !== null) {
-    cues.push({
-      key: "issue",
-      text: gt("Issue #{num}", { num: lifecycle.githubIssueNumber }),
-      tone: "muted",
-    });
-  }
-
   if (lifecycle.prdStatus !== "none") {
     cues.push({
       key: "prd",
+      iconKind: "prd",
       text: gt("PRD"),
       tone: lifecycle.prdStatus === "approved" ? "success" : "muted",
     });
@@ -243,12 +316,31 @@ function buildWorkItemCues(
   if (lifecycle.prototypeStatus !== "none") {
     cues.push({
       key: "proto",
+      iconKind: "prototype",
       text: gt("Proto"),
       tone: lifecycle.prototypeStatus === "approved" ? "success" : "muted",
     });
   }
 
-  return cues.slice(0, 3);
+  if (lifecycle.githubIssueNumber !== null) {
+    cues.push({
+      key: "issue",
+      iconKind: "issue",
+      text: gt("Issue #{num}", { num: lifecycle.githubIssueNumber }),
+      tone: "muted",
+    });
+  }
+
+  if (lifecycle.branchName !== null) {
+    cues.push({
+      key: "branch",
+      iconKind: "branch",
+      text: lifecycle.branchName,
+      tone: "muted",
+    });
+  }
+
+  return cues.slice(0, 4);
 }
 
 export function CockpitOverviewTab({
@@ -289,11 +381,11 @@ export function CockpitOverviewTab({
   let latestDue: string | null = null;
 
   const phaseStats = new Map<
-    Exclude<PipelinePhase, "done">,
+    OverviewFunnelStage,
     { count: number; blocked: number; overdue: number }
   >();
   for (const step of PIPELINE_STEPS) {
-    phaseStats.set(step.phase, { count: 0, blocked: 0, overdue: 0 });
+    phaseStats.set(step.stage, { count: 0, blocked: 0, overdue: 0 });
   }
 
   for (const card of cards) {
@@ -312,9 +404,9 @@ export function CockpitOverviewTab({
       latestDue = schedule.dueDate;
     }
 
-    const phase = deriveWorkItemPipelinePhase(card);
-    if (phase !== "done") {
-      const bucket = phaseStats.get(phase);
+    const stage = resolveFunnelStage(card);
+    if (stage !== "done") {
+      const bucket = phaseStats.get(stage);
       if (bucket) {
         bucket.count += 1;
         if (card.workItem.health === "blocked") {
@@ -483,6 +575,40 @@ export function CockpitOverviewTab({
 
   return (
     <div className="space-y-6">
+      {totalItems === 0 ? (
+        <section aria-label={gt("Get started")}>
+          <CockpitSurface className="overflow-hidden" variant="grouped">
+            <div className="flex flex-col items-center gap-5 px-5 py-6 sm:flex-row sm:items-center sm:px-6">
+              <div className="shrink-0 rounded-xl border border-border/45 bg-muted/20 p-2.5">
+                <CockpitIllustration className="h-24 w-52 sm:w-56" kind="delivery_banner" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5 text-center sm:text-left">
+                <h2 className="text-base font-semibold tracking-tight text-foreground">
+                  <T>Launch your delivery pipeline</T>
+                </h2>
+                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  <T>
+                    Capture a requirement, draft an AI PRD and interactive prototype, then dispatch
+                    GitHub issues and PRs across your team.
+                  </T>
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2 sm:justify-start">
+                  {onOpenIntake ? (
+                    <Button size="sm" variant="default" onClick={onOpenIntake}>
+                      <PlusIcon />
+                      <T>Create Work Item & Draft PRD</T>
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="outline" onClick={() => onNavigateDelivery("kanban")}>
+                    <T>Open Delivery Board</T>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CockpitSurface>
+        </section>
+      ) : null}
+
       <section aria-label={gt("Delivery Pipeline")}>
         <CockpitSurface variant="grouped">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/45 px-4 py-2.5">
@@ -506,176 +632,237 @@ export function CockpitOverviewTab({
             ) : null}
           </div>
 
-          <div className="flex items-center gap-1 overflow-x-auto px-3 py-2.5">
-            {PIPELINE_STEPS.map((step, index) => {
-              const stat = phaseStats.get(step.phase) ?? { count: 0, blocked: 0, overdue: 0 };
+          <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4 md:grid-cols-7">
+            {PIPELINE_STEPS.map((step) => {
+              const stat = phaseStats.get(step.stage) ?? { count: 0, blocked: 0, overdue: 0 };
               const hasBottleneck = stat.blocked > 0 || stat.overdue > 0;
               const isActive = stat.count > 0;
-              const dotTone: CockpitTone =
+              const badgeTone: OverviewBadgeTone =
                 stat.blocked > 0
                   ? "error"
                   : stat.overdue > 0
                     ? "warning"
                     : isActive
-                      ? "info"
+                      ? step.activeTone
                       : "neutral";
+              const fillBarClass =
+                stat.blocked > 0
+                  ? "bg-destructive"
+                  : stat.overdue > 0
+                    ? "bg-warning"
+                    : step.barClass;
+              const barWidthPct =
+                isActive && activeCards.length > 0
+                  ? Math.max(18, Math.round((stat.count / activeCards.length) * 100))
+                  : 0;
 
               return (
-                <Fragment key={step.phase}>
-                  <button
-                    className={cn(
-                      "flex min-w-[92px] flex-1 cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                      hasBottleneck
-                        ? "border-destructive/35 bg-destructive/6 hover:bg-destructive/10"
-                        : isActive
-                          ? "border-border/60 bg-background/65 hover:bg-accent/45"
-                          : "border-transparent bg-transparent hover:border-border/45 hover:bg-accent/25",
-                    )}
-                    type="button"
-                    onClick={() => onNavigateDelivery(step.targetSubView)}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <CockpitStatusDot tone={dotTone} />
+                <button
+                  key={step.stage}
+                  className={cn(
+                    "flex min-w-0 cursor-pointer flex-col gap-2 rounded-lg border px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    hasBottleneck
+                      ? "border-destructive/35 bg-destructive/6 hover:border-destructive/50 hover:bg-destructive/10"
+                      : isActive
+                        ? "border-border/65 bg-background/80 shadow-2xs hover:border-border hover:bg-accent/45"
+                        : "border-border/35 bg-muted/15 hover:border-border/60 hover:bg-accent/30",
+                  )}
+                  type="button"
+                  onClick={() => onNavigateDelivery(step.targetSubView)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <CockpitIconBadge size="sm" tone={badgeTone}>
+                      <CockpitStageArtworkIcon stage={step.stage} />
+                    </CockpitIconBadge>
+                    <span
+                      className={cn(
+                        "font-mono text-sm tabular-nums",
+                        stat.blocked > 0
+                          ? "font-semibold text-destructive"
+                          : stat.overdue > 0
+                            ? "font-semibold text-warning-foreground"
+                            : isActive
+                              ? "font-semibold text-foreground"
+                              : "font-medium text-muted-foreground/55",
+                      )}
+                    >
+                      {stat.count}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-1">
                       <span
                         className={cn(
                           "truncate text-xs",
                           isActive ? "font-medium text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {pipelinePhaseLabel(step.phase, gt)}
+                        {pipelineStageLabel(step.stage, gt)}
                       </span>
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 font-mono text-xs tabular-nums",
-                        stat.blocked > 0
-                          ? "font-semibold text-destructive"
-                          : stat.overdue > 0
-                            ? "font-semibold text-warning-foreground"
-                            : isActive
-                              ? "font-medium text-foreground"
-                              : "text-muted-foreground/60",
-                      )}
-                    >
-                      {stat.count}
-                    </span>
-                  </button>
-                  {index < PIPELINE_STEPS.length - 1 ? (
-                    <ChevronRightIcon
+                      {stat.blocked > 0 ? (
+                        <CockpitStatusDot tone="error" />
+                      ) : stat.overdue > 0 ? (
+                        <CockpitStatusDot tone="warning" />
+                      ) : null}
+                    </div>
+                    <div
                       aria-hidden
-                      className="size-3.5 shrink-0 text-muted-foreground/45"
-                    />
-                  ) : null}
-                </Fragment>
+                      className="h-1 w-full overflow-hidden rounded-full bg-muted/55"
+                    >
+                      {barWidthPct > 0 ? (
+                        <div
+                          className={cn("h-full rounded-full", fillBarClass)}
+                          style={{ width: `${barWidthPct}%` }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                </button>
               );
             })}
           </div>
         </CockpitSurface>
       </section>
 
-      <section aria-label={gt("Active Now")}>
-        <CockpitSurface variant="grouped">
-          <div className="flex items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <CockpitStatusDot
-                ring={visibleActiveRows.length > 0}
-                tone={visibleActiveRows.length > 0 ? "success" : "neutral"}
-              />
-              <h2 className="text-sm font-medium text-foreground">
-                <T>Active Now</T>
-              </h2>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {visibleActiveRows.length}
-              </span>
-            </div>
-
-            {selectedMember ? (
+      {totalItems > 0 || visibleActiveRows.length > 0 || selectedMember ? (
+        <section aria-label={gt("Active Now")}>
+          <CockpitSurface variant="grouped">
+            <div className="flex items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-muted-foreground">
-                  @{selectedMember.handle}
+                <CockpitStatusDot
+                  ring={visibleActiveRows.length > 0}
+                  tone={visibleActiveRows.length > 0 ? "success" : "neutral"}
+                />
+                <h2 className="text-sm font-medium text-foreground">
+                  <T>Active Now</T>
+                </h2>
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {visibleActiveRows.length}
                 </span>
-                <Button size="micro" variant="ghost-muted" onClick={() => setSelectedHandle(null)}>
-                  <T>Show all</T>
-                </Button>
               </div>
-            ) : null}
-          </div>
 
-          {visibleActiveRows.length === 0 ? (
-            <div className="px-4 py-7 text-center text-xs text-muted-foreground">
               {selectedMember ? (
-                <T>
-                  No active work items or open reviews for <Var>@{selectedMember.handle}</Var>.
-                </T>
-              ) : (
-                <T>Nothing active right now. Everything in this project is clear.</T>
-              )}
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    @{selectedMember.handle}
+                  </span>
+                  <Button
+                    size="micro"
+                    variant="ghost-muted"
+                    onClick={() => setSelectedHandle(null)}
+                  >
+                    <T>Show all</T>
+                  </Button>
+                </div>
+              ) : null}
             </div>
-          ) : (
-            <div className="divide-y divide-border/45">
-              {visibleActiveRows.slice(0, 8).map((row) => (
-                <button
-                  key={row.key}
-                  className="flex w-full cursor-pointer items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  type="button"
-                  onClick={() => {
-                    if (row.kind === "work_item") {
-                      onOpenWorkItem(row.card.workItem.id);
-                    } else {
-                      onOpenChangeRequest(row.cr);
-                    }
-                  }}
-                >
-                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                    <CockpitStatusDot className="mt-1.5" tone={row.tone} />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="truncate text-sm font-medium text-foreground">
-                        {row.title}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                        <span className="truncate">{row.detail}</span>
-                        {row.cues.length > 0 ? (
-                          <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs sm:inline-flex">
-                            {row.cues.map((cue) => (
-                              <span
-                                key={cue.key}
-                                className={cn(
-                                  "rounded-sm border px-1.5 py-px tabular-nums",
-                                  cue.tone === "error"
-                                    ? "border-destructive/35 bg-destructive/8 text-destructive"
-                                    : cue.tone === "success"
-                                      ? "border-success/30 bg-success/8 text-success-foreground"
-                                      : "border-border/45 bg-muted/20 text-muted-foreground",
-                                )}
-                              >
-                                {cue.text}
-                              </span>
-                            ))}
+
+            {visibleActiveRows.length === 0 ? (
+              <div className="px-4 py-7 text-center text-xs text-muted-foreground">
+                {selectedMember ? (
+                  <T>
+                    No active work items or open reviews for <Var>@{selectedMember.handle}</Var>.
+                  </T>
+                ) : (
+                  <T>Nothing active right now. Everything in this project is clear.</T>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-border/45">
+                {visibleActiveRows.slice(0, 8).map((row) => (
+                  <button
+                    key={row.key}
+                    className="flex w-full cursor-pointer items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    type="button"
+                    onClick={() => {
+                      if (row.kind === "work_item") {
+                        onOpenWorkItem(row.card.workItem.id);
+                      } else {
+                        onOpenChangeRequest(row.cr);
+                      }
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      {row.kind === "work_item" ? (
+                        <CockpitIconBadge
+                          className="mt-0.5"
+                          size="sm"
+                          tone={workItemBadgeTone(
+                            row.card.workItem.itemType,
+                            row.card.workItem.health,
+                          )}
+                        >
+                          <CockpitArtifactIcon kind={row.card.workItem.itemType} />
+                        </CockpitIconBadge>
+                      ) : (
+                        <CockpitIconBadge
+                          className="mt-0.5"
+                          size="sm"
+                          tone={changeRequestBadgeTone(row.cr)}
+                        >
+                          <CockpitStageArtworkIcon stage="pr" />
+                        </CockpitIconBadge>
+                      )}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <CockpitStatusDot tone={row.tone} />
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {row.title}
                           </span>
-                        ) : null}
+                        </div>
+                        <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                          <span className="min-w-0 truncate">{row.detail}</span>
+                          {row.cues.length > 0 ? (
+                            <span className="hidden shrink-0 items-center gap-1.5 font-mono text-2xs sm:inline-flex">
+                              {row.cues.map((cue) => (
+                                <span
+                                  key={cue.key}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 tabular-nums",
+                                    cue.tone === "error"
+                                      ? "border-destructive/35 bg-destructive/8 text-destructive"
+                                      : cue.tone === "success"
+                                        ? "border-success/30 bg-success/8 text-success-foreground"
+                                        : "border-border/45 bg-muted/20 text-muted-foreground",
+                                  )}
+                                >
+                                  {renderCueIcon(cue.iconKind)}
+                                  <span
+                                    className={
+                                      cue.iconKind === "branch" ? "max-w-24 truncate" : undefined
+                                    }
+                                  >
+                                    {cue.text}
+                                  </span>
+                                </span>
+                              ))}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {row.ownerHandle ? (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-muted/25 py-0.5 pr-2 pl-1 text-xs text-muted-foreground">
-                      <CockpitSwarmAvatar
-                        displayName={row.ownerDisplayName}
-                        handle={row.ownerHandle}
-                        kind={row.ownerKind}
-                        size="sm"
-                      />
-                      <span className="max-w-28 truncate font-mono text-2xs">
-                        @{row.ownerHandle}
+                    {row.ownerHandle ? (
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-muted/25 py-0.5 pr-2 pl-1 text-xs text-muted-foreground">
+                        <CockpitSwarmAvatar
+                          displayName={row.ownerDisplayName}
+                          handle={row.ownerHandle}
+                          kind={row.ownerKind}
+                          size="sm"
+                        />
+                        <span className="max-w-28 truncate font-mono text-2xs">
+                          @{row.ownerHandle}
+                        </span>
                       </span>
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          )}
-        </CockpitSurface>
-      </section>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </CockpitSurface>
+        </section>
+      ) : null}
 
       <section aria-label={gt("Project progress")}>
         <CockpitSurface className="overflow-hidden" variant="grouped">
@@ -823,11 +1010,14 @@ export function CockpitOverviewTab({
             onClick={() => onNavigateDelivery("kanban")}
           >
             <div className="flex min-w-0 items-center gap-2.5">
-              <CockpitStatusDot
+              <CockpitIconBadge
+                size="sm"
                 tone={
                   blockedCards.length > 0 ? "error" : activeCards.length > 0 ? "info" : "success"
                 }
-              />
+              >
+                <CockpitStageArtworkIcon stage="dev" />
+              </CockpitIconBadge>
               <span className="text-sm font-medium text-foreground">
                 <T>Kanban Board</T>
               </span>
@@ -869,9 +1059,12 @@ export function CockpitOverviewTab({
             onClick={() => onNavigateDelivery("gantt")}
           >
             <div className="flex min-w-0 items-center gap-2.5">
-              <CockpitStatusDot
-                tone={overdueCount > 0 ? "error" : totalItems > 0 ? "success" : "neutral"}
-              />
+              <CockpitIconBadge
+                size="sm"
+                tone={overdueCount > 0 ? "error" : totalItems > 0 ? "primary" : "neutral"}
+              >
+                <CalendarRangeIcon />
+              </CockpitIconBadge>
               <span className="text-sm font-medium text-foreground">
                 <T>Gantt Timeline</T>
               </span>
@@ -903,15 +1096,18 @@ export function CockpitOverviewTab({
             onClick={() => onNavigateDelivery("triage")}
           >
             <div className="flex min-w-0 items-center gap-2.5">
-              <CockpitStatusDot
+              <CockpitIconBadge
+                size="sm"
                 tone={
                   botBlockedPrs.length > 0
                     ? "error"
                     : readyForReviewPrs.length > 0
-                      ? "info"
+                      ? "warning"
                       : "success"
                 }
-              />
+              >
+                <CockpitStageArtworkIcon stage="review" />
+              </CockpitIconBadge>
               <span className="text-sm font-medium text-foreground">
                 <T>PR Reviews</T>
               </span>
@@ -945,16 +1141,19 @@ export function CockpitOverviewTab({
             onClick={() => onNavigateDelivery("releases")}
           >
             <div className="flex min-w-0 items-center gap-2.5">
-              <CockpitStatusDot
+              <CockpitIconBadge
+                size="sm"
                 tone={
                   latestActiveRelease?.release.status === "ready" ||
                   latestActiveRelease?.release.status === "released"
                     ? "success"
                     : latestActiveRelease
-                      ? "info"
+                      ? "violet"
                       : "neutral"
                 }
-              />
+              >
+                <CockpitStageArtworkIcon stage="release" />
+              </CockpitIconBadge>
               <span className="text-sm font-medium text-foreground">
                 <T>Release Train</T>
               </span>

@@ -6,9 +6,10 @@ import {
   type PipelinePhase,
   type ReleaseCard,
   type ReleaseStatus,
+  type WorkItemType,
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
-import { CalendarRangeIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -23,6 +24,7 @@ import {
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
+import { CockpitArtifactIcon, CockpitIllustration } from "./CockpitArtwork";
 import { CockpitSurface } from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
@@ -457,6 +459,36 @@ function getBarVisualClasses(row: GanttTimelineRow): {
   };
 }
 
+function workItemTypeIconClass(itemType: WorkItemType): string {
+  switch (itemType) {
+    case "feature":
+      return "text-primary";
+    case "bug":
+      return "text-destructive";
+    case "security":
+      return "text-warning-foreground";
+    case "refactor":
+      return "text-info-foreground";
+    case "chore":
+      return "text-muted-foreground";
+  }
+}
+
+function workItemTypeLabel(itemType: WorkItemType, gt: ReturnType<typeof useGT>): string {
+  switch (itemType) {
+    case "feature":
+      return gt("Feature");
+    case "refactor":
+      return gt("Refactor");
+    case "bug":
+      return gt("Bug");
+    case "chore":
+      return gt("Chore");
+    case "security":
+      return gt("Security");
+  }
+}
+
 export function CockpitGanttView({
   cards,
   releases,
@@ -475,8 +507,8 @@ export function CockpitGanttView({
     return (
       <CockpitSurface variant="grouped">
         <Empty size="compact">
-          <EmptyMedia variant="icon">
-            <CalendarRangeIcon />
+          <EmptyMedia>
+            <CockpitIllustration kind="empty_gantt" />
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>
@@ -775,6 +807,22 @@ export function CockpitGanttView({
                           onClick={() => onOpenWorkItem(row.card.workItem.id)}
                         >
                           <div className="flex items-center gap-1.5">
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={<span className="inline-flex shrink-0 items-center" />}
+                              >
+                                <CockpitArtifactIcon
+                                  className={cn(
+                                    "size-3.5 shrink-0",
+                                    workItemTypeIconClass(row.card.workItem.itemType),
+                                  )}
+                                  kind={row.card.workItem.itemType}
+                                />
+                              </TooltipTrigger>
+                              <TooltipPopup>
+                                {workItemTypeLabel(row.card.workItem.itemType, gt)}
+                              </TooltipPopup>
+                            </Tooltip>
                             <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                               {row.card.workItem.code}
                             </span>

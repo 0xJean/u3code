@@ -31,6 +31,12 @@ import {
 import { Switch } from "~/components/ui/switch";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import {
+  CockpitArtifactIcon,
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+} from "./CockpitArtwork";
+import {
+  CockpitIconBadge,
   CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
@@ -362,8 +368,8 @@ export function CockpitMemoryTab({
         !activeDigest ? (
           <CockpitSurface variant="grouped">
             <Empty size="compact">
-              <EmptyMedia variant="icon">
-                <FileTextIcon />
+              <EmptyMedia>
+                <CockpitIllustration kind="empty_memory" />
               </EmptyMedia>
               <EmptyHeader>
                 <EmptyTitle>
@@ -392,15 +398,23 @@ export function CockpitMemoryTab({
         ) : (
           <CockpitSurface className="overflow-hidden border-border/60 bg-card/35" variant="grouped">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-muted/15 px-6 py-3.5">
-              <div className="flex items-center gap-2">
-                <Badge size="sm" variant={activeDigestIndex === 0 ? "info" : "secondary"}>
-                  {formatTriggerLabel(activeDigest.triggerType, gt)}
-                </Badge>
-                {digestList.length === 1 ? (
-                  <span className="text-2xs font-medium text-muted-foreground">
-                    <T>Latest</T>
+              <div className="flex items-center gap-2.5">
+                <CockpitIconBadge size="md" tone="violet">
+                  <CockpitArtifactIcon kind="prompt_template" />
+                </CockpitIconBadge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold tracking-tight text-foreground">
+                    <T>Executive Digest</T>
                   </span>
-                ) : null}
+                  <Badge size="sm" variant={activeDigestIndex === 0 ? "info" : "secondary"}>
+                    {formatTriggerLabel(activeDigest.triggerType, gt)}
+                  </Badge>
+                  {digestList.length === 1 ? (
+                    <span className="text-2xs font-medium text-muted-foreground">
+                      <T>Latest</T>
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               {digestList.length > 1 ? (
@@ -440,7 +454,11 @@ export function CockpitMemoryTab({
           <section className="space-y-2.5">
             <CockpitSectionHeader
               count={directives.length}
-              icon={<LockIcon />}
+              icon={
+                <CockpitIconBadge size="sm" tone="primary">
+                  <CockpitStageArtworkIcon stage="governance" />
+                </CockpitIconBadge>
+              }
               title={<T>Owner Directives</T>}
             />
             <p className="px-1 text-xs text-muted-foreground">
@@ -525,19 +543,46 @@ export function CockpitMemoryTab({
           </section>
 
           {architectureDecisions.length === 0 && recurringRisks.length === 0 ? (
-            <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-              <T>
-                No architecture decisions or recurring risks distilled yet. Generate a digest to
-                synthesize them automatically.
-              </T>
-            </p>
+            <CockpitSurface variant="grouped">
+              <Empty size="compact">
+                <EmptyMedia>
+                  <CockpitIllustration kind="empty_memory" />
+                </EmptyMedia>
+                <EmptyHeader>
+                  <EmptyTitle>
+                    <T>No distilled project memory yet</T>
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    <T>
+                      No architecture decisions or recurring risks distilled yet. Generate a digest
+                      to synthesize them automatically.
+                    </T>
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button
+                    disabled={generatingDigest}
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateDigestClick}
+                  >
+                    <FileTextIcon />
+                    {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            </CockpitSurface>
           ) : (
             <>
               {architectureDecisions.length > 0 ? (
                 <section className="space-y-2.5">
                   <CockpitSectionHeader
                     count={architectureDecisions.length}
-                    icon={<LayersIcon />}
+                    icon={
+                      <CockpitIconBadge size="sm" tone="info">
+                        <LayersIcon />
+                      </CockpitIconBadge>
+                    }
                     title={<T>Architecture Decisions</T>}
                   />
                   <CockpitSurface divided variant="grouped">
@@ -564,7 +609,11 @@ export function CockpitMemoryTab({
                 <section className="space-y-2.5">
                   <CockpitSectionHeader
                     count={recurringRisks.length}
-                    icon={<AlertTriangleIcon />}
+                    icon={
+                      <CockpitIconBadge size="sm" tone="warning">
+                        <AlertTriangleIcon />
+                      </CockpitIconBadge>
+                    }
                     title={<T>Recurring Risks</T>}
                   />
                   <CockpitSurface divided variant="grouped">
