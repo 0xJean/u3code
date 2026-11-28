@@ -11,15 +11,16 @@ import {
 } from "@u3code/hub-contracts";
 import { T, useGT, useLocale, Var } from "gt-react";
 import {
-  AlertTriangleIcon,
+  ArrowRightIcon,
   BotIcon,
-  CheckCircle2Icon,
   ExternalLinkIcon,
+  FileDiffIcon,
   GitBranchIcon,
   Link2Icon,
   MessageSquareCodeIcon,
   ShieldCheckIcon,
   UnlinkIcon,
+  UserCheckIcon,
   WrenchIcon,
   XIcon,
 } from "lucide-react";
@@ -54,11 +55,13 @@ import { cn } from "~/lib/utils";
 import { useProjects } from "~/state/entities";
 import {
   CockpitDiffStat,
+  CockpitIconBadge,
   CockpitPriorityDot,
   CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
   CockpitSurfaceRow,
+  type CockpitIconBadgeTone,
   type CockpitTone,
 } from "./CockpitPrimitives";
 import {
@@ -157,11 +160,41 @@ function humanReviewLabel(
 ): string {
   switch (state) {
     case "approved":
-      return gt("Human Approved");
+      return gt("Approved");
     case "changes_requested":
       return gt("Changes Requested");
     case "pending":
       return gt("Awaiting Review");
+  }
+}
+
+function gateBorderClass(tone: CockpitTone): string {
+  switch (tone) {
+    case "error":
+      return "border-destructive/35";
+    case "warning":
+      return "border-warning/35";
+    case "success":
+      return "border-success/25";
+    case "info":
+      return "border-info/30";
+    default:
+      return "border-border/65";
+  }
+}
+
+function gateValueClass(tone: CockpitTone): string {
+  switch (tone) {
+    case "error":
+      return "text-destructive";
+    case "warning":
+      return "text-warning-foreground";
+    case "success":
+      return "text-success-foreground";
+    case "info":
+      return "text-info-foreground";
+    default:
+      return "text-foreground";
   }
 }
 
@@ -213,10 +246,72 @@ export function CockpitPullRequestPane({
   const needsFix = hasBlockers || changeRequest.humanReviewState === "changes_requested";
   const changedLines = changeRequest.additions + changeRequest.deletions;
   const exceedsDiffGuardrail = changedLines > PR_DIFF_GUARDRAIL_LINES;
+  const sizeGateWarn = exceedsDiffGuardrail || changeRequest.isOversized;
+  const sizeGateTone: CockpitTone = sizeGateWarn ? "warning" : "success";
+  const sizeGateBadgeTone: CockpitIconBadgeTone = sizeGateWarn ? "warning" : "success";
+
+  const automatedBlockingCount = Math.max(changeRequest.automatedReview.blockingCount, 1);
+  const automatedStatus = changeRequest.automatedReview.status;
+  const automatedGateTone: CockpitTone =
+    automatedStatus === "blocking" || changeRequest.automatedReview.blockingCount > 0
+      ? "error"
+      : automatedStatus === "pass" || automatedStatus === "auto_merged"
+        ? "success"
+        : automatedStatus === "pending"
+          ? "info"
+          : "neutral";
+  const automatedGateBadgeTone: CockpitIconBadgeTone = automatedGateTone;
+  const automatedGateValue =
+    automatedGateTone === "error"
+      ? gt("Blocking ({count})", { count: automatedBlockingCount })
+      : automatedGateTone === "success"
+        ? gt("Clear", { $context: "automated review gate status, no blockers" })
+        : automatedStatus === "skipped"
+          ? gt("Skipped")
+          : gt("Pending");
+  const automatedGateDetail =
+    automatedGateTone === "error"
+      ? changeRequest.automatedReview.reviewers.length > 0
+        ? gt(
+            "{count, plural, one {{count} bot check reported} other {{count} bot checks reported}}",
+            {
+              count: changeRequest.automatedReview.reviewers.length,
+            },
+          )
+        : gt("Bot changes requested")
+      : automatedGateTone === "success"
+        ? changeRequest.automatedReview.reviewers.length > 0
+          ? gt("{count, plural, one {{count} bot passed} other {{count} bots passed}}", {
+              count: changeRequest.automatedReview.reviewers.length,
+            })
+          : gt("No bot blockers")
+        : automatedStatus === "skipped"
+          ? gt("No bots required")
+          : gt("Awaiting bot checks");
+
+  const humanGateTone: CockpitTone =
+    changeRequest.humanReviewState === "approved"
+      ? "success"
+      : changeRequest.humanReviewState === "changes_requested"
+        ? "error"
+        : "warning";
+  const humanGateBadgeTone: CockpitIconBadgeTone = humanGateTone;
+  const humanGateDetail =
+    changeRequest.humanReviewState === "approved"
+      ? gt("Sign-off recorded")
+      : changeRequest.humanReviewState === "changes_requested"
+        ? gt("Address feedback")
+        : gt("Needs reviewer");
+
   const mergeStrategy = recommendPrMergeStrategy({
     headBranch: changeRequest.headBranch,
     baseBranch: changeRequest.baseBranch,
   });
+  const mergeCalloutTone: CockpitIconBadgeTone = mergeStrategy.isBackMerge
+    ? "warning"
+    : mergeStrategy.method === "merge_commit"
+      ? "info"
+      : "primary";
   const host = hostFromPullRequestUrl(changeRequest.url);
   const qualitySignals = Object.values(changeRequest.qualitySignals.signals);
   const ciTone = ciStatusTone(changeRequest.qualitySignals.ciStatus);
@@ -390,197 +485,299 @@ export function CockpitPullRequestPane({
       ) : (
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <div className="space-y-2">
-            <h2 className="text-base leading-snug font-semibold text-foreground">
+            <h2 className="text-base leading-snug font-semibold text-foreground text-balance">
               {changeRequest.title}
             </h2>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">@{changeRequest.authorVcsLogin}</span>
-              <span className="inline-flex min-w-0 items-center gap-1 font-mono text-2xs">
-                <GitBranchIcon className="size-3 shrink-0" />
-                <span className="truncate">
-                  {changeRequest.headBranch} → {changeRequest.baseBranch}
-                </span>
+              <span aria-hidden className="opacity-35">
+                ·
               </span>
-              <CockpitDiffStat
-                additions={changeRequest.additions}
-                deletions={changeRequest.deletions}
-              />
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 text-2xs",
                   ciTone === "error"
-                    ? "text-destructive"
+                    ? "font-medium text-destructive"
                     : ciTone === "success"
                       ? "text-success-foreground"
                       : "text-muted-foreground",
                 )}
               >
-                <CockpitStatusDot tone={ciTone} />
+                <CockpitStatusDot ring={ciTone === "error"} tone={ciTone} />
                 <T>
                   CI: <Var>{ciStatusLabel(changeRequest.qualitySignals.ciStatus, gt)}</Var>
                 </T>
               </span>
-              <Badge
-                size="sm"
-                variant={
-                  changeRequest.humanReviewState === "approved"
-                    ? "success"
-                    : changeRequest.humanReviewState === "changes_requested"
-                      ? "error"
-                      : "secondary"
-                }
-              >
-                {humanReviewLabel(changeRequest.humanReviewState, gt)}
-              </Badge>
-              {changeRequest.isOversized ? (
-                <Badge size="sm" variant="warning">
-                  <AlertTriangleIcon />
-                  <T>Oversized</T>
-                </Badge>
-              ) : null}
+              <span aria-hidden className="opacity-35">
+                ·
+              </span>
+              {linkedCard ? (
+                <button
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-2xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  type="button"
+                  onClick={() => onOpenWorkItem(linkedCard.workItem.id)}
+                >
+                  <CockpitStatusDot tone="success" />
+                  <span>
+                    <T>
+                      Linked <Var>{linkedCard.workItem.code}</Var>
+                    </T>
+                    {linkedLifecycle?.githubIssueNumber ? (
+                      <span className="ml-1 font-mono text-muted-foreground/80">
+                        #{linkedLifecycle.githubIssueNumber}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-2xs text-warning-foreground">
+                  <CockpitStatusDot tone="warning" />
+                  <T>Unlinked PR</T>
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/55 bg-card/30 px-3 py-2 text-2xs">
-            {mergeStrategy.isBackMerge ? (
-              <Badge size="sm" variant="warning">
-                <PullRequestGlyph.merged />
-                <T>Back-merge: Merge commit only!</T>
-              </Badge>
-            ) : mergeStrategy.method === "merge_commit" ? (
-              <Badge size="sm" variant="info">
-                <PullRequestGlyph.merged />
-                <T>
-                  Merge commit → <Var>{changeRequest.baseBranch}</Var>
-                </T>
-              </Badge>
-            ) : (
-              <Badge size="sm" variant="secondary">
-                <PullRequestGlyph.merged />
-                <T>
-                  Squash → <Var>{changeRequest.baseBranch}</Var>
-                </T>
-              </Badge>
-            )}
-
-            <span
+          {/* 3-Gate PR Audit Scorecard */}
+          <div className="grid gap-2.5 sm:grid-cols-3">
+            <div
               className={cn(
-                "inline-flex items-center gap-1 tabular-nums",
-                exceedsDiffGuardrail
-                  ? "font-medium text-warning-foreground"
-                  : "text-success-foreground",
+                "space-y-2 rounded-xl border bg-linear-to-b from-card/85 to-card/45 p-3 shadow-2xs ring-1 ring-inset ring-foreground/5",
+                gateBorderClass(sizeGateTone),
               )}
             >
-              {exceedsDiffGuardrail ? (
-                <AlertTriangleIcon aria-hidden className="size-3 shrink-0" />
-              ) : (
-                <CheckCircle2Icon aria-hidden className="size-3 shrink-0" />
-              )}
-              <span>
-                {exceedsDiffGuardrail
-                  ? gt("{count} lines (>400: consider splitting)", { count: changedLines })
-                  : gt("{count} lines (<= 400 OK)", { count: changedLines })}
-              </span>
-            </span>
+              <div className="flex items-center justify-between gap-2">
+                <CockpitIconBadge size="sm" tone={sizeGateBadgeTone}>
+                  <FileDiffIcon />
+                </CockpitIconBadge>
+                <CockpitStatusDot ring={sizeGateWarn} tone={sizeGateTone} />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-2xs font-medium text-muted-foreground">
+                  <T>Change Size</T>
+                </div>
+                <div className={cn("text-xs font-semibold", gateValueClass(sizeGateTone))}>
+                  {sizeGateWarn ? <T>Recommend Split</T> : <T>&lt;= 400 Lines</T>}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
+                  <CockpitDiffStat
+                    additions={changeRequest.additions}
+                    deletions={changeRequest.deletions}
+                  />
+                  <span className="font-mono text-muted-foreground/75 tabular-nums">
+                    ({changedLines})
+                  </span>
+                </div>
+              </div>
+            </div>
 
-            {linkedCard ? (
-              <button
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                type="button"
-                onClick={() => onOpenWorkItem(linkedCard.workItem.id)}
-              >
-                <CockpitStatusDot tone="success" />
-                <span>
-                  <T>
-                    Linked <Var>{linkedCard.workItem.code}</Var>
-                  </T>
-                  {linkedLifecycle?.githubIssueNumber ? (
-                    <span className="ml-1 font-mono text-muted-foreground/80">
-                      #{linkedLifecycle.githubIssueNumber}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-warning-foreground">
-                <CockpitStatusDot tone="warning" />
-                <T>Unlinked PR</T>
-              </span>
-            )}
+            <div
+              className={cn(
+                "space-y-2 rounded-xl border bg-linear-to-b from-card/85 to-card/45 p-3 shadow-2xs ring-1 ring-inset ring-foreground/5",
+                gateBorderClass(automatedGateTone),
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <CockpitIconBadge size="sm" tone={automatedGateBadgeTone}>
+                  <BotIcon />
+                </CockpitIconBadge>
+                <CockpitStatusDot ring={automatedGateTone === "error"} tone={automatedGateTone} />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-2xs font-medium text-muted-foreground">
+                  <T>Automated Reviewers</T>
+                </div>
+                <div
+                  className={cn(
+                    "text-xs font-semibold tabular-nums",
+                    gateValueClass(automatedGateTone),
+                  )}
+                >
+                  {automatedGateValue}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground">{automatedGateDetail}</div>
+              </div>
+            </div>
+
+            <div
+              className={cn(
+                "space-y-2 rounded-xl border bg-linear-to-b from-card/85 to-card/45 p-3 shadow-2xs ring-1 ring-inset ring-foreground/5",
+                gateBorderClass(humanGateTone),
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <CockpitIconBadge size="sm" tone={humanGateBadgeTone}>
+                  <UserCheckIcon />
+                </CockpitIconBadge>
+                <CockpitStatusDot ring={humanGateTone === "error"} tone={humanGateTone} />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-2xs font-medium text-muted-foreground">
+                  <T>Human Review</T>
+                </div>
+                <div className={cn("text-xs font-semibold", gateValueClass(humanGateTone))}>
+                  {humanReviewLabel(changeRequest.humanReviewState, gt)}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground">{humanGateDetail}</div>
+              </div>
+            </div>
           </div>
 
-          <CockpitSurface className="space-y-3" padding="md" variant="subtle">
+          {/* Recommended Merge Strategy Strip */}
+          <div
+            className={cn(
+              "space-y-2.5 rounded-xl border p-3.5 shadow-2xs ring-1 ring-inset ring-foreground/4",
+              mergeStrategy.isBackMerge
+                ? "border-warning/35 bg-warning/8"
+                : mergeStrategy.method === "merge_commit"
+                  ? "border-info/30 bg-info/8"
+                  : "border-primary/25 bg-primary/6",
+            )}
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                <BotIcon className="size-3.5 text-muted-foreground" />
-                <T>Handle Directly in U3 Code</T>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <CockpitIconBadge size="sm" tone={mergeCalloutTone}>
+                  <PullRequestGlyph.merged />
+                </CockpitIconBadge>
+                <span className="text-xs font-medium text-foreground">
+                  <T>Recommended Merge Strategy</T>
+                </span>
               </div>
-              {localProjects.length > 0 && selectedLocalProject ? (
-                <div className="w-44 shrink-0">
-                  <Select
-                    value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
-                    onValueChange={(val) => {
-                      if (val) {
-                        setChosenLocalProjectByRepo((prev) => ({
-                          ...prev,
-                          [changeRequest.repoFullName]: val,
-                        }));
-                      }
-                    }}
-                  >
-                    <SelectTrigger size="compact">
-                      <SelectValue>{selectedLocalProject.title}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup>
-                      {localProjects.map((proj) => (
-                        <SelectItem
-                          key={`${proj.environmentId}:${proj.id}`}
-                          value={`${proj.environmentId}:${proj.id}`}
-                        >
-                          {proj.title}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
-                </div>
-              ) : null}
+              {mergeStrategy.isBackMerge ? (
+                <Badge size="sm" variant="warning">
+                  <T>Merge Commit Only</T>
+                </Badge>
+              ) : mergeStrategy.method === "merge_commit" ? (
+                <Badge size="sm" variant="info">
+                  <T>Merge Commit</T>
+                </Badge>
+              ) : (
+                <Badge size="sm" variant="secondary">
+                  <T>Squash &amp; Merge</T>
+                </Badge>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {needsFix ? (
-                <Button
-                  disabled={startingAgent !== null || !selectedLocalProject}
-                  size="sm"
-                  variant="default"
-                  onClick={() => void handleLaunchAgentThread("fix")}
-                >
-                  <WrenchIcon />
-                  {startingAgent === "fix" ? (
-                    <T>Starting Fix Thread...</T>
-                  ) : (
-                    <T>Fix Findings with Agent</T>
-                  )}
-                </Button>
-              ) : null}
+              <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-background/80 px-2 py-0.5 font-mono text-2xs text-foreground">
+                <GitBranchIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                <span className="truncate">{changeRequest.headBranch}</span>
+                <ArrowRightIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                <span className="truncate font-semibold">{changeRequest.baseBranch}</span>
+              </span>
+              <span className="text-2xs leading-relaxed text-muted-foreground">
+                {mergeStrategy.isBackMerge ? (
+                  <T>Back-merge: preserve commit ancestry and never squash into integration.</T>
+                ) : mergeStrategy.method === "merge_commit" ? (
+                  <T>Release target: keep full commit history on the release branch.</T>
+                ) : (
+                  <T>Integration target: squash into a clean Conventional Commit.</T>
+                )}
+              </span>
+            </div>
+          </div>
 
-              <Button
+          {/* 1-Click AI Audit & Fix Action Cards */}
+          <section className="space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                <T>Agent Review &amp; Remediation</T>
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {localProjects.length > 0 && selectedLocalProject ? (
+                  <div className="w-40 shrink-0">
+                    <Select
+                      value={`${selectedLocalProject.environmentId}:${selectedLocalProject.id}`}
+                      onValueChange={(val) => {
+                        if (val) {
+                          setChosenLocalProjectByRepo((prev) => ({
+                            ...prev,
+                            [changeRequest.repoFullName]: val,
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger size="compact">
+                        <SelectValue>{selectedLocalProject.title}</SelectValue>
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {localProjects.map((proj) => (
+                          <SelectItem
+                            key={`${proj.environmentId}:${proj.id}`}
+                            value={`${proj.environmentId}:${proj.id}`}
+                          >
+                            {proj.title}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  </div>
+                ) : null}
+                <Button size="xs" variant="outline" onClick={() => setPaneView("native")}>
+                  <PullRequestGlyph.pullRequest />
+                  <T>Diff &amp; Merge</T>
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <button
+                className="group flex w-full cursor-pointer items-start gap-3 rounded-xl border border-border/65 bg-linear-to-b from-card/85 to-card/45 p-3 text-left shadow-2xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-info/45 hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={startingAgent !== null || !selectedLocalProject}
-                size="sm"
-                variant={needsFix ? "outline" : "default"}
+                type="button"
                 onClick={() => void handleLaunchAgentThread("audit_and_comment")}
               >
-                <MessageSquareCodeIcon />
-                {startingAgent === "audit_and_comment" ? (
-                  <T>Starting Auto-Review...</T>
-                ) : (
-                  <T>AI Auto-Review & Comment</T>
-                )}
-              </Button>
+                <CockpitIconBadge size="md" tone="info">
+                  <MessageSquareCodeIcon />
+                </CockpitIconBadge>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-xs font-semibold text-foreground">
+                    {startingAgent === "audit_and_comment" ? (
+                      <T>Starting AI Audit...</T>
+                    ) : (
+                      <T>AI Audit &amp; Review</T>
+                    )}
+                  </div>
+                  <p className="text-2xs leading-relaxed text-muted-foreground">
+                    <T>Audit diff against guardrails and post structured review comments.</T>
+                  </p>
+                </div>
+              </button>
 
-              <Button size="sm" variant="outline" onClick={() => setPaneView("native")}>
-                <PullRequestGlyph.pullRequest />
-                <T>Diff, Review & Merge</T>
-              </Button>
+              <button
+                className={cn(
+                  "group flex w-full cursor-pointer items-start gap-3 rounded-xl border bg-linear-to-b from-card/85 to-card/45 p-3 text-left shadow-2xs ring-1 ring-inset ring-foreground/5 transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-55",
+                  needsFix
+                    ? "border-destructive/35 hover:border-destructive/55"
+                    : "border-border/65 hover:border-primary/40",
+                )}
+                disabled={startingAgent !== null || !selectedLocalProject}
+                type="button"
+                onClick={() => void handleLaunchAgentThread("fix")}
+              >
+                <CockpitIconBadge size="md" tone={needsFix ? "error" : "primary"}>
+                  <WrenchIcon />
+                </CockpitIconBadge>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-semibold text-foreground">
+                      {startingAgent === "fix" ? (
+                        <T>Starting Fix Thread...</T>
+                      ) : (
+                        <T>Fix Blockers</T>
+                      )}
+                    </span>
+                    {needsFix ? <CockpitStatusDot ring tone="error" /> : null}
+                  </div>
+                  <p className="text-2xs leading-relaxed text-muted-foreground">
+                    {needsFix ? (
+                      <T>Resolve failing CI, bot blockers, or requested review changes.</T>
+                    ) : (
+                      <T>Open an Agent worktree to apply polish or address feedback.</T>
+                    )}
+                  </p>
+                </div>
+              </button>
             </div>
 
             {!selectedLocalProject ? (
@@ -591,7 +788,7 @@ export function CockpitPullRequestPane({
                 </T>
               </p>
             ) : null}
-          </CockpitSurface>
+          </section>
 
           <section className="space-y-2">
             <CockpitSectionHeader

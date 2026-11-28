@@ -9,8 +9,8 @@ import {
   type WorkItemType,
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, CrosshairIcon, PlusIcon, UserIcon } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -24,8 +24,14 @@ import {
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
-import { CockpitArtifactIcon, CockpitIllustration, CockpitStudioBanner } from "./CockpitArtwork";
-import { CockpitStatusDot, CockpitSurface } from "./CockpitPrimitives";
+import {
+  CockpitArtifactIcon,
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+  CockpitStudioBanner,
+  type CockpitStageArtKind,
+} from "./CockpitArtwork";
+import { CockpitIconBadge, CockpitStatusDot, CockpitSurface } from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
   isWorkItemDoneStage,
@@ -420,42 +426,138 @@ interface GanttRowGroup {
   readonly key: string;
   readonly label: string | null;
   readonly assignee: CockpitTeamMember | null;
+  readonly stageArtKind: CockpitStageArtKind | null;
+  readonly overdueCount: number;
   readonly rows: readonly GanttTimelineRow[];
+}
+
+function resolveStageArtKind(
+  stageId: string,
+  rows: readonly GanttTimelineRow[],
+): CockpitStageArtKind {
+  const normalized = stageId.trim().toLowerCase();
+  if (normalized === "intake" || normalized === "backlog" || normalized === "triage") {
+    return "intake";
+  }
+  if (normalized === "prd" || normalized === "spec") {
+    return "prd";
+  }
+  if (normalized === "proto" || normalized === "prototype" || normalized === "design") {
+    return "prototype";
+  }
+  if (normalized === "issue" || normalized === "ready") {
+    return "issue";
+  }
+  if (
+    normalized === "dev" ||
+    normalized === "development" ||
+    normalized === "in_progress" ||
+    normalized === "implement" ||
+    normalized === "implementation"
+  ) {
+    return "dev";
+  }
+  if (
+    normalized === "review" ||
+    normalized === "in_review" ||
+    normalized === "qa" ||
+    normalized === "code_review"
+  ) {
+    return "review";
+  }
+  if (
+    normalized === "staging" ||
+    normalized === "release" ||
+    normalized === "ready_to_release" ||
+    normalized === "deploy" ||
+    normalized === "done" ||
+    normalized === "released" ||
+    normalized === "shipped" ||
+    normalized === "closed"
+  ) {
+    return "release";
+  }
+
+  const firstRow = rows[0];
+  if (firstRow) {
+    const phase = deriveWorkItemPipelinePhase(firstRow.card);
+    return phase === "done" ? "release" : phase;
+  }
+  return "dev";
+}
+
+function releaseStatusLabel(status: ReleaseStatus, gt: ReturnType<typeof useGT>): string {
+  switch (status) {
+    case "planning":
+      return gt("Planning");
+    case "staging":
+      return gt("Staging");
+    case "ready":
+      return gt("Ready");
+    case "released":
+      return gt("Released");
+    case "rolled_back":
+      return gt("Rolled Back");
+  }
+}
+
+function getReleaseMarkerClasses(status: ReleaseStatus): {
+  readonly pill: string;
+  readonly diamond: string;
+  readonly line: string;
+} {
+  if (status === "ready" || status === "released") {
+    return {
+      pill: "border-success/45 bg-background/95 text-success-foreground",
+      diamond: "border-success bg-success",
+      line: "border-success/35",
+    };
+  }
+  if (status === "rolled_back") {
+    return {
+      pill: "border-destructive/45 bg-background/95 text-destructive",
+      diamond: "border-destructive bg-destructive",
+      line: "border-destructive/30",
+    };
+  }
+  return {
+    pill: "border-primary/40 bg-background/95 text-primary",
+    diamond: "border-primary bg-primary",
+    line: "border-primary/30",
+  };
 }
 
 function getBarVisualClasses(row: GanttTimelineRow): {
   readonly track: string;
   readonly fill: string;
+  readonly fillEdge: string;
 } {
   const { card } = row;
   if (isWorkItemDoneStage(card.workItem.stage)) {
     return {
-      track: "border-success/30 bg-success/10 text-success-foreground",
-      fill: "bg-success/25",
+      track: "border-success/35 bg-success/10 text-success-foreground",
+      fill: "bg-success/28",
+      fillEdge: "border-r border-success/45",
     };
   }
-  if (card.workItem.health === "blocked") {
+  if (row.isOverdue || card.workItem.health === "blocked") {
     return {
-      track: "border-destructive/45 bg-destructive/12 text-destructive",
-      fill: "bg-destructive/28",
+      track: "border-destructive/50 bg-destructive/10 text-destructive",
+      fill: "bg-destructive/30",
+      fillEdge: "border-r border-destructive/50",
     };
   }
   if (card.workItem.health === "at_risk") {
     return {
-      track: "border-warning/45 bg-warning/12 text-warning-foreground",
-      fill: "bg-warning/28",
-    };
-  }
-  const phase = deriveWorkItemPipelinePhase(card);
-  if (phase === "review") {
-    return {
-      track: "border-info/45 bg-info/12 text-info-foreground",
-      fill: "bg-info/28",
+      track: "border-warning/50 bg-warning/12 text-warning-foreground",
+      fill: "bg-warning/32",
+      fillEdge: "border-r border-warning/50",
     };
   }
   return {
-    track: "border-success/40 bg-success/12 text-foreground",
-    fill: "bg-success/28",
+    track: "border-success/45 bg-success/10 text-foreground",
+    fill: "bg-success/30",
+    fillEdge: "border-r border-success/50",
   };
 }
 
@@ -502,6 +604,7 @@ export function CockpitGanttView({
   const [zoom, setZoom] = useState<GanttZoomLevel>("1m");
   const [groupBy, setGroupBy] = useState<GanttGroupBy>("all");
   const [savingWorkItemId, setSavingWorkItemId] = useState<string | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
 
   if (cards.length === 0) {
     return (
@@ -544,7 +647,14 @@ export function CockpitGanttView({
 
   const groups: GanttRowGroup[] = [];
   if (groupBy === "all") {
-    groups.push({ key: "all", label: null, assignee: null, rows: timeline.rows });
+    groups.push({
+      key: "all",
+      label: null,
+      assignee: null,
+      stageArtKind: null,
+      overdueCount: 0,
+      rows: timeline.rows,
+    });
   } else if (groupBy === "stage") {
     const byStage = new Map<string, GanttTimelineRow[]>();
     for (const stage of stages) {
@@ -565,6 +675,8 @@ export function CockpitGanttView({
         key: `stage:${stageId}`,
         label: stageLabelById.get(stageId) ?? stageId,
         assignee: null,
+        stageArtKind: resolveStageArtKind(stageId, stageRows),
+        overdueCount: stageRows.filter((row) => row.isOverdue).length,
         rows: stageRows,
       });
     }
@@ -582,11 +694,18 @@ export function CockpitGanttView({
         byAssignee.set(key, { assignee: row.assignee, rows: [row] });
       }
     }
-    for (const [key, entry] of byAssignee.entries()) {
+    const sortedAssigneeEntries = [...byAssignee.entries()].toSorted(([leftKey], [rightKey]) => {
+      if (leftKey === "unassigned" && rightKey !== "unassigned") return 1;
+      if (rightKey === "unassigned" && leftKey !== "unassigned") return -1;
+      return 0;
+    });
+    for (const [key, entry] of sortedAssigneeEntries) {
       groups.push({
         key,
         label: entry.assignee ? `@${entry.assignee.handle}` : gt("Unassigned"),
         assignee: entry.assignee,
+        stageArtKind: null,
+        overdueCount: entry.rows.filter((row) => row.isOverdue).length,
         rows: entry.rows,
       });
     }
@@ -598,6 +717,21 @@ export function CockpitGanttView({
       : zoom === "1m"
         ? Math.max(900, timeline.totalDays * 34)
         : Math.max(840, timeline.columns.length * 76);
+
+  const handleJumpToToday = () => {
+    const container = timelineScrollRef.current;
+    if (!container) return;
+    const stickyColumnWidth = 264;
+    const scrollableTimelineWidth = Math.max(0, container.scrollWidth - stickyColumnWidth);
+    const visibleTimelineWidth = Math.max(0, container.clientWidth - stickyColumnWidth);
+    const todayX = (timeline.todayOffsetPct / 100) * scrollableTimelineWidth;
+    const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    const targetScrollLeft = Math.min(
+      maxScrollLeft,
+      Math.max(0, todayX - visibleTimelineWidth / 2),
+    );
+    container.scrollTo({ left: targetScrollLeft, behavior: "smooth" });
+  };
 
   const handleShiftRow = async (row: GanttTimelineRow, deltaDays: number) => {
     if (savingWorkItemId === row.card.workItem.id) return;
@@ -720,41 +854,29 @@ export function CockpitGanttView({
             }}
           >
             <Toggle value="all">
-              <T>All</T>
+              <T>Flat</T>
             </Toggle>
             <Toggle value="stage">
-              <T>Stage</T>
+              <T>By Stage</T>
             </Toggle>
             <Toggle value="assignee">
-              <T>Assignee</T>
+              <T>By Assignee</T>
             </Toggle>
           </ToggleGroup>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-2xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-2 rounded-xs bg-success/75" />
-            <T>On track</T>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-2 rounded-xs bg-info/75" />
-            <T>Review</T>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-2 rounded-xs bg-destructive/80" />
-            <T>Blocked</T>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-2 rotate-45 rounded-xs bg-primary" />
-            <T>Release milestone</T>
-          </span>
+        <div className="flex items-center gap-2">
+          <Button size="compact" variant="outline" onClick={handleJumpToToday}>
+            <CrosshairIcon />
+            <T>Today</T>
+          </Button>
         </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-border/65 bg-linear-to-b from-card/80 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5">
-        <div className="overflow-x-auto">
+        <div ref={timelineScrollRef} className="overflow-x-auto">
           <div style={{ minWidth: `${timelineMinWidthPx + 264}px` }}>
-            <div className="flex h-12 border-b border-border/55 bg-muted/15">
+            <div className="flex h-14 border-b border-border/55 bg-muted/15">
               <div className="sticky left-0 z-20 flex w-[264px] shrink-0 items-center justify-between gap-2 border-r border-border/55 bg-card/95 px-3.5 text-xs">
                 <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
                   <T>Work Item</T>
@@ -808,48 +930,106 @@ export function CockpitGanttView({
                   </span>
                 </div>
 
-                {timeline.releaseMarkers.map((marker) => (
-                  <Tooltip key={marker.releaseId}>
-                    <TooltipTrigger
-                      render={
-                        <span
-                          className="pointer-events-auto absolute bottom-0.5 z-10 inline-flex -translate-x-1/2 cursor-default items-center gap-1 rounded-sm border border-primary/35 bg-background/95 px-1.5 py-px font-mono text-3xs text-primary shadow-2xs"
-                          style={{ left: `${marker.offsetPct}%` }}
-                        >
-                          <span aria-hidden>◆</span>
-                          <span className="max-w-24 truncate">{marker.versionLabel}</span>
-                        </span>
-                      }
-                    />
-                    <TooltipPopup>
-                      <T>
-                        Release <Var>{marker.versionLabel}</Var> (<Var>{marker.date}</Var>)
-                      </T>
-                    </TooltipPopup>
-                  </Tooltip>
-                ))}
+                {timeline.releaseMarkers.map((marker) => {
+                  const markerStyle = getReleaseMarkerClasses(marker.status);
+                  const statusLabel = releaseStatusLabel(marker.status, gt);
+                  return (
+                    <Tooltip key={marker.releaseId}>
+                      <TooltipTrigger
+                        render={
+                          <span
+                            className={cn(
+                              "pointer-events-auto absolute bottom-1 z-20 inline-flex -translate-x-1/2 cursor-default items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-3xs font-medium shadow-2xs",
+                              markerStyle.pill,
+                            )}
+                            style={{ left: `${marker.offsetPct}%` }}
+                          >
+                            <span
+                              aria-hidden
+                              className={cn(
+                                "inline-block size-2 shrink-0 rotate-45 rounded-xs border",
+                                markerStyle.diamond,
+                              )}
+                            />
+                            <span className="max-w-24 truncate">{marker.versionLabel}</span>
+                          </span>
+                        }
+                      />
+                      <TooltipPopup>
+                        <T>
+                          Release <Var>{marker.versionLabel}</Var> · <Var>{statusLabel}</Var> ·{" "}
+                          <Var>{marker.date}</Var>
+                        </T>
+                      </TooltipPopup>
+                    </Tooltip>
+                  );
+                })}
               </div>
             </div>
 
             {groups.map((group) => (
               <div key={group.key}>
                 {group.label ? (
-                  <div className="flex h-8 border-b border-border/45 bg-muted/20">
-                    <div className="sticky left-0 z-10 flex w-[264px] shrink-0 items-center gap-2 border-r border-border/55 bg-muted/35 px-3.5 text-xs font-medium text-muted-foreground">
-                      {group.assignee ? (
-                        <CockpitSwarmAvatar
-                          displayName={group.assignee.displayName}
-                          handle={group.assignee.handle}
-                          kind={group.assignee.kind}
-                          size="sm"
-                        />
+                  <div className="flex h-9 border-b border-border/50 bg-linear-to-r from-muted/35 via-muted/20 to-muted/10">
+                    <div className="sticky left-0 z-10 flex w-[264px] shrink-0 items-center justify-between gap-2 border-r border-border/55 bg-card/95 px-3 text-xs">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {group.assignee ? (
+                          <CockpitSwarmAvatar
+                            displayName={group.assignee.displayName}
+                            handle={group.assignee.handle}
+                            kind={group.assignee.kind}
+                            size="sm"
+                          />
+                        ) : group.stageArtKind ? (
+                          <CockpitIconBadge
+                            size="sm"
+                            tone={group.overdueCount > 0 ? "error" : "neutral"}
+                          >
+                            <CockpitStageArtworkIcon stage={group.stageArtKind} />
+                          </CockpitIconBadge>
+                        ) : (
+                          <CockpitIconBadge size="sm" tone="neutral">
+                            <UserIcon />
+                          </CockpitIconBadge>
+                        )}
+                        <span className="truncate font-medium text-foreground">{group.label}</span>
+                        <span className="shrink-0 rounded-sm bg-muted/60 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-muted-foreground">
+                          {group.rows.length}
+                        </span>
+                      </div>
+                      {group.overdueCount > 0 ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-destructive">
+                          <CockpitStatusDot tone="error" />
+                          <T>
+                            <Var>{group.overdueCount}</Var> overdue
+                          </T>
+                        </span>
                       ) : null}
-                      <span className="truncate">{group.label}</span>
-                      <span className="font-mono text-2xs tabular-nums text-muted-foreground/65">
-                        {group.rows.length}
-                      </span>
                     </div>
-                    <div className="flex-1" style={{ minWidth: `${timelineMinWidthPx}px` }} />
+                    <div
+                      className="relative flex-1"
+                      style={{ minWidth: `${timelineMinWidthPx}px` }}
+                    >
+                      {timeline.releaseMarkers.map((marker) => {
+                        const markerStyle = getReleaseMarkerClasses(marker.status);
+                        return (
+                          <div
+                            key={marker.releaseId}
+                            aria-hidden
+                            className={cn(
+                              "pointer-events-none absolute inset-y-0 border-l border-dashed",
+                              markerStyle.line,
+                            )}
+                            style={{ left: `${marker.offsetPct}%` }}
+                          />
+                        );
+                      })}
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 z-10 w-px bg-primary/50"
+                        style={{ left: `${timeline.todayOffsetPct}%` }}
+                      />
+                    </div>
                   </div>
                 ) : null}
 
@@ -1009,14 +1189,20 @@ export function CockpitGanttView({
                           />
                         ))}
 
-                        {timeline.releaseMarkers.map((marker) => (
-                          <div
-                            key={marker.releaseId}
-                            aria-hidden
-                            className="pointer-events-none absolute inset-y-0 w-px bg-primary/20"
-                            style={{ left: `${marker.offsetPct}%` }}
-                          />
-                        ))}
+                        {timeline.releaseMarkers.map((marker) => {
+                          const markerStyle = getReleaseMarkerClasses(marker.status);
+                          return (
+                            <div
+                              key={marker.releaseId}
+                              aria-hidden
+                              className={cn(
+                                "pointer-events-none absolute inset-y-0 border-l border-dashed",
+                                markerStyle.line,
+                              )}
+                              style={{ left: `${marker.offsetPct}%` }}
+                            />
+                          );
+                        })}
 
                         <div
                           aria-hidden
@@ -1062,23 +1248,26 @@ export function CockpitGanttView({
                                     "relative flex h-7 min-w-0 flex-1 cursor-pointer items-center overflow-hidden rounded-md border px-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                                     barClasses.track,
                                     row.isEstimated && "border-dashed",
-                                    row.isOverdue && "ring-1 ring-inset ring-destructive/80",
+                                    row.isOverdue && "ring-1 ring-inset ring-destructive/55",
                                   )}
                                   type="button"
                                   onClick={() => onOpenWorkItem(row.card.workItem.id)}
                                 >
-                                  <span
-                                    aria-hidden
-                                    className={cn(
-                                      "pointer-events-none absolute inset-y-0 left-0 transition-[width]",
-                                      barClasses.fill,
-                                    )}
-                                    style={{ width: `${row.progressPct}%` }}
-                                  />
+                                  {row.progressPct > 0 ? (
+                                    <span
+                                      aria-hidden
+                                      className={cn(
+                                        "pointer-events-none absolute inset-y-0 left-0 transition-[width]",
+                                        barClasses.fill,
+                                        row.progressPct < 100 && barClasses.fillEdge,
+                                      )}
+                                      style={{ width: `${row.progressPct}%` }}
+                                    />
+                                  ) : null}
                                   <span className="relative z-10 flex min-w-0 flex-1 items-center justify-between gap-1.5 font-mono text-3xs tabular-nums">
-                                    <span className="truncate">{dateRangeLabel}</span>
+                                    <span className="truncate font-medium">{dateRangeLabel}</span>
                                     {row.progressPct > 0 ? (
-                                      <span className="hidden shrink-0 opacity-75 sm:inline">
+                                      <span className="hidden shrink-0 font-semibold opacity-80 sm:inline">
                                         {row.progressPct}%
                                       </span>
                                     ) : null}
@@ -1087,10 +1276,22 @@ export function CockpitGanttView({
                               }
                             />
                             <TooltipPopup>
-                              <T>
-                                <Var>{row.card.workItem.code}</Var>: <Var>{dateRangeLabel}</Var> (
-                                <Var>{row.progressPct}</Var>%)
-                              </T>
+                              {row.isOverdue ? (
+                                <T>
+                                  <Var>{row.card.workItem.code}</Var>: <Var>{dateRangeLabel}</Var> ·{" "}
+                                  <Var>{row.progressPct}</Var>% · Overdue
+                                </T>
+                              ) : row.isEstimated ? (
+                                <T>
+                                  <Var>{row.card.workItem.code}</Var>: <Var>{dateRangeLabel}</Var> ·{" "}
+                                  <Var>{row.progressPct}</Var>% · Estimated
+                                </T>
+                              ) : (
+                                <T>
+                                  <Var>{row.card.workItem.code}</Var>: <Var>{dateRangeLabel}</Var> ·{" "}
+                                  <Var>{row.progressPct}</Var>%
+                                </T>
+                              )}
                             </TooltipPopup>
                           </Tooltip>
 
@@ -1124,6 +1325,50 @@ export function CockpitGanttView({
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/50 bg-muted/15 px-4 py-2.5 text-2xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-3.5 rounded-xs border border-success/50 bg-success/25"
+              />
+              <T>On Track</T>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-3.5 rounded-xs border border-warning/50 bg-warning/25"
+              />
+              <T>At Risk</T>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-3.5 rounded-xs border border-destructive/50 bg-destructive/25"
+              />
+              <T>Overdue</T>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block size-2 rotate-45 rounded-xs border border-primary bg-primary"
+              />
+              <T>Release Milestone</T>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-3.5 rounded-xs border border-dashed border-muted-foreground/55 bg-muted/30"
+              />
+              <T>Estimated Schedule</T>
+            </span>
+          </div>
+
+          <span className="hidden font-mono text-3xs text-muted-foreground/80 sm:inline">
+            <T>Hover any bar to shift ±1d</T>
+          </span>
         </div>
       </div>
     </div>

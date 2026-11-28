@@ -13,13 +13,17 @@ import {
 } from "@u3code/hub-contracts";
 import { Plural, T, useGT, Var } from "gt-react";
 import {
+  ArrowRightIcon,
   AtSignIcon,
   CalendarClockIcon,
   CalendarRangeIcon,
+  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ListChecksIcon,
   MessageSquareIcon,
   PlusIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -112,6 +116,50 @@ interface LifecycleCue {
   readonly iconKind: "due" | "prd" | "prototype" | "issue" | "branch";
   readonly text: string;
   readonly tone: "muted" | "success" | "error";
+}
+
+type PriorityActionTarget =
+  | { readonly kind: "change_request"; readonly cr: ChangeRequestAudit }
+  | { readonly kind: "work_item"; readonly workItemId: string }
+  | { readonly kind: "releases" };
+
+interface PriorityNextAction {
+  readonly key: string;
+  readonly tone: OverviewBadgeTone;
+  readonly iconKind: "pr" | "item" | "prd" | "release";
+  readonly categoryLabel: string;
+  readonly title: string;
+  readonly reason: string;
+  readonly ctaLabel: string;
+  readonly target: PriorityActionTarget;
+}
+
+function priorityWeight(priority: string): number {
+  switch (priority.toLowerCase()) {
+    case "p0":
+      return 0;
+    case "p1":
+      return 1;
+    case "p2":
+      return 2;
+    case "p3":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function renderPriorityActionIcon(iconKind: PriorityNextAction["iconKind"]) {
+  switch (iconKind) {
+    case "pr":
+      return <CockpitStageArtworkIcon stage="pr" />;
+    case "item":
+      return <CalendarClockIcon />;
+    case "prd":
+      return <CockpitStageArtworkIcon stage="prd" />;
+    case "release":
+      return <CockpitStageArtworkIcon stage="release" />;
+  }
 }
 
 type ActiveNowRow =
@@ -413,6 +461,25 @@ export function CockpitOverviewTab({
 
   const verifiedAcCount = cards.reduce((sum, card) => sum + card.checklistVerifiedCount, 0);
   const totalAcCount = cards.reduce((sum, card) => sum + card.checklistTotalCount, 0);
+  const activeVerifiedAcCount = activeCards.reduce(
+    (sum, card) => sum + card.checklistVerifiedCount,
+    0,
+  );
+  const activeTotalAcCount = activeCards.reduce((sum, card) => sum + card.checklistTotalCount, 0);
+  const readinessVerifiedAc = activeCards.length > 0 ? activeVerifiedAcCount : verifiedAcCount;
+  const readinessTotalAc = activeCards.length > 0 ? activeTotalAcCount : totalAcCount;
+  const acceptanceReadinessPct =
+    readinessTotalAc > 0 ? Math.round((readinessVerifiedAc / readinessTotalAc) * 100) : 0;
+
+  const activeOverdueCount = activeCards.filter(
+    (card) =>
+      (scheduleByCardId.get(card.workItem.id) ?? resolveWorkItemSchedule(card.workItem)).isOverdue,
+  ).length;
+  const activeOnTrackCount = Math.max(0, activeCards.length - activeOverdueCount);
+  const scheduleOnTrackPct =
+    activeCards.length > 0 ? Math.round((activeOnTrackCount / activeCards.length) * 100) : 100;
+  const scheduleOverduePct =
+    activeCards.length > 0 ? Math.round((activeOverdueCount / activeCards.length) * 100) : 0;
 
   const openPrMap = new Map<string, ChangeRequestAudit>();
   for (const cr of reviewItems) {
@@ -432,6 +499,162 @@ export function CockpitOverviewTab({
     (cr) => cr.triageBucket === "bot_blocked" || cr.triageBucket === "ci_blocked",
   );
   const readyForReviewPrs = openPrs.filter((cr) => cr.triageBucket === "ready_for_human_review");
+  const cleanReadyPrs = openPrs.filter(
+    (cr) =>
+      cr.triageBucket === "ready_for_human_review" ||
+      (cr.triageBucket !== "bot_blocked" &&
+        cr.triageBucket !== "ci_blocked" &&
+        (cr.automatedReview.status === "pass" || cr.automatedReview.status === "auto_merged")),
+  );
+  const prReadyPct =
+    openPrs.length > 0 ? Math.round((cleanReadyPrs.length / openPrs.length) * 100) : 100;
+  const prBlockedPct =
+    openPrs.length > 0 ? Math.round((botBlockedPrs.length / openPrs.length) * 100) : 0;
+
+  const priorityActions: PriorityNextAction[] = [];
+  const seenActionWorkItemIds = new Set<string>();
+
+  const sortedBlockedPrs = [...botBlockedPrs].toSorted((a, b) => {
+    const aWeight = a.automatedReview.blockingCount + (a.triageBucket === "ci_blocked" ? 1 : 0);
+    const bWeight = b.automatedReview.blockingCount + (b.triageBucket === "ci_blocked" ? 1 : 0);
+    if (aWeight !== bWeight) return bWeight - aWeight;
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+  for (const cr of sortedBlockedPrs) {
+    if (priorityActions.length >= 4) break;
+    const isCiBlocked = cr.triageBucket === "ci_blocked";
+    const reason = isCiBlocked
+      ? gt("CI checks failing on {branch}", { branch: cr.headBranch })
+      : cr.automatedReview.blockingCount > 0
+        ? gt(
+            "{count, plural, one {{count} blocking bot finding} other {{count} blocking bot findings}}",
+            { count: cr.automatedReview.blockingCount },
+          )
+        : gt("Automated review blocking merge");
+    priorityActions.push({
+      key: `p1-pr:${cr.id}`,
+      tone: "error",
+      iconKind: "pr",
+      categoryLabel: isCiBlocked ? gt("CI Blocked") : gt("Bot Blocked"),
+      title: `${cr.repoFullName}#${cr.number} · ${cr.title}`,
+      reason,
+      ctaLabel: gt("Inspect PR"),
+      target: { kind: "change_request", cr },
+    });
+  }
+
+  const urgentWorkItems = activeCards
+    .filter((card) => {
+      const schedule =
+        scheduleByCardId.get(card.workItem.id) ?? resolveWorkItemSchedule(card.workItem);
+      return card.workItem.health === "blocked" || schedule.isOverdue;
+    })
+    .toSorted((a, b) => {
+      const aSched = scheduleByCardId.get(a.workItem.id) ?? resolveWorkItemSchedule(a.workItem);
+      const bSched = scheduleByCardId.get(b.workItem.id) ?? resolveWorkItemSchedule(b.workItem);
+      const aScore = (a.workItem.health === "blocked" ? 2 : 0) + (aSched.isOverdue ? 1 : 0);
+      const bScore = (b.workItem.health === "blocked" ? 2 : 0) + (bSched.isOverdue ? 1 : 0);
+      if (aScore !== bScore) return bScore - aScore;
+      const pDiff = priorityWeight(a.workItem.priority) - priorityWeight(b.workItem.priority);
+      if (pDiff !== 0) return pDiff;
+      return aSched.dueDate.localeCompare(bSched.dueDate);
+    });
+  for (const card of urgentWorkItems) {
+    if (priorityActions.length >= 4) break;
+    const schedule =
+      scheduleByCardId.get(card.workItem.id) ?? resolveWorkItemSchedule(card.workItem);
+    const isBlocked = card.workItem.health === "blocked";
+    const dueLabel = formatShortIsoDate(schedule.dueDate) ?? schedule.dueDate;
+    const reason =
+      isBlocked && schedule.isOverdue
+        ? gt("Blocked and overdue since {date}", { date: dueLabel })
+        : isBlocked
+          ? card.latestPulse?.nextStep.trim() ||
+            gt("Blocked in {stage}", { stage: card.workItem.stage })
+          : gt("Overdue since {date}", { date: dueLabel });
+    seenActionWorkItemIds.add(card.workItem.id);
+    priorityActions.push({
+      key: `p2-wi:${card.workItem.id}`,
+      tone: isBlocked ? "error" : "warning",
+      iconKind: "item",
+      categoryLabel: isBlocked ? gt("Blocked") : gt("Overdue"),
+      title: `${card.workItem.code} · ${card.workItem.title}`,
+      reason,
+      ctaLabel: gt("Open Item"),
+      target: { kind: "work_item", workItemId: card.workItem.id },
+    });
+  }
+
+  const missingPrdCards = activeCards
+    .filter((card) => {
+      if (seenActionWorkItemIds.has(card.workItem.id)) return false;
+      const stage = resolveFunnelStage(card);
+      const isEarlyStage =
+        stage === "intake" || stage === "prd" || stage === "prototype" || stage === "issue";
+      if (!isEarlyStage) return false;
+      return readWorkItemLifecycle(card.workItem).prdStatus === "none";
+    })
+    .toSorted((a, b) => {
+      const pDiff = priorityWeight(a.workItem.priority) - priorityWeight(b.workItem.priority);
+      if (pDiff !== 0) return pDiff;
+      return a.workItem.createdAt.localeCompare(b.workItem.createdAt);
+    });
+  for (const card of missingPrdCards) {
+    if (priorityActions.length >= 4) break;
+    const stage = resolveFunnelStage(card);
+    const stageName = stage === "done" ? card.workItem.stage : pipelineStageLabel(stage, gt);
+    seenActionWorkItemIds.add(card.workItem.id);
+    priorityActions.push({
+      key: `p3-prd:${card.workItem.id}`,
+      tone: "violet",
+      iconKind: "prd",
+      categoryLabel: gt("Missing PRD"),
+      title: `${card.workItem.code} · ${card.workItem.title}`,
+      reason: gt("Draft PRD to align scope in {stage}", { stage: stageName }),
+      ctaLabel: gt("Draft PRD"),
+      target: { kind: "work_item", workItemId: card.workItem.id },
+    });
+  }
+
+  const signoffReleases = releases.filter(
+    (entry) => entry.release.status === "staging" || entry.release.status === "ready",
+  );
+  for (const entry of signoffReleases) {
+    if (priorityActions.length >= 4) break;
+    const signed = STANDARD_RELEASE_GATES.filter(
+      (gateKey) =>
+        resolveLatestGateApprovals(entry.gateApprovals).get(gateKey)?.status === "approved",
+    ).length;
+    const isReady = entry.release.status === "ready";
+    priorityActions.push({
+      key: `p4-rel:${entry.release.id}`,
+      tone: isReady ? "success" : "info",
+      iconKind: "release",
+      categoryLabel: gt("Release Gate"),
+      title: `${entry.release.versionLabel} · ${releaseStatusLabel(entry.release.status, gt)}`,
+      reason: isReady
+        ? gt("Ready to ship · {signed}/3 gates approved", { signed })
+        : gt("Awaiting release sign-off · {signed}/3 gates approved", { signed }),
+      ctaLabel: gt("Review Release"),
+      target: { kind: "releases" },
+    });
+  }
+
+  const priorityHeaderDotTone: CockpitTone = priorityActions.some((a) => a.tone === "error")
+    ? "error"
+    : priorityActions.some((a) => a.tone === "warning")
+      ? "warning"
+      : "info";
+
+  const handlePriorityAction = (target: PriorityActionTarget) => {
+    if (target.kind === "change_request") {
+      onOpenChangeRequest(target.cr);
+    } else if (target.kind === "work_item") {
+      onOpenWorkItem(target.workItemId);
+    } else {
+      onNavigateDelivery("releases");
+    }
+  };
 
   const selectedMember = selectedHandle ? findMemberByHandle(roster, selectedHandle) : null;
 
@@ -525,6 +748,7 @@ export function CockpitOverviewTab({
     : allActiveRows;
 
   const completionRatio = totalItems > 0 ? doneItems.length / totalItems : 0;
+  const completionPct = totalItems > 0 ? Math.round((doneItems.length / totalItems) * 100) : 0;
   const ringRadius = 7.5;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringDashOffset = ringCircumference * (1 - completionRatio);
@@ -813,6 +1037,343 @@ export function CockpitOverviewTab({
         />
       </section>
 
+      {activeProject ? (
+        <section aria-label={gt("Delivery Health")}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <button
+              className="group flex min-w-0 cursor-pointer flex-col justify-between gap-3 rounded-2xl border border-border/60 bg-linear-to-b from-card/85 to-card/45 p-4 text-left shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-border hover:from-card/95 hover:to-card/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              type="button"
+              onClick={() => onNavigateDelivery("kanban")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-muted-foreground">
+                  <T>Delivery Completion</T>
+                </span>
+                <CockpitIconBadge
+                  size="sm"
+                  tone={totalItems > 0 && completionPct === 100 ? "success" : "primary"}
+                >
+                  <CheckCircle2Icon />
+                </CockpitIconBadge>
+              </div>
+
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-lg font-semibold tracking-tight text-foreground tabular-nums">
+                  {doneItems.length}
+                  <span className="text-sm font-normal text-muted-foreground">/{totalItems}</span>
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-xs font-semibold tabular-nums",
+                    totalItems > 0 && completionPct === 100
+                      ? "text-success-foreground"
+                      : "text-foreground/80",
+                  )}
+                >
+                  {completionPct}%
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-muted/55">
+                  {completionPct > 0 ? (
+                    <div
+                      className="h-full rounded-full bg-success transition-[width]"
+                      style={{ width: `${completionPct}%` }}
+                    />
+                  ) : null}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground tabular-nums">
+                  {totalItems === 0 ? (
+                    <T>No work items yet</T>
+                  ) : activeCards.length > 0 ? (
+                    <T>
+                      <Plural
+                        n={activeCards.length}
+                        one={
+                          <>
+                            <Var>{activeCards.length}</Var> item in progress
+                          </>
+                        }
+                        other={
+                          <>
+                            <Var>{activeCards.length}</Var> items in progress
+                          </>
+                        }
+                      />
+                    </T>
+                  ) : (
+                    <T>All work items shipped</T>
+                  )}
+                </div>
+              </div>
+            </button>
+
+            <button
+              className="group flex min-w-0 cursor-pointer flex-col justify-between gap-3 rounded-2xl border border-border/60 bg-linear-to-b from-card/85 to-card/45 p-4 text-left shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-border hover:from-card/95 hover:to-card/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              type="button"
+              onClick={() => onNavigateDelivery("kanban")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-muted-foreground">
+                  <T>Acceptance Readiness</T>
+                </span>
+                <CockpitIconBadge
+                  size="sm"
+                  tone={
+                    readinessTotalAc > 0 && acceptanceReadinessPct === 100
+                      ? "success"
+                      : readinessTotalAc > 0
+                        ? "violet"
+                        : "neutral"
+                  }
+                >
+                  <ListChecksIcon />
+                </CockpitIconBadge>
+              </div>
+
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-mono text-lg font-semibold tracking-tight text-foreground tabular-nums">
+                  {readinessVerifiedAc}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    /{readinessTotalAc}
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-xs font-semibold tabular-nums",
+                    readinessTotalAc > 0 && acceptanceReadinessPct === 100
+                      ? "text-success-foreground"
+                      : readinessTotalAc > 0
+                        ? "text-guest-foreground"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {readinessTotalAc > 0 ? `${acceptanceReadinessPct}%` : "-"}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-muted/55">
+                  {readinessTotalAc > 0 && acceptanceReadinessPct > 0 ? (
+                    <div
+                      className={cn(
+                        "h-full rounded-full transition-[width]",
+                        acceptanceReadinessPct === 100 ? "bg-success" : "bg-guest",
+                      )}
+                      style={{ width: `${acceptanceReadinessPct}%` }}
+                    />
+                  ) : null}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground tabular-nums">
+                  {readinessTotalAc === 0 ? (
+                    <T>No checklists on active items</T>
+                  ) : readinessVerifiedAc === readinessTotalAc ? (
+                    <T>All acceptance criteria verified</T>
+                  ) : (
+                    <T>
+                      <Plural
+                        n={readinessTotalAc - readinessVerifiedAc}
+                        one={
+                          <>
+                            <Var>{readinessTotalAc - readinessVerifiedAc}</Var> criterion remaining
+                          </>
+                        }
+                        other={
+                          <>
+                            <Var>{readinessTotalAc - readinessVerifiedAc}</Var> criteria remaining
+                          </>
+                        }
+                      />
+                    </T>
+                  )}
+                </div>
+              </div>
+            </button>
+
+            <button
+              className={cn(
+                "group flex min-w-0 cursor-pointer flex-col justify-between gap-3 rounded-2xl border bg-linear-to-b from-card/85 to-card/45 p-4 text-left shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:from-card/95 hover:to-card/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                activeOverdueCount > 0
+                  ? "border-destructive/30 hover:border-destructive/50"
+                  : "border-border/60 hover:border-border",
+              )}
+              type="button"
+              onClick={() => onNavigateDelivery("gantt")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-muted-foreground">
+                  <T>Schedule Health</T>
+                </span>
+                <CockpitIconBadge
+                  size="sm"
+                  tone={
+                    activeOverdueCount > 0
+                      ? "error"
+                      : activeCards.length > 0
+                        ? "success"
+                        : "neutral"
+                  }
+                >
+                  <CalendarClockIcon />
+                </CockpitIconBadge>
+              </div>
+
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="inline-flex items-baseline gap-1 font-mono text-lg font-semibold tracking-tight text-foreground tabular-nums">
+                  <span>{activeOnTrackCount}</span>
+                  <span className="font-sans text-xs font-normal text-muted-foreground">
+                    <T>on track</T>
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-xs font-semibold tabular-nums",
+                    activeOverdueCount > 0 ? "text-destructive" : "text-success-foreground",
+                  )}
+                >
+                  {activeOverdueCount > 0 ? (
+                    <T>
+                      <Var>{activeOverdueCount}</Var> overdue
+                    </T>
+                  ) : (
+                    <T>On time</T>
+                  )}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div
+                  aria-hidden
+                  className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted/55"
+                >
+                  {activeCards.length > 0 && scheduleOnTrackPct > 0 ? (
+                    <span
+                      className="h-full bg-success transition-[width]"
+                      style={{ width: `${scheduleOnTrackPct}%` }}
+                    />
+                  ) : null}
+                  {activeCards.length > 0 && scheduleOverduePct > 0 ? (
+                    <span
+                      className="h-full bg-destructive transition-[width]"
+                      style={{ width: `${scheduleOverduePct}%` }}
+                    />
+                  ) : null}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground tabular-nums">
+                  {activeCards.length === 0 ? (
+                    <T>No active schedules</T>
+                  ) : activeOverdueCount > 0 ? (
+                    <T>
+                      <Var>{scheduleOnTrackPct}</Var>% on schedule
+                    </T>
+                  ) : (
+                    <T>
+                      <Var>{explicitScheduleCount}</Var>/<Var>{totalItems}</Var> explicitly dated
+                    </T>
+                  )}
+                </div>
+              </div>
+            </button>
+
+            <button
+              className={cn(
+                "group flex min-w-0 cursor-pointer flex-col justify-between gap-3 rounded-2xl border bg-linear-to-b from-card/85 to-card/45 p-4 text-left shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:from-card/95 hover:to-card/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                botBlockedPrs.length > 0
+                  ? "border-destructive/30 hover:border-destructive/50"
+                  : "border-border/60 hover:border-border",
+              )}
+              type="button"
+              onClick={() => onNavigateDelivery("triage")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-medium text-muted-foreground">
+                  <T>PR Audit Gate</T>
+                </span>
+                <CockpitIconBadge
+                  size="sm"
+                  tone={
+                    botBlockedPrs.length > 0
+                      ? "error"
+                      : cleanReadyPrs.length > 0
+                        ? "info"
+                        : openPrs.length > 0
+                          ? "warning"
+                          : "success"
+                  }
+                >
+                  <ShieldCheckIcon />
+                </CockpitIconBadge>
+              </div>
+
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="inline-flex items-baseline gap-1 font-mono text-lg font-semibold tracking-tight text-foreground tabular-nums">
+                  <span>{cleanReadyPrs.length}</span>
+                  <span className="font-sans text-xs font-normal text-muted-foreground">
+                    <T>ready</T>
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-xs font-semibold tabular-nums",
+                    botBlockedPrs.length > 0 ? "text-destructive" : "text-success-foreground",
+                  )}
+                >
+                  {botBlockedPrs.length > 0 ? (
+                    <T>
+                      <Var>{botBlockedPrs.length}</Var> blocked
+                    </T>
+                  ) : (
+                    <T>0 blocked</T>
+                  )}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div
+                  aria-hidden
+                  className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted/55"
+                >
+                  {openPrs.length > 0 && prReadyPct > 0 ? (
+                    <span
+                      className="h-full bg-info transition-[width]"
+                      style={{ width: `${prReadyPct}%` }}
+                    />
+                  ) : null}
+                  {openPrs.length > 0 && prBlockedPct > 0 ? (
+                    <span
+                      className="h-full bg-destructive transition-[width]"
+                      style={{ width: `${prBlockedPct}%` }}
+                    />
+                  ) : null}
+                </div>
+                <div className="truncate text-2xs text-muted-foreground tabular-nums">
+                  {openPrs.length === 0 ? (
+                    <T>No open pull requests</T>
+                  ) : (
+                    <T>
+                      <Plural
+                        n={openPrs.length}
+                        one={
+                          <>
+                            <Var>{openPrs.length}</Var> open PR in audit queue
+                          </>
+                        }
+                        other={
+                          <>
+                            <Var>{openPrs.length}</Var> open PRs in audit queue
+                          </>
+                        }
+                      />
+                    </T>
+                  )}
+                </div>
+              </div>
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section aria-label={gt("Delivery Pipeline")}>
         <CockpitSurface variant="grouped">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
@@ -855,10 +1416,11 @@ export function CockpitOverviewTab({
                   : stat.overdue > 0
                     ? "bg-warning"
                     : step.barClass;
-              const barWidthPct =
+              const sharePct =
                 isActive && activeCards.length > 0
-                  ? Math.max(18, Math.round((stat.count / activeCards.length) * 100))
+                  ? Math.round((stat.count / activeCards.length) * 100)
                   : 0;
+              const barWidthPct = sharePct > 0 ? Math.max(18, sharePct) : 0;
 
               return (
                 <button
@@ -895,14 +1457,21 @@ export function CockpitOverviewTab({
                   </div>
 
                   <div className="space-y-2">
-                    <span
-                      className={cn(
-                        "block truncate text-xs",
-                        isActive ? "font-medium text-foreground" : "text-muted-foreground",
-                      )}
-                    >
-                      {pipelineStageLabel(step.stage, gt)}
-                    </span>
+                    <div className="flex items-baseline justify-between gap-1.5">
+                      <span
+                        className={cn(
+                          "min-w-0 truncate text-xs",
+                          isActive ? "font-medium text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {pipelineStageLabel(step.stage, gt)}
+                      </span>
+                      {sharePct > 0 ? (
+                        <span className="shrink-0 font-mono text-3xs tabular-nums text-muted-foreground/75">
+                          {sharePct}%
+                        </span>
+                      ) : null}
+                    </div>
                     <div
                       aria-hidden
                       className="h-1 w-full overflow-hidden rounded-full bg-muted/60"
@@ -921,6 +1490,91 @@ export function CockpitOverviewTab({
           </div>
         </CockpitSurface>
       </section>
+
+      {priorityActions.length > 0 ? (
+        <section aria-label={gt("Priority Next Actions")}>
+          <CockpitSurface variant="grouped">
+            <div className="flex items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <CockpitStatusDot ring tone={priorityHeaderDotTone} />
+                <h2 className="text-sm font-medium text-foreground">
+                  <T>Priority Next Actions</T>
+                </h2>
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {priorityActions.length}
+                </span>
+              </div>
+              <span className="hidden text-2xs text-muted-foreground sm:inline">
+                <T>Highest-leverage team decisions</T>
+              </span>
+            </div>
+
+            <div className="divide-y divide-border/45">
+              {priorityActions.map((action) => (
+                <div
+                  key={action.key}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/25 sm:flex-nowrap"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <CockpitIconBadge className="mt-0.5" size="sm" tone={action.tone}>
+                      {renderPriorityActionIcon(action.iconKind)}
+                    </CockpitIconBadge>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                            action.tone === "error"
+                              ? "border-destructive/30 bg-destructive/8 text-destructive"
+                              : action.tone === "warning"
+                                ? "border-warning/35 bg-warning/10 text-warning-foreground"
+                                : action.tone === "violet"
+                                  ? "border-guest/30 bg-guest/10 text-guest-foreground"
+                                  : action.tone === "success"
+                                    ? "border-success/30 bg-success/10 text-success-foreground"
+                                    : "border-info/30 bg-info/10 text-info-foreground",
+                          )}
+                        >
+                          {action.categoryLabel}
+                        </span>
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {action.title}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">{action.reason}</p>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handlePriorityAction(action.target)}
+                    >
+                      <span>{action.ctaLabel}</span>
+                      <ArrowRightIcon />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CockpitSurface>
+        </section>
+      ) : totalItems > 0 ? (
+        <section aria-label={gt("Priority Next Actions")}>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-success/25 bg-linear-to-r from-success/8 via-card/65 to-card/45 px-4 py-2.5 text-xs shadow-2xs ring-1 ring-inset ring-foreground/4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <CockpitStatusDot ring tone="success" />
+              <span className="font-medium text-foreground">
+                <T>All clear: pipeline flowing smoothly</T>
+              </span>
+            </div>
+            <span className="hidden shrink-0 font-mono text-2xs text-muted-foreground sm:inline">
+              <T>No urgent actions</T>
+            </span>
+          </div>
+        </section>
+      ) : null}
 
       {totalItems > 0 || visibleActiveRows.length > 0 || selectedMember ? (
         <section aria-label={gt("Active Now")}>

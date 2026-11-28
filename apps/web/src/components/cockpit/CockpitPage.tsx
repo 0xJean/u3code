@@ -24,6 +24,7 @@ import {
   type TeamBoardMessage,
   type WorkItemPriority,
   type WorkItemType,
+  type WorkflowStage,
   type WorkspaceMember,
 } from "@u3code/hub-contracts";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
@@ -39,10 +40,14 @@ import {
   LogOutIcon,
   PackageCheckIcon,
   PlusIcon,
+  RotateCcwIcon,
+  SearchIcon,
   ServerIcon,
   ShieldAlertIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
+  UserIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
@@ -71,6 +76,7 @@ import {
   EmptyTitle,
 } from "~/components/ui/empty";
 import { Input } from "~/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import {
   Select,
@@ -129,6 +135,7 @@ type CockpitTab = "overview" | "board" | "members" | "delivery" | "memory" | "se
 type DeliverySubTab = "kanban" | "gantt" | "triage" | "releases";
 type BoardViewMode = "board" | "list";
 type BoardFilter = "all" | "blocked" | "has_pr";
+type BoardPriorityFilter = "all" | WorkItemPriority;
 type TriageFilter = "all" | "blocked" | "human" | "unlinked";
 
 const DEFAULT_AGENT_RUNNER_ID = "claude-agent";
@@ -298,6 +305,22 @@ function reviewStatusLabel(status: string, gt: ReturnType<typeof useGT>): string
   }
 }
 
+function stageCategoryTone(category: WorkflowStage["category"]): CockpitTone {
+  switch (category) {
+    case "done":
+      return "success";
+    case "review":
+      return "warning";
+    case "active":
+    case "release":
+      return "info";
+    case "cancelled":
+      return "error";
+    case "backlog":
+      return "neutral";
+  }
+}
+
 function matchesBoardFilter(card: CockpitWorkItemCard, filter: BoardFilter): boolean {
   if (filter === "blocked") {
     return card.workItem.health === "blocked" || card.workItem.health === "at_risk";
@@ -305,6 +328,68 @@ function matchesBoardFilter(card: CockpitWorkItemCard, filter: BoardFilter): boo
   if (filter === "has_pr") {
     return card.changeRequests.length > 0;
   }
+  return true;
+}
+
+function matchesDeliveryFilters(
+  card: CockpitWorkItemCard,
+  params: {
+    readonly statusFilter: BoardFilter;
+    readonly search: string;
+    readonly assigneeFilter: string;
+    readonly priorityFilter: BoardPriorityFilter;
+    readonly currentUserId: string | null;
+  },
+): boolean {
+  if (!matchesBoardFilter(card, params.statusFilter)) {
+    return false;
+  }
+
+  if (
+    params.priorityFilter !== "all" &&
+    card.workItem.priority.toLowerCase() !== params.priorityFilter
+  ) {
+    return false;
+  }
+
+  if (params.assigneeFilter === "mine") {
+    if (
+      params.currentUserId === null ||
+      card.workItem.assigneeType !== "human" ||
+      card.workItem.assigneeUserId !== params.currentUserId
+    ) {
+      return false;
+    }
+  } else if (params.assigneeFilter === "unassigned") {
+    if (card.workItem.assigneeType !== "unassigned") {
+      return false;
+    }
+  } else if (params.assigneeFilter.startsWith("human:")) {
+    const userId = params.assigneeFilter.slice("human:".length);
+    if (card.workItem.assigneeType !== "human" || card.workItem.assigneeUserId !== userId) {
+      return false;
+    }
+  } else if (params.assigneeFilter.startsWith("runner:")) {
+    const runnerId = params.assigneeFilter.slice("runner:".length).trim().toLowerCase();
+    const cardRunnerId = card.workItem.assigneeRunnerId?.trim().toLowerCase() ?? "";
+    if (card.workItem.assigneeType !== "runner" || cardRunnerId !== runnerId) {
+      return false;
+    }
+  }
+
+  const query = params.search.trim().toLowerCase();
+  if (query.length > 0) {
+    const lifecycle = readWorkItemLifecycle(card.workItem);
+    const matchesCode = card.workItem.code.toLowerCase().includes(query);
+    const matchesTitle = card.workItem.title.toLowerCase().includes(query);
+    const matchesBranch = lifecycle.branchName?.toLowerCase().includes(query) ?? false;
+    const matchesIssue =
+      lifecycle.githubIssueNumber !== null && `#${lifecycle.githubIssueNumber}`.includes(query);
+    if (!matchesCode && !matchesTitle && !matchesBranch && !matchesIssue) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -322,6 +407,9 @@ export function CockpitPage() {
   const [deliverySubTab, setDeliverySubTab] = useState<DeliverySubTab>("kanban");
   const [boardView, setBoardView] = useState<BoardViewMode>("board");
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
+  const [boardSearch, setBoardSearch] = useState("");
+  const [boardAssigneeFilter, setBoardAssigneeFilter] = useState<string>("all");
+  const [boardPriorityFilter, setBoardPriorityFilter] = useState<BoardPriorityFilter>("all");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
 
   const [statusLoadedForEnv, setStatusLoadedForEnv] = useState<EnvironmentId | null>(null);
@@ -340,6 +428,7 @@ export function CockpitPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newItemInitialStage, setNewItemInitialStage] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<WorkItemType>("feature");
   const [newPriority, setNewPriority] = useState<WorkItemPriority>("p1");
@@ -349,6 +438,7 @@ export function CockpitPage() {
   const [newDueAt, setNewDueAt] = useState<string>(() => addDaysIsoDate(todayLocalIsoDate(), 5));
   const [newSpec, setNewSpec] = useState("");
   const [creatingMode, setCreatingMode] = useState<"create" | "prd" | null>(null);
+  const [advancingWorkItemId, setAdvancingWorkItemId] = useState<string | null>(null);
 
   const [generatingDigest, setGeneratingDigest] = useState(false);
   const [savingDirectives, setSavingDirectives] = useState(false);
@@ -554,6 +644,13 @@ export function CockpitPage() {
     setFallbackChangeRequest(null);
   };
 
+  const handleResetDeliveryFilters = () => {
+    setBoardFilter("all");
+    setBoardSearch("");
+    setBoardAssigneeFilter("all");
+    setBoardPriorityFilter("all");
+  };
+
   const handleConnected = (nextStatus: TeamHubStatusResult) => {
     setStatus(nextStatus);
     const firstWorkspaceId = nextStatus.me?.workspaces[0]?.id ?? "";
@@ -561,6 +658,7 @@ export function CockpitPage() {
     setSelectedProjectId("");
     setPendingMentionHandle(null);
     setPendingFilterHandle(null);
+    handleResetDeliveryFilters();
     handleCloseChangeRequest();
     if (primaryEnvironmentId && nextStatus.connected && firstWorkspaceId) {
       setActiveTab("overview");
@@ -583,17 +681,27 @@ export function CockpitPage() {
     setReleases([]);
     setPendingMentionHandle(null);
     setPendingFilterHandle(null);
+    handleResetDeliveryFilters();
     handleCloseChangeRequest();
   };
 
-  const handleMoveStage = async (workItemId: string, nextStage: string) => {
-    if (!primaryEnvironmentId) return;
+  const handleAdvanceWorkItemStage = async (card: CockpitWorkItemCard, nextStageId: string) => {
+    if (!primaryEnvironmentId || advancingWorkItemId === card.workItem.id) return;
+    setAdvancingWorkItemId(card.workItem.id);
     const res = await updateWorkItem({
       environmentId: primaryEnvironmentId,
-      input: { workItemId, stage: nextStage },
+      input: { workItemId: card.workItem.id, stage: nextStageId },
     });
+    setAdvancingWorkItemId((current) => (current === card.workItem.id ? null : current));
     if (res._tag === "Success") {
-      toastManager.add({ title: gt("Stage updated"), type: "success" });
+      const nextStageLabel = stages.find((stage) => stage.id === nextStageId)?.label ?? nextStageId;
+      toastManager.add({
+        title: gt("Moved {code} to {stageLabel}", {
+          code: card.workItem.code,
+          stageLabel: nextStageLabel,
+        }),
+        type: "success",
+      });
       void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
     } else {
       toastManager.add({
@@ -645,10 +753,11 @@ export function CockpitPage() {
     }
   };
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (initialStageId?: string | null) => {
     const today = todayLocalIsoDate();
     setNewPlannedStartAt(today);
     setNewDueAt(addDaysIsoDate(today, 5));
+    setNewItemInitialStage(initialStageId ?? null);
     setCreateDialogOpen(true);
   };
 
@@ -687,6 +796,7 @@ export function CockpitPage() {
         title: newTitle.trim(),
         itemType: newType,
         priority: newPriority,
+        ...(newItemInitialStage ? { stage: newItemInitialStage } : {}),
         assigneeType: decodedAssignee.assigneeType,
         assigneeUserId: decodedAssignee.assigneeUserId,
         assigneeRunnerId: decodedAssignee.assigneeRunnerId,
@@ -704,6 +814,7 @@ export function CockpitPage() {
       const createdWorkItem = res.value.workItem;
       const today = todayLocalIsoDate();
       setCreateDialogOpen(false);
+      setNewItemInitialStage(null);
       setNewTitle("");
       setNewSpec("");
       setNewDesignTier("medium");
@@ -878,16 +989,39 @@ export function CockpitPage() {
   const stages = activeProject?.workflowConfig.stages ?? [];
   const gates = activeProject?.workflowConfig.gates ?? [];
   const allCards = overview?.cards ?? [];
-  const filteredCards = allCards.filter((card) => matchesBoardFilter(card, boardFilter));
+  const currentUserId = status?.me?.user.id ?? null;
+  const filteredCards = allCards.filter((card) =>
+    matchesDeliveryFilters(card, {
+      statusFilter: boardFilter,
+      search: boardSearch,
+      assigneeFilter: boardAssigneeFilter,
+      priorityFilter: boardPriorityFilter,
+      currentUserId,
+    }),
+  );
   const blockedCardCount = allCards.filter((card) => matchesBoardFilter(card, "blocked")).length;
   const hasPrCardCount = allCards.filter((card) => matchesBoardFilter(card, "has_pr")).length;
+  const myCardCount = currentUserId
+    ? allCards.filter(
+        (card) =>
+          card.workItem.assigneeType === "human" && card.workItem.assigneeUserId === currentUserId,
+      ).length
+    : 0;
+  const hasActiveDeliveryFilter =
+    boardFilter !== "all" ||
+    boardSearch.trim().length > 0 ||
+    boardAssigneeFilter !== "all" ||
+    boardPriorityFilter !== "all";
+  const isMineFilterActive =
+    boardAssigneeFilter === "mine" ||
+    (currentUserId !== null && boardAssigneeFilter === `human:${currentUserId}`);
   const reviewItems = reviewQueue?.items ?? [];
   const roster = deriveTeamRoster({
     members,
     cards: allCards,
     reviewItems,
     boardMessages,
-    currentUserId: status?.me?.user.id ?? null,
+    currentUserId,
     resolve: resolveMessage,
   });
   const deliveryOpenCount = overview
@@ -938,8 +1072,35 @@ export function CockpitPage() {
     handle: resolveMemberHandle(member, roster),
     displayName: member.displayName,
   }));
+  const runnerFilterOptions: Array<{ readonly value: string; readonly runnerId: string }> = [];
+  const seenRunnerIds = new Set<string>();
+  for (const card of allCards) {
+    if (card.workItem.assigneeType === "runner" && card.workItem.assigneeRunnerId) {
+      const runnerId = card.workItem.assigneeRunnerId.trim();
+      const runnerKey = runnerId.toLowerCase();
+      if (runnerId && !seenRunnerIds.has(runnerKey)) {
+        seenRunnerIds.add(runnerKey);
+        runnerFilterOptions.push({ value: `runner:${runnerId}`, runnerId });
+      }
+    }
+  }
+  if (!seenRunnerIds.has(DEFAULT_AGENT_RUNNER_ID)) {
+    runnerFilterOptions.push({
+      value: `runner:${DEFAULT_AGENT_RUNNER_ID}`,
+      runnerId: DEFAULT_AGENT_RUNNER_ID,
+    });
+  }
   const selectedNewAssigneeOption = newAssignee.startsWith("human:")
     ? (memberSelectOptions.find((entry) => entry.value === newAssignee) ?? null)
+    : null;
+  const selectedAssigneeFilterMember = boardAssigneeFilter.startsWith("human:")
+    ? (memberSelectOptions.find((entry) => entry.value === boardAssigneeFilter) ?? null)
+    : null;
+  const selectedAssigneeFilterRunner = boardAssigneeFilter.startsWith("runner:")
+    ? boardAssigneeFilter.slice("runner:".length)
+    : null;
+  const initialStageMeta = newItemInitialStage
+    ? (stages.find((stage) => stage.id === newItemInitialStage) ?? null)
     : null;
   const hasActiveBlockers = Boolean(
     overview &&
@@ -984,6 +1145,7 @@ export function CockpitPage() {
                       setReleases([]);
                       setPendingMentionHandle(null);
                       setPendingFilterHandle(null);
+                      handleResetDeliveryFilters();
                       handleCloseChangeRequest();
                       if (primaryEnvironmentId) {
                         void loadCockpitData(primaryEnvironmentId, nextWs, "");
@@ -1012,6 +1174,7 @@ export function CockpitPage() {
                       if (!nextProj) return;
                       setSelectedProjectId(nextProj);
                       setReleases([]);
+                      handleResetDeliveryFilters();
                       if (primaryEnvironmentId) {
                         void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, nextProj);
                       }
@@ -1142,6 +1305,9 @@ export function CockpitPage() {
                     setActiveTab("delivery");
                     setDeliverySubTab("kanban");
                     setBoardFilter("blocked");
+                    setBoardSearch("");
+                    setBoardAssigneeFilter("all");
+                    setBoardPriorityFilter("all");
                   }}
                 />
               ) : null}
@@ -1223,7 +1389,7 @@ export function CockpitPage() {
                   onNavigateDelivery={handleNavigateDelivery}
                   onNavigateMembers={() => setActiveTab("members")}
                   onOpenChangeRequest={handleOpenChangeRequest}
-                  {...(selectedProjectId ? { onOpenIntake: openCreateDialog } : {})}
+                  {...(selectedProjectId ? { onOpenIntake: () => openCreateDialog() } : {})}
                   onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
                 />
               ) : null}
@@ -1303,7 +1469,7 @@ export function CockpitPage() {
 
                     {(deliverySubTab === "kanban" || deliverySubTab === "gantt") &&
                     activeProject ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{workflowPresetLabel(activeProject.workflowConfig.preset, gt)}</span>
                         <span aria-hidden className="opacity-40">
                           ·
@@ -1313,8 +1479,28 @@ export function CockpitPage() {
                             <Var>{overview?.repos.length ?? 0}</Var> repos
                           </T>
                         </span>
-                        {deliverySubTab === "gantt" && selectedProjectId ? (
-                          <Button size="xs" variant="default" onClick={openCreateDialog}>
+                        {deliverySubTab === "kanban" && stages.length > 0 && allCards.length > 0 ? (
+                          <ToggleGroup
+                            size="segmented"
+                            value={[boardView]}
+                            variant="segmented"
+                            onValueChange={(next) => {
+                              const value = next[0];
+                              if (value === "board" || value === "list") setBoardView(value);
+                            }}
+                          >
+                            <Toggle value="board">
+                              <KanbanIcon />
+                              <T>Board</T>
+                            </Toggle>
+                            <Toggle value="list">
+                              <ListIcon />
+                              <T>List</T>
+                            </Toggle>
+                          </ToggleGroup>
+                        ) : null}
+                        {selectedProjectId ? (
+                          <Button size="xs" variant="default" onClick={() => openCreateDialog()}>
                             <PlusIcon />
                             <T>New Item</T>
                           </Button>
@@ -1322,6 +1508,206 @@ export function CockpitPage() {
                       </div>
                     ) : null}
                   </div>
+
+                  {(deliverySubTab === "kanban" || deliverySubTab === "gantt") &&
+                  stages.length > 0 &&
+                  allCards.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/55 bg-linear-to-b from-card/75 to-card/40 px-3 py-2.5 shadow-2xs ring-1 ring-inset ring-foreground/4">
+                      <div className="min-w-48 flex-1 sm:max-w-64">
+                        <InputGroup>
+                          <InputGroupAddon align="inline-start">
+                            <SearchIcon />
+                          </InputGroupAddon>
+                          <InputGroupInput
+                            aria-label={gt("Search work items")}
+                            placeholder={gt("Search code, title, branch, #issue...")}
+                            size="sm"
+                            value={boardSearch}
+                            onChange={(event) => setBoardSearch(event.target.value)}
+                          />
+                          {boardSearch ? (
+                            <InputGroupAddon align="inline-end">
+                              <Button
+                                aria-label={gt("Clear search")}
+                                size="icon-micro"
+                                variant="ghost-muted"
+                                onClick={() => setBoardSearch("")}
+                              >
+                                <XIcon />
+                              </Button>
+                            </InputGroupAddon>
+                          ) : null}
+                        </InputGroup>
+                      </div>
+
+                      <ToggleGroup
+                        size="segmented"
+                        value={[boardFilter]}
+                        variant="segmented"
+                        onValueChange={(next) => {
+                          const value = next[0];
+                          if (value === "all" || value === "blocked" || value === "has_pr") {
+                            setBoardFilter(value);
+                          }
+                        }}
+                      >
+                        <Toggle value="all">
+                          <T>All</T>
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {allCards.length}
+                          </span>
+                        </Toggle>
+                        <Toggle value="blocked">
+                          <T>Blocked</T>
+                          {blockedCardCount > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {blockedCardCount}
+                            </span>
+                          ) : null}
+                        </Toggle>
+                        <Toggle value="has_pr">
+                          <T>Has PR</T>
+                          {hasPrCardCount > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {hasPrCardCount}
+                            </span>
+                          ) : null}
+                        </Toggle>
+                      </ToggleGroup>
+
+                      {currentUserId !== null ? (
+                        <Button
+                          aria-pressed={isMineFilterActive}
+                          data-pressed={isMineFilterActive ? "" : undefined}
+                          size="compact"
+                          variant={isMineFilterActive ? "secondary" : "outline"}
+                          onClick={() =>
+                            setBoardAssigneeFilter(isMineFilterActive ? "all" : "mine")
+                          }
+                        >
+                          <UserIcon />
+                          <T>My Items</T>
+                          {myCardCount > 0 ? (
+                            <span className="font-mono text-2xs tabular-nums opacity-70">
+                              {myCardCount}
+                            </span>
+                          ) : null}
+                        </Button>
+                      ) : null}
+
+                      <div className="w-44 shrink-0">
+                        <Select
+                          value={boardAssigneeFilter}
+                          onValueChange={(value) => {
+                            if (value) setBoardAssigneeFilter(value);
+                          }}
+                        >
+                          <SelectTrigger aria-label={gt("Filter by assignee")} size="compact">
+                            <SelectValue>
+                              {boardAssigneeFilter === "all" ? (
+                                <T>All assignees</T>
+                              ) : boardAssigneeFilter === "mine" ? (
+                                <T>My items</T>
+                              ) : boardAssigneeFilter === "unassigned" ? (
+                                <T>Unassigned</T>
+                              ) : selectedAssigneeFilterRunner ? (
+                                <span className="inline-flex items-center gap-1.5 truncate">
+                                  <BotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                                  <span className="truncate font-mono text-xs">
+                                    @{selectedAssigneeFilterRunner}
+                                  </span>
+                                </span>
+                              ) : selectedAssigneeFilterMember ? (
+                                <span className="truncate font-mono text-xs">
+                                  @{selectedAssigneeFilterMember.handle}
+                                </span>
+                              ) : (
+                                <T>All assignees</T>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="all">{gt("All assignees")}</SelectItem>
+                            {currentUserId !== null ? (
+                              <SelectItem value="mine">{gt("My items")}</SelectItem>
+                            ) : null}
+                            <SelectItem value="unassigned">{gt("Unassigned")}</SelectItem>
+                            {memberSelectOptions.map((member) => (
+                              <SelectItem key={member.value} value={member.value}>
+                                @{member.handle} · {member.displayName}
+                              </SelectItem>
+                            ))}
+                            {runnerFilterOptions.map((runner) => (
+                              <SelectItem key={runner.value} value={runner.value}>
+                                {gt("Coding Agent ({runnerId})", { runnerId: runner.runnerId })}
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+
+                      <div className="w-36 shrink-0">
+                        <Select
+                          value={boardPriorityFilter}
+                          onValueChange={(value) => {
+                            if (
+                              value === "all" ||
+                              value === "p0" ||
+                              value === "p1" ||
+                              value === "p2" ||
+                              value === "p3"
+                            ) {
+                              setBoardPriorityFilter(value);
+                            }
+                          }}
+                        >
+                          <SelectTrigger aria-label={gt("Filter by priority")} size="compact">
+                            <SelectValue>
+                              {boardPriorityFilter === "all" ? (
+                                <T>All priorities</T>
+                              ) : (
+                                <CockpitPriorityDot priority={boardPriorityFilter} />
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="all">{gt("All priorities")}</SelectItem>
+                            <SelectItem value="p0">
+                              <CockpitPriorityDot priority="p0" />
+                            </SelectItem>
+                            <SelectItem value="p1">
+                              <CockpitPriorityDot priority="p1" />
+                            </SelectItem>
+                            <SelectItem value="p2">
+                              <CockpitPriorityDot priority="p2" />
+                            </SelectItem>
+                            <SelectItem value="p3">
+                              <CockpitPriorityDot priority="p3" />
+                            </SelectItem>
+                          </SelectPopup>
+                        </Select>
+                      </div>
+
+                      {hasActiveDeliveryFilter ? (
+                        <div className="ml-auto flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            <T>
+                              Showing <Var>{filteredCards.length}</Var> of{" "}
+                              <Var>{allCards.length}</Var>
+                            </T>
+                          </span>
+                          <Button
+                            size="xs"
+                            variant="ghost-muted"
+                            onClick={handleResetDeliveryFilters}
+                          >
+                            <RotateCcwIcon />
+                            <T>Reset filters</T>
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {deliverySubTab === "kanban" ? (
                     stages.length === 0 ? (
@@ -1378,7 +1764,11 @@ export function CockpitPage() {
                           </EmptyHeader>
                           {selectedProjectId ? (
                             <EmptyContent>
-                              <Button size="sm" variant="default" onClick={openCreateDialog}>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => openCreateDialog()}
+                              >
                                 <PlusIcon />
                                 <T>New Work Item</T>
                               </Button>
@@ -1388,74 +1778,7 @@ export function CockpitPage() {
                       </CockpitSurface>
                     ) : (
                       <div className="space-y-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <ToggleGroup
-                            size="segmented"
-                            value={[boardFilter]}
-                            variant="segmented"
-                            onValueChange={(next) => {
-                              const value = next[0];
-                              if (value === "all" || value === "blocked" || value === "has_pr") {
-                                setBoardFilter(value);
-                              }
-                            }}
-                          >
-                            <Toggle value="all">
-                              <T>All</T>
-                              {allCards.length > 0 ? (
-                                <span className="font-mono text-2xs tabular-nums opacity-70">
-                                  {allCards.length}
-                                </span>
-                              ) : null}
-                            </Toggle>
-                            <Toggle value="blocked">
-                              <T>Blocked</T>
-                              {blockedCardCount > 0 ? (
-                                <span className="font-mono text-2xs tabular-nums opacity-70">
-                                  {blockedCardCount}
-                                </span>
-                              ) : null}
-                            </Toggle>
-                            <Toggle value="has_pr">
-                              <T>Has PR</T>
-                              {hasPrCardCount > 0 ? (
-                                <span className="font-mono text-2xs tabular-nums opacity-70">
-                                  {hasPrCardCount}
-                                </span>
-                              ) : null}
-                            </Toggle>
-                          </ToggleGroup>
-
-                          <div className="flex items-center gap-2">
-                            <ToggleGroup
-                              size="segmented"
-                              value={[boardView]}
-                              variant="segmented"
-                              onValueChange={(next) => {
-                                const value = next[0];
-                                if (value === "board" || value === "list") setBoardView(value);
-                              }}
-                            >
-                              <Toggle value="board">
-                                <KanbanIcon />
-                                <T>Board</T>
-                              </Toggle>
-                              <Toggle value="list">
-                                <ListIcon />
-                                <T>List</T>
-                              </Toggle>
-                            </ToggleGroup>
-
-                            {selectedProjectId ? (
-                              <Button size="xs" variant="default" onClick={openCreateDialog}>
-                                <PlusIcon />
-                                <T>New Item</T>
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {filteredCards.length === 0 && boardFilter !== "all" ? (
+                        {filteredCards.length === 0 && hasActiveDeliveryFilter ? (
                           <CockpitSurface
                             className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
                             variant="grouped"
@@ -1473,8 +1796,8 @@ export function CockpitPage() {
                                 </EmptyTitle>
                                 <EmptyDescription>
                                   <T>
-                                    No work items match the active filter. Reset the filter to
-                                    inspect all stages.
+                                    No work items match your active search or filters. Reset filters
+                                    to inspect all items.
                                   </T>
                                 </EmptyDescription>
                               </EmptyHeader>
@@ -1482,9 +1805,10 @@ export function CockpitPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => setBoardFilter("all")}
+                                  onClick={handleResetDeliveryFilters}
                                 >
-                                  <T>Show all items</T>
+                                  <RotateCcwIcon />
+                                  <T>Reset filters</T>
                                 </Button>
                               </EmptyContent>
                             </Empty>
@@ -1498,29 +1822,63 @@ export function CockpitPage() {
                               return (
                                 <CockpitSurface
                                   key={stage.id}
-                                  className="flex w-80 shrink-0 flex-col gap-3.5 rounded-2xl border-border/50 bg-muted/20 p-3.5"
+                                  className="flex w-80 shrink-0 flex-col gap-3 rounded-2xl border-border/50 bg-muted/20 p-3.5"
                                   padding="none"
                                   variant="subtle"
                                 >
-                                  <CockpitSectionHeader
-                                    count={stageCards.length}
-                                    title={stage.label}
-                                  />
+                                  <div className="flex min-h-7 items-center justify-between gap-2 px-0.5 pb-1">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <CockpitStatusDot
+                                        ring={stage.category === "active"}
+                                        tone={stageCategoryTone(stage.category)}
+                                      />
+                                      <h2 className="truncate text-xs font-medium text-foreground">
+                                        {stage.label}
+                                      </h2>
+                                      <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full border border-border/50 bg-background/70 px-1.5 font-mono text-2xs font-medium tabular-nums text-muted-foreground">
+                                        {stageCards.length}
+                                      </span>
+                                    </div>
+                                    {selectedProjectId ? (
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          render={
+                                            <Button
+                                              aria-label={gt("New work item in {stageLabel}", {
+                                                stageLabel: stage.label,
+                                              })}
+                                              size="icon-xs"
+                                              variant="ghost-muted"
+                                              onClick={() => openCreateDialog(stage.id)}
+                                            />
+                                          }
+                                        >
+                                          <PlusIcon />
+                                        </TooltipTrigger>
+                                        <TooltipPopup>
+                                          {gt("New work item in {stageLabel}", {
+                                            stageLabel: stage.label,
+                                          })}
+                                        </TooltipPopup>
+                                      </Tooltip>
+                                    ) : null}
+                                  </div>
 
                                   <div className="flex flex-col gap-3">
                                     {stageCards.map((card) => (
                                       <WorkItemCardView
                                         key={card.workItem.id}
+                                        advancing={advancingWorkItemId === card.workItem.id}
                                         card={card}
                                         gates={gates}
                                         roster={roster}
                                         selectedChangeRequestId={selectedChangeRequestId}
                                         stages={stages}
+                                        onAdvanceStage={(nextStageId) =>
+                                          void handleAdvanceWorkItemStage(card, nextStageId)
+                                        }
                                         onApproveGate={(gateKey) =>
                                           void handleApproveGate(card.workItem.id, gateKey)
-                                        }
-                                        onMoveStage={(nextStage) =>
-                                          void handleMoveStage(card.workItem.id, nextStage)
                                         }
                                         onOpenChangeRequest={handleOpenChangeRequest}
                                         onOpenDetail={() => setSelectedWorkItemId(card.workItem.id)}
@@ -1542,11 +1900,42 @@ export function CockpitPage() {
                               const stageCards = filteredCards.filter(
                                 (card) => card.workItem.stage === stage.id,
                               );
-                              if (stageCards.length === 0 && boardFilter !== "all") return null;
+                              if (stageCards.length === 0 && hasActiveDeliveryFilter) return null;
                               return (
                                 <section key={stage.id} className="space-y-2">
                                   <CockpitSectionHeader
+                                    action={
+                                      selectedProjectId ? (
+                                        <Tooltip>
+                                          <TooltipTrigger
+                                            render={
+                                              <Button
+                                                aria-label={gt("New work item in {stageLabel}", {
+                                                  stageLabel: stage.label,
+                                                })}
+                                                size="icon-xs"
+                                                variant="ghost-muted"
+                                                onClick={() => openCreateDialog(stage.id)}
+                                              />
+                                            }
+                                          >
+                                            <PlusIcon />
+                                          </TooltipTrigger>
+                                          <TooltipPopup>
+                                            {gt("New work item in {stageLabel}", {
+                                              stageLabel: stage.label,
+                                            })}
+                                          </TooltipPopup>
+                                        </Tooltip>
+                                      ) : undefined
+                                    }
                                     count={stageCards.length}
+                                    icon={
+                                      <CockpitStatusDot
+                                        ring={stage.category === "active"}
+                                        tone={stageCategoryTone(stage.category)}
+                                      />
+                                    }
                                     title={stage.label}
                                   />
                                   {stageCards.length === 0 ? (
@@ -1560,16 +1949,17 @@ export function CockpitPage() {
                                       {stageCards.map((card) => (
                                         <WorkItemListRowView
                                           key={card.workItem.id}
+                                          advancing={advancingWorkItemId === card.workItem.id}
                                           card={card}
                                           gates={gates}
                                           roster={roster}
                                           selectedChangeRequestId={selectedChangeRequestId}
                                           stages={stages}
+                                          onAdvanceStage={(nextStageId) =>
+                                            void handleAdvanceWorkItemStage(card, nextStageId)
+                                          }
                                           onApproveGate={(gateKey) =>
                                             void handleApproveGate(card.workItem.id, gateKey)
-                                          }
-                                          onMoveStage={(nextStage) =>
-                                            void handleMoveStage(card.workItem.id, nextStage)
                                           }
                                           onOpenChangeRequest={handleOpenChangeRequest}
                                           onOpenDetail={() =>
@@ -1589,15 +1979,49 @@ export function CockpitPage() {
                   ) : null}
 
                   {deliverySubTab === "gantt" ? (
-                    <CockpitGanttView
-                      cards={allCards}
-                      releases={releases}
-                      roster={roster}
-                      stages={stages}
-                      {...(selectedProjectId ? { onCreateItem: openCreateDialog } : {})}
-                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
-                      onUpdateSchedule={handleUpdateSchedule}
-                    />
+                    hasActiveDeliveryFilter && filteredCards.length === 0 ? (
+                      <CockpitSurface
+                        className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+                        variant="grouped"
+                      >
+                        <Empty size="compact">
+                          <EmptyMedia>
+                            <CockpitIllustration className="w-72 sm:w-80" kind="empty_gantt" />
+                          </EmptyMedia>
+                          <EmptyHeader>
+                            <EmptyTitle>
+                              <T>No matching work items</T>
+                            </EmptyTitle>
+                            <EmptyDescription>
+                              <T>
+                                No work items match your active search or filters. Reset filters to
+                                inspect all items.
+                              </T>
+                            </EmptyDescription>
+                          </EmptyHeader>
+                          <EmptyContent>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleResetDeliveryFilters}
+                            >
+                              <RotateCcwIcon />
+                              <T>Reset filters</T>
+                            </Button>
+                          </EmptyContent>
+                        </Empty>
+                      </CockpitSurface>
+                    ) : (
+                      <CockpitGanttView
+                        cards={filteredCards}
+                        releases={releases}
+                        roster={roster}
+                        stages={stages}
+                        {...(selectedProjectId ? { onCreateItem: () => openCreateDialog() } : {})}
+                        onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                        onUpdateSchedule={handleUpdateSchedule}
+                      />
+                    )
                   ) : null}
 
                   {deliverySubTab === "triage" ? (
@@ -1705,7 +2129,15 @@ export function CockpitPage() {
         ) : null}
       </div>
 
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) {
+            setNewItemInitialStage(null);
+          }
+        }}
+      >
         <DialogPopup className="max-w-2xl">
           <DialogHeader>
             <div className="flex items-start gap-3.5 pr-8 pb-1">
@@ -1724,6 +2156,14 @@ export function CockpitPage() {
                         {selectedProject.key} · {selectedProject.name}
                       </span>
                     </>
+                  ) : null}
+                  {initialStageMeta ? (
+                    <Badge size="sm" variant="outline">
+                      <CockpitStatusDot tone={stageCategoryTone(initialStageMeta.category)} />
+                      <T>
+                        Stage: <Var>{initialStageMeta.label}</Var>
+                      </T>
+                    </Badge>
                   ) : null}
                 </div>
                 <DialogTitle>
@@ -2126,7 +2566,8 @@ interface WorkItemCardViewProps {
     readonly optional?: boolean | undefined;
   }>;
   readonly selectedChangeRequestId: string | null;
-  readonly onMoveStage: (nextStage: string) => void;
+  readonly advancing: boolean;
+  readonly onAdvanceStage: (nextStageId: string) => void;
   readonly onApproveGate: (gateKey: string) => void;
   readonly onOpenDetail: () => void;
   readonly onOpenChangeRequest: (cr: ChangeRequestAudit) => void;
@@ -2138,7 +2579,8 @@ function WorkItemCardView({
   stages,
   gates,
   selectedChangeRequestId,
-  onMoveStage,
+  advancing,
+  onAdvanceStage,
   onApproveGate,
   onOpenDetail,
   onOpenChangeRequest,
@@ -2178,7 +2620,7 @@ function WorkItemCardView({
 
   return (
     <CockpitSurface
-      className="space-y-3.5 rounded-xl border-border/60 bg-transparent bg-linear-to-b from-card/90 to-card/55 p-4 shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-border"
+      className="group/card space-y-3 rounded-xl border-border/60 bg-transparent bg-linear-to-b from-card/90 to-card/55 p-3.5 shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-border"
       padding="none"
       variant="card"
     >
@@ -2300,25 +2742,6 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      {card.checklistTotalCount > 0 ? (
-        <div className="flex items-center gap-2">
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width]",
-                acPercent === 100 ? "bg-success" : "bg-foreground/60",
-              )}
-              style={{ width: `${acPercent}%` }}
-            />
-          </div>
-          <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
-            <T>
-              AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
-            </T>
-          </span>
-        </div>
-      ) : null}
-
       {card.changeRequests.length > 0 ? (
         <div className="space-y-1.5">
           {card.changeRequests.map((cr) => {
@@ -2377,7 +2800,10 @@ function WorkItemCardView({
               key={gate.key}
               size="micro"
               variant="warning-outline"
-              onClick={() => onApproveGate(gate.key)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onApproveGate(gate.key);
+              }}
             >
               <ShieldCheckIcon />
               {gate.label}
@@ -2386,15 +2812,74 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-3">
+      {card.checklistTotalCount > 0 ? (
+        <div className="flex items-center gap-2 pt-0.5">
+          <div
+            aria-label={gt("Acceptance criteria progress")}
+            aria-valuemax={card.checklistTotalCount}
+            aria-valuemin={0}
+            aria-valuenow={card.checklistVerifiedCount}
+            className="h-[3px] flex-1 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+          >
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width]",
+                acPercent === 100 ? "bg-success" : "bg-primary",
+              )}
+              style={{ width: `${acPercent}%` }}
+            />
+          </div>
+          <span
+            className={cn(
+              "shrink-0 font-mono text-2xs tabular-nums",
+              acPercent === 100 ? "font-medium text-success-foreground" : "text-muted-foreground",
+            )}
+          >
+            <T>
+              AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
+            </T>
+          </span>
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5">
         <Button size="micro" variant="ghost-muted" onClick={onOpenDetail}>
           <T>Details</T>
         </Button>
         {nextStage ? (
-          <Button size="micro" variant="outline" onClick={() => onMoveStage(nextStage.id)}>
-            <span>{nextStage.label}</span>
-            <ArrowRightIcon />
-          </Button>
+          <span
+            className={cn(
+              "inline-flex items-center transition-opacity",
+              advancing
+                ? "opacity-100"
+                : "opacity-65 group-hover/card:opacity-100 group-focus-within/card:opacity-100",
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={gt("Advance to {nextStageLabel}", {
+                      nextStageLabel: nextStage.label,
+                    })}
+                    disabled={advancing}
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAdvanceStage(nextStage.id);
+                    }}
+                  />
+                }
+              >
+                <ArrowRightIcon />
+              </TooltipTrigger>
+              <TooltipPopup>
+                {gt("Advance to {nextStageLabel}", { nextStageLabel: nextStage.label })}
+              </TooltipPopup>
+            </Tooltip>
+          </span>
         ) : null}
       </div>
     </CockpitSurface>
@@ -2407,7 +2892,8 @@ function WorkItemListRowView({
   stages,
   gates,
   selectedChangeRequestId,
-  onMoveStage,
+  advancing,
+  onAdvanceStage,
   onApproveGate,
   onOpenDetail,
   onOpenChangeRequest,
@@ -2437,10 +2923,14 @@ function WorkItemListRowView({
           latestGates.get(g.key)?.status !== "approved",
       )
     : [];
+  const acPercent =
+    card.checklistTotalCount > 0
+      ? Math.round((card.checklistVerifiedCount / card.checklistTotalCount) * 100)
+      : 0;
 
   return (
     <CockpitSurfaceRow
-      className="flex flex-wrap items-center justify-between gap-3"
+      className="group/row flex flex-wrap items-center justify-between gap-3"
       density="default"
       interactive
     >
@@ -2554,10 +3044,33 @@ function WorkItemListRowView({
           </Tooltip>
         ) : null}
         {card.checklistTotalCount > 0 ? (
-          <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-            <T>
-              AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
-            </T>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-label={gt("Acceptance criteria progress")}
+              aria-valuemax={card.checklistTotalCount}
+              aria-valuemin={0}
+              aria-valuenow={card.checklistVerifiedCount}
+              className="h-[3px] w-10 overflow-hidden rounded-full bg-muted"
+              role="progressbar"
+            >
+              <span
+                className={cn(
+                  "block h-full rounded-full transition-[width]",
+                  acPercent === 100 ? "bg-success" : "bg-primary",
+                )}
+                style={{ width: `${acPercent}%` }}
+              />
+            </span>
+            <span
+              className={cn(
+                "font-mono text-2xs tabular-nums",
+                acPercent === 100 ? "font-medium text-success-foreground" : "text-muted-foreground",
+              )}
+            >
+              <T>
+                AC <Var>{card.checklistVerifiedCount}</Var>/<Var>{card.checklistTotalCount}</Var>
+              </T>
+            </span>
           </span>
         ) : null}
 
@@ -2588,7 +3101,10 @@ function WorkItemListRowView({
             key={gate.key}
             size="micro"
             variant="warning-outline"
-            onClick={() => onApproveGate(gate.key)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onApproveGate(gate.key);
+            }}
           >
             <ShieldCheckIcon />
             {gate.label}
@@ -2596,10 +3112,38 @@ function WorkItemListRowView({
         ))}
 
         {nextStage ? (
-          <Button size="micro" variant="outline" onClick={() => onMoveStage(nextStage.id)}>
-            <span>{nextStage.label}</span>
-            <ArrowRightIcon />
-          </Button>
+          <span
+            className={cn(
+              "inline-flex items-center transition-opacity",
+              advancing
+                ? "opacity-100"
+                : "opacity-65 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
+            )}
+          >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={gt("Advance to {nextStageLabel}", {
+                      nextStageLabel: nextStage.label,
+                    })}
+                    disabled={advancing}
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAdvanceStage(nextStage.id);
+                    }}
+                  />
+                }
+              >
+                <ArrowRightIcon />
+              </TooltipTrigger>
+              <TooltipPopup>
+                {gt("Advance to {nextStageLabel}", { nextStageLabel: nextStage.label })}
+              </TooltipPopup>
+            </Tooltip>
+          </span>
         ) : null}
       </div>
     </CockpitSurfaceRow>

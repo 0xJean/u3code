@@ -15,12 +15,17 @@ import {
 import * as Schema from "effect/Schema";
 import { T, useGT, useLocale, Var } from "gt-react";
 import {
+  ArrowRightIcon,
   BellIcon,
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   FolderPlusIcon,
   GitBranchIcon,
   LayersIcon,
+  ListChecksIcon,
+  MessageSquareCodeIcon,
   PlusIcon,
   PuzzleIcon,
   RefreshCwIcon,
@@ -33,7 +38,7 @@ import {
   UsersIcon,
   WorkflowIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -68,11 +73,14 @@ import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { toastManager } from "~/components/ui/toast";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
+import { cn } from "~/lib/utils";
 import { useProjects } from "~/state/entities";
 import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { CockpitStudioBanner } from "./CockpitArtwork";
 import {
   CockpitFieldLabel,
+  CockpitIconBadge,
   CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
@@ -273,6 +281,7 @@ export function CockpitSettingsTab({
   const localProjects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const [activeSection, setActiveSection] = useState<SetupSection>(initialSection);
+  const [checklistExpanded, setChecklistExpanded] = useState(true);
   const [topologyByScope, setTopologyByScope] = useLocalStorage(
     BRANCH_TOPOLOGY_STORAGE_KEY,
     {},
@@ -874,48 +883,203 @@ export function CockpitSettingsTab({
     }
   };
 
+  const customizedPromptCount = Object.values(
+    activeProject?.workflowConfig.promptTemplates ?? {},
+  ).filter((template) => template.trim().length > 0).length;
+  const hasConfiguredTeam =
+    visibleMembers.length > 1 || Boolean(status.me?.user.primaryVcsLogin?.trim());
+  const hasConfiguredAlertingOrGovernance =
+    visibleChannels.length > 0 ||
+    repos.some((repo) => repo.repoPolicy.automatedReviewers.length > 0);
+
+  const readinessSteps: ReadonlyArray<{
+    readonly id: string;
+    readonly title: ReactNode;
+    readonly description: ReactNode;
+    readonly done: boolean;
+    readonly actionLabel: ReactNode;
+    readonly disabled?: boolean;
+    readonly onAction: () => void;
+  }> = [
+    {
+      id: "project",
+      title: <T>Workspace &amp; Project created</T>,
+      description: activeProject ? (
+        <T>
+          Active project <Var>{activeProject.key}</Var> · <Var>{activeProject.name}</Var>
+        </T>
+      ) : (
+        <T>Create a project to organize repositories, workflow gates, and shared prompts.</T>
+      ),
+      done: activeProject !== null,
+      actionLabel: <T>New Project</T>,
+      disabled: !selectedWorkspaceId,
+      onAction: () => setProjectDialogOpen(true),
+    },
+    {
+      id: "repo",
+      title: <T>Code Repository linked</T>,
+      description:
+        repos.length > 0 ? (
+          gt(
+            "{count, plural, one {{count} repository connected with branch policy} other {{count} repositories connected with branch policy}}",
+            { count: repos.length },
+          )
+        ) : (
+          <T>Link a GitHub or GitLab repository to sync open PRs and diff guardrails.</T>
+        ),
+      done: repos.length > 0,
+      actionLabel: <T>Link Repository</T>,
+      disabled: !selectedProjectId,
+      onAction: () => setRepoDialogOpen(true),
+    },
+    {
+      id: "team",
+      title: <T>Team &amp; Notification Handles configured</T>,
+      description: hasConfiguredTeam ? (
+        gt(
+          "{count, plural, one {{count} member · profile bound} other {{count} members · roles active}}",
+          {
+            count: Math.max(visibleMembers.length, 1),
+          },
+        )
+      ) : (
+        <T>
+          Bind your GitHub login or invite teammates so gate reviews and @mentions route cleanly.
+        </T>
+      ),
+      done: hasConfiguredTeam,
+      actionLabel: <T>Configure Team</T>,
+      onAction: () => setActiveSection("team"),
+    },
+    {
+      id: "prompts",
+      title: <T>Team Prompt Templates configured</T>,
+      description:
+        customizedPromptCount > 0 ? (
+          gt(
+            "{count, plural, one {{count} custom prompt template active} other {{count} custom prompt templates active}}",
+            { count: customizedPromptCount },
+          )
+        ) : (
+          <T>
+            Customize shared PRD, prototype, and PR audit prompts for your team&apos;s standards.
+          </T>
+        ),
+      done: customizedPromptCount > 0,
+      actionLabel: <T>Open Prompts</T>,
+      onAction: () => setActiveSection("prompts"),
+    },
+    {
+      id: "governance",
+      title: <T>Alerting / Governance Workflow configured</T>,
+      description: hasConfiguredAlertingOrGovernance ? (
+        <T>Notification alerts or automated PR reviewer policies are active.</T>
+      ) : (
+        <T>Connect Lark, Slack, or webhook alerts and review governance rules for blocked PRs.</T>
+      ),
+      done: hasConfiguredAlertingOrGovernance,
+      actionLabel: visibleChannels.length === 0 ? <T>Set Up Alerts</T> : <T>Open Governance</T>,
+      onAction: () =>
+        setActiveSection(visibleChannels.length === 0 ? "notifications" : "governance"),
+    },
+  ];
+
+  const completedReadinessCount = readinessSteps.filter((step) => step.done).length;
+  const readinessPercent = Math.round((completedReadinessCount / readinessSteps.length) * 100);
+
+  const setupNavItems: ReadonlyArray<{
+    readonly value: SetupSection;
+    readonly label: ReactNode;
+    readonly icon: ReactNode;
+    readonly count?: number | undefined;
+  }> = [
+    {
+      value: "overview",
+      label: <T>Overview &amp; Repos</T>,
+      icon: <LayersIcon />,
+      count: repos.length > 0 ? repos.length : undefined,
+    },
+    {
+      value: "prompts",
+      label: <T>Prompts</T>,
+      icon: <MessageSquareCodeIcon />,
+      count: customizedPromptCount > 0 ? customizedPromptCount : undefined,
+    },
+    {
+      value: "team",
+      label: <T>Team &amp; Profile</T>,
+      icon: <UsersIcon />,
+      count: visibleMembers.length > 0 ? visibleMembers.length : undefined,
+    },
+    {
+      value: "notifications",
+      label: <T>Notifications</T>,
+      icon: <BellIcon />,
+      count: visibleChannels.length > 0 ? visibleChannels.length : undefined,
+    },
+    {
+      value: "plugins",
+      label: <T>Plugins &amp; Packs</T>,
+      icon: <PuzzleIcon />,
+      count: hubPlugins.length > 0 ? hubPlugins.length : undefined,
+    },
+    {
+      value: "governance",
+      label: <T>Governance</T>,
+      icon: <ShieldCheckIcon />,
+    },
+  ];
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Sub-Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ToggleGroup
-          aria-label={gt("Setup sections")}
-          size="segmented"
-          value={[activeSection]}
-          variant="segmented"
-          onValueChange={(next) => {
-            const value = next[0];
-            if (
-              value === "overview" ||
-              value === "prompts" ||
-              value === "team" ||
-              value === "notifications" ||
-              value === "plugins" ||
-              value === "governance"
-            ) {
-              setActiveSection(value);
-            }
-          }}
-        >
-          <Toggle value="overview">
-            <T>Overview & Repos</T>
-          </Toggle>
-          <Toggle value="prompts">
-            <T>Prompts</T>
-          </Toggle>
-          <Toggle value="team">
-            <T>Team & Profile</T>
-          </Toggle>
-          <Toggle value="notifications">
-            <T>Notifications</T>
-          </Toggle>
-          <Toggle value="plugins">
-            <T>Plugins & Packs</T>
-          </Toggle>
-          <Toggle value="governance">
-            <T>Workflow Governance</T>
-          </Toggle>
-        </ToggleGroup>
+      <div
+        aria-label={gt("Setup sections")}
+        className="flex flex-wrap items-center gap-1 rounded-xl border border-border/60 bg-linear-to-b from-card/70 to-card/35 p-1 shadow-2xs ring-1 ring-inset ring-foreground/4"
+        role="tablist"
+      >
+        {setupNavItems.map((item) => {
+          const isActive = activeSection === item.value;
+          return (
+            <button
+              key={item.value}
+              aria-selected={isActive}
+              className={cn(
+                "group inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                isActive
+                  ? "border-border/80 bg-background font-medium text-foreground shadow-2xs ring-1 ring-inset ring-foreground/6"
+                  : "border-transparent font-normal text-muted-foreground hover:bg-accent/55 hover:text-foreground",
+              )}
+              role="tab"
+              type="button"
+              onClick={() => setActiveSection(item.value)}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-flex size-5 shrink-0 items-center justify-center rounded-md border transition-colors [&_svg]:size-3",
+                  isActive
+                    ? "border-primary/25 bg-primary/12 text-primary"
+                    : "border-border/50 bg-muted/55 text-muted-foreground group-hover:text-foreground",
+                )}
+              >
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
+              {item.count !== undefined ? (
+                <span
+                  className={cn(
+                    "font-mono text-2xs tabular-nums",
+                    isActive ? "text-foreground/70" : "text-muted-foreground/65",
+                  )}
+                >
+                  {item.count}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
 
       {/* Section 1b: Team Prompt Templates */}
@@ -932,6 +1096,238 @@ export function CockpitSettingsTab({
       {/* Section 1: Overview & Repos */}
       {activeSection === "overview" ? (
         <div className="space-y-6">
+          <CockpitStudioBanner
+            actions={
+              <>
+                {!selectedWorkspaceId ? (
+                  <Button size="xs" variant="default" onClick={() => setWorkspaceDialogOpen(true)}>
+                    <PlusIcon />
+                    <T>New Workspace</T>
+                  </Button>
+                ) : null}
+                <Button
+                  disabled={!selectedWorkspaceId}
+                  size="xs"
+                  variant={selectedWorkspaceId && !selectedProjectId ? "default" : "outline"}
+                  onClick={() => setProjectDialogOpen(true)}
+                >
+                  <FolderPlusIcon />
+                  <T>New Project</T>
+                </Button>
+                <Button
+                  disabled={!selectedProjectId}
+                  size="xs"
+                  variant={selectedProjectId ? "default" : "outline"}
+                  onClick={() => setRepoDialogOpen(true)}
+                >
+                  <GitBranchIcon />
+                  <T>Link Repository</T>
+                </Button>
+              </>
+            }
+            art="connect_hub"
+            compact
+            description={
+              activeProject ? (
+                <T>
+                  Configure linked repositories, branch merge guardrails, team roles, AI prompt
+                  templates, and alerting channels for this project.
+                </T>
+              ) : activeWorkspace ? (
+                <T>
+                  Create your first project to connect repositories, enforce PR diff guardrails, and
+                  coordinate delivery gates across your team.
+                </T>
+              ) : (
+                <T>
+                  Create a workspace and project to connect repositories, manage member roles, and
+                  enforce automated PR review policies.
+                </T>
+              )
+            }
+            eyebrow={
+              <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+                <CockpitStatusDot
+                  ring={Boolean(activeWorkspace && activeProject)}
+                  tone={activeWorkspace && activeProject ? "success" : "info"}
+                />
+                {activeWorkspace ? (
+                  <span>
+                    {activeWorkspace.name}
+                    {activeProject ? ` · ${activeProject.key}` : ""}
+                  </span>
+                ) : (
+                  <T>Setup &amp; Governance Studio</T>
+                )}
+              </span>
+            }
+            meta={
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 font-medium text-foreground tabular-nums">
+                  <CockpitStatusDot tone={repos.length > 0 ? "success" : "neutral"} />
+                  {gt("{count, plural, one {{count} linked repo} other {{count} linked repos}}", {
+                    count: repos.length,
+                  })}
+                </span>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="inline-flex items-center gap-1.5 tabular-nums">
+                  <CockpitStatusDot tone={visibleMembers.length > 0 ? "info" : "neutral"} />
+                  {gt("{count, plural, one {{count} team member} other {{count} team members}}", {
+                    count: visibleMembers.length,
+                  })}
+                </span>
+                {activeProject ? (
+                  <>
+                    <span aria-hidden className="opacity-35">
+                      ·
+                    </span>
+                    <span>
+                      {getWorkflowPresetShortLabel(activeProject.workflowConfig.preset, gt)}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            }
+            title={
+              activeProject ? (
+                activeProject.name
+              ) : activeWorkspace ? (
+                activeWorkspace.name
+              ) : (
+                <T>Workspace &amp; Repository Setup</T>
+              )
+            }
+          />
+
+          {activeWorkspace ? (
+            <CockpitSurface
+              className="overflow-hidden border-border/65 bg-linear-to-b from-card/85 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+              variant="grouped"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <CockpitIconBadge
+                    size="md"
+                    tone={completedReadinessCount === readinessSteps.length ? "success" : "primary"}
+                  >
+                    <ListChecksIcon />
+                  </CockpitIconBadge>
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-sm font-medium text-foreground">
+                      <T>Project Readiness Checklist</T>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {completedReadinessCount === readinessSteps.length ? (
+                        <T>Your workspace is fully configured for governed multi-repo delivery.</T>
+                      ) : (
+                        <T>
+                          Complete these setup steps to activate PR guardrails, prompts, and team
+                          notifications.
+                        </T>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge
+                    size="sm"
+                    variant={completedReadinessCount === readinessSteps.length ? "success" : "info"}
+                  >
+                    <span className="font-mono tabular-nums">
+                      <T>
+                        <Var>{completedReadinessCount}</Var>/<Var>{readinessSteps.length}</Var>{" "}
+                        Ready
+                      </T>
+                    </span>
+                  </Badge>
+                  <Button
+                    aria-expanded={checklistExpanded}
+                    aria-label={
+                      checklistExpanded
+                        ? gt("Collapse readiness checklist")
+                        : gt("Expand readiness checklist")
+                    }
+                    size="icon-xs"
+                    variant="ghost-muted"
+                    onClick={() => setChecklistExpanded((prev) => !prev)}
+                  >
+                    {checklistExpanded ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="h-1 w-full bg-muted/65">
+                <div
+                  className={cn(
+                    "h-full transition-all duration-300",
+                    completedReadinessCount === readinessSteps.length ? "bg-success" : "bg-primary",
+                  )}
+                  style={{ width: `${readinessPercent}%` }}
+                />
+              </div>
+
+              {checklistExpanded ? (
+                <div className="divide-y divide-border/45">
+                  {readinessSteps.map((step, index) => (
+                    <div
+                      key={step.id}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-accent/25"
+                    >
+                      <div className="flex min-w-0 items-start gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full border text-2xs font-medium",
+                            step.done
+                              ? "border-success/35 bg-success/15 text-success-foreground"
+                              : "border-border/75 bg-background/80 font-mono text-muted-foreground tabular-nums",
+                          )}
+                        >
+                          {step.done ? <CheckIcon className="size-3" /> : index + 1}
+                        </span>
+                        <div className="min-w-0 space-y-0.5">
+                          <div
+                            className={cn(
+                              "text-xs font-medium",
+                              step.done ? "text-muted-foreground" : "text-foreground",
+                            )}
+                          >
+                            {step.title}
+                          </div>
+                          <p className="text-2xs leading-relaxed text-muted-foreground">
+                            {step.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {step.done ? (
+                          <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-success-foreground">
+                            <CockpitStatusDot tone="success" />
+                            <T>Ready</T>
+                          </span>
+                        ) : (
+                          <Button
+                            disabled={step.disabled}
+                            size="xs"
+                            variant="outline"
+                            onClick={step.onAction}
+                          >
+                            {step.actionLabel}
+                            <ArrowRightIcon />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </CockpitSurface>
+          ) : null}
+
           <section className="space-y-2.5">
             <CockpitSectionHeader
               action={
