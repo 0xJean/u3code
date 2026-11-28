@@ -5318,6 +5318,108 @@
   "fc20ea18dd7c53a2": "Pulse",
   "4cd3a0ae6907eec5": "Review",
   "28dc6c374e072782": "Release",
+  "a9809193f9f21715": "Coordinate teammates and coding agents with @mentions, review alerts, and release handoffs.",
+  "9486a42a395557d9": "Swarm Coordination",
+  "f851718ca55daa3f": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " message"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " messages"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "5d55e57d6d906902": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " handoff"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " handoffs"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f5f9f7e240b5f63b": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " member"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " members"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "73c106826be673cb": "Team Message Board",
   "a65ad03dda72be9a": "All",
   "f102a0c98355596c": "Handoffs",
   "02cb4de6de9dc38a": "Pulses",
@@ -5375,6 +5477,8 @@
   "32db31f0dc62bec8": "Ansluter...",
   "90f46dbf8782cfde": "Anslut",
   "bd8e87512fd9bdf2": "Inte tilldelat",
+  "8071312c2df7d57a": "{count, plural, one {{count} scheduled item} other {{count} scheduled items}}",
+  "4ee32327a0b88bdb": "{count, plural, one {{count} milestone} other {{count} milestones}}",
   "8d94d847be325143": "Timeline zoom",
   "96eb8189e8543474": "Group timeline rows",
   "6f02a5ab8c9e794a": "Feature",
@@ -5390,6 +5494,18 @@
   "ed09daca6e3b89ca": "No scheduled work items yet",
   "dd0d277bf29dfa66": "Add a requirement with planned start and due dates to track delivery timelines and release milestones.",
   "ecac13a7d8d42362": "New Requirement",
+  "b9bab234937a94b8": "Track delivery windows across stages and assignees, spot overdue work early, and align with upcoming release milestones.",
+  "41e88c9fd19fb42c": "Delivery Schedule Studio",
+  "91dbffc57debe8aa": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " overdue"
+  ],
+  "30f143824ce090a8": "All on schedule",
+  "24017836fc2256d9": "Timeline & Release Milestones",
   "6cbdca322747e627": "2 Weeks",
   "1e38c2cbccf1b0aa": "Month",
   "f311f60c1c1346f1": "Quarter",
@@ -5400,14 +5516,6 @@
   "25911e4a4804b73e": "Blocked",
   "548077fc2880647c": "Release milestone",
   "0ce85fa2fbb547fa": "Work Item",
-  "91dbffc57debe8aa": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " overdue"
-  ],
   "db046871e24073f1": "Today",
   "12eb7a3efe84bb5e": [
     "Release ",
@@ -5452,10 +5560,10 @@
   "c9e8be4c0024a121": "Working Now",
   "284ab90dc7687136": "Search members",
   "c485fbc80200f2ce": "Search members...",
+  "9e42717e90b27718": "Active members",
   "e97e409bef7c68db": "Owner",
   "8960843720640207": "Coding Agent",
   "7c199cc23479c21d": "Member",
-  "9e42717e90b27718": "Active members",
   "7087c088a92060f8": "Standing by members",
   "20ac74063ce5c48f": "Show all roles",
   "d11c275db94d506c": "No matching members",
@@ -5471,6 +5579,9 @@
   "2543655df54b5176": "Active",
   "3936acf8eb63078c": "Standing By",
   "ac58b04246049bce": "{timestamp} (Latest)",
+  "62d41707a9ff2d8f": "{count, plural, one {{count} digest} other {{count} digests}}",
+  "105ad224e81be9e2": "{count, plural, one {{count} active directive} other {{count} active directives}}",
+  "af352babc183d32d": "{count, plural, one {{count} decision} other {{count} decisions}}",
   "cf23b547672aee09": "Memory & Digests sections",
   "62570d4bfe4ab517": "Manuell",
   "9dad6db998848e83": "Scheduled",
@@ -5482,10 +5593,10 @@
   "31e4cd294be7530f": "High",
   "b2ac3183408cf717": "Medium",
   "af3d81238e8baedd": "Low",
-  "d39e327a79d9b189": "AI Digests",
-  "505855dadb216423": "Directives & Memory",
   "632e5e8dddeed0c4": "Synthesizing...",
   "6cbcd905527b516c": "Generate Digest",
+  "99dedc2bc6ceb034": "Executive delivery summaries paired with locked owner directives, architecture decisions, and recurring risk patterns.",
+  "4363bf8734c20897": "Knowledge & Digests Studio",
   "5be3259dc52851fc": [
     "v",
     {
@@ -5494,6 +5605,9 @@
       "v": "v"
     }
   ],
+  "c7f13a4258958256": "Project Memory & AI Digests",
+  "d39e327a79d9b189": "AI Digests",
+  "505855dadb216423": "Directives & Memory",
   "6c8d6cd9dd21c88f": "No digests generated yet",
   "6efbfe93493475c4": "Synthesize recent work item pulses and pull request activity into an executive summary and update living project memory.",
   "d5c7b266de6a8357": "Generate First Digest",
@@ -5525,7 +5639,7 @@
   "46998dbfcabdd81e": "PRD",
   "eab25cc34c027952": "Proto",
   "c25dc7daa1f8d57f": "Issue #{num}",
-  "518044cc4c1b241c": "Get started",
+  "d788a776a5c7a2cf": "Delivery Studio",
   "07d6fa6782df34fc": "Delivery Pipeline",
   "cf9e5b3a2eef38b1": "Intake",
   "c4275f4f0bd253c0": "AI PRD",
@@ -5542,11 +5656,343 @@
   "312a0584fb0267f3": "Released",
   "ffd2b08e80e894f6": "Rolled Back",
   "5efca19ac2a8e144": "The team",
-  "135c956332f0504f": "Launch your delivery pipeline",
-  "9bb4a53d1f591b25": "Capture a requirement, draft an AI PRD and interactive prototype, then dispatch GitHub issues and PRs across your team.",
   "5b9d33162f4190e5": "Create Work Item & Draft PRD",
+  "a4a5a19f3650a913": "New Work Item",
   "d372a75a99ef60f8": "Open Delivery Board",
-  "91771d5a5ea24daf": "Delivery Pipeline",
+  "9bb4a53d1f591b25": "Capture a requirement, draft an AI PRD and interactive prototype, then dispatch GitHub issues and PRs across your team.",
+  "f5e089ff457b028c": [
+    {
+      "t": "Plural",
+      "i": 1,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work item"
+            ]
+          },
+          "other": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work items"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "in motion with",
+    " ",
+    {
+      "t": "Plural",
+      "i": 2,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " blocker"
+            ]
+          },
+          "other": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " blockers"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "requiring attention."
+  ],
+  "10077823fed676a9": [
+    {
+      "t": "Plural",
+      "i": 1,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work item"
+            ]
+          },
+          "other": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work items"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "in flight and",
+    " ",
+    {
+      "t": "Plural",
+      "i": 2,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " PR"
+            ]
+          },
+          "other": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " PRs"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "awaiting human review."
+  ],
+  "6517b3625eac5db6": [
+    "Release ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " is ready to ship with all gates aligned across",
+    " ",
+    {
+      "t": "Plural",
+      "i": 2,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " work item"
+            ]
+          },
+          "other": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " work items"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    "."
+  ],
+  "fffd2829b00bd236": [
+    {
+      "t": "Plural",
+      "i": 1,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work item"
+            ]
+          },
+          "other": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " active work items"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "flowing smoothly from specification through review and release."
+  ],
+  "d3df509743f43553": [
+    "All",
+    " ",
+    {
+      "t": "Plural",
+      "i": 1,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " work item is"
+            ]
+          },
+          "other": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " work items are"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "shipped. Capture the next requirement when ready."
+  ],
+  "980417ca7d28743b": "Ready to launch",
+  "6c0e085340b980e6": "Attention needed",
+  "91322416385f87b3": "Live delivery",
+  "79963e13b895a284": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " active"
+  ],
+  "c9642b82bd4dacc5": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " awaiting review"
+  ],
+  "dd89fb3a17c06a50": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " open PR"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " open PRs"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "2843c6b17895e791": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ·",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    "/3 signed"
+  ],
   "074b9ff8d78f5fd3": [
     {
       "i": 1,
@@ -5555,6 +6001,16 @@
     },
     " shipped"
   ],
+  "e117c94588a109cd": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " Delivery Studio"
+  ],
+  "67008e2eb7b63e13": "End-to-End AI Delivery Pipeline",
+  "91771d5a5ea24daf": "Delivery Pipeline",
   "38f9779f6603cedd": "Active Now",
   "6bc7d41e095831d3": "Show all",
   "7bf1d1f0f6858ca5": [
@@ -5615,39 +6071,6 @@
     },
     " ready for review"
   ],
-  "dd89fb3a17c06a50": {
-    "t": "Plural",
-    "i": 1,
-    "d": {
-      "b": {
-        "one": {
-          "t": "C2",
-          "i": 2,
-          "c": [
-            {
-              "i": 3,
-              "k": "_gt_value_3",
-              "v": "v"
-            },
-            " open PR"
-          ]
-        },
-        "other": {
-          "t": "C2",
-          "i": 2,
-          "c": [
-            {
-              "i": 3,
-              "k": "_gt_value_3",
-              "v": "v"
-            },
-            " open PRs"
-          ]
-        }
-      },
-      "t": "p"
-    }
-  },
   "28528345bbdb78fe": "No open pull requests right now.",
   "afe856424c726fae": "Delivery Tracks",
   "5166362dba5f3dc0": "Kanban Board",
@@ -5837,7 +6260,6 @@
   "9d1e700b8e32ad9b": "Create or select a project in Setup to track cross-repository work items and workflow gates.",
   "8c03a789a0570c98": "Open Setup",
   "6156c6cd3e462d11": "Create your first requirement to kick off PRD drafting, prototypes, pull requests, and workflow gates.",
-  "a4a5a19f3650a913": "New Work Item",
   "e18bc1817ce7cafc": "Has PR",
   "f1f55521bea76543": "Board",
   "dc6de46021f4f9ec": "List",
@@ -5848,6 +6270,7 @@
   "48295e8e0480d4de": "No items in this stage",
   "f4e6c050273cbb75": "Workspace Setup",
   "a56909d1b4179b31": "Back to Overview",
+  "cbdd9b1e8a9161b5": "Requirement Intake",
   "e7b92257fbfb7171": "Capture requirement scope, design tier, owner, and timeline, or launch an AI PRD thread right away.",
   "3ac8ed47fe50bd34": "Title",
   "3292cd5da3cb3692": "Scope & Schedule",
@@ -5908,15 +6331,6 @@
   "4fd01f450f9d39a2": "Failed to save prompt template.",
   "892bc62763b687b5": "Select a project first",
   "42edf335b8d3d979": "Choose or create a project to customize shared AI workflow prompts for your team.",
-  "efa0072a1c6dfe4c": [
-    "Active default language: ",
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    }
-  ],
-  "66ce930f820465a3": "Team Prompt Templates",
   "d01c07822c578e63": [
     "Customize the AI instructions used across this project's delivery stages. Saved templates sync to every teammate in ",
     {
@@ -5926,14 +6340,40 @@
     },
     "; uncustomized slots follow each user's interface language automatically."
   ],
+  "e3da670303eb5c6b": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " customized"
+  ],
+  "efa0072a1c6dfe4c": [
+    "Active default language: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "66ce930f820465a3": "Team Prompt Templates",
+  "d57d743c8604e2ff": "Workflow Stages",
   "d79d36f4e71d6a52": "Team Custom",
   "bf4cb81b996457d7": "Built-in Default",
+  "f1c2b5efcc7cc7e7": "Unsaved changes",
   "23a1fab789f1ee0c": "Hide Preview",
   "fa7abddc6635a0c7": "Preview",
   "97431a3b95c03c29": "Reset Default",
   "ece5e10bd5b5769d": "Sparar...",
   "f3e853a3b645fd90": "Save Template",
   "7840818b1556a848": "Click a placeholder to insert",
+  "fbada9f735c4835a": "Prompt Template",
   "d3a61253eea09f60": "Rendered Preview (Sample Data)",
   "d35e594fc5ea919c": "Add a local workspace repository first to run an Agent thread.",
   "5be066e2bb600ed0": "Open on GitHub",
@@ -6031,6 +6471,8 @@
   "2899a1808114f158": "Release gate approved",
   "e034335f09420994": "Release gate rejected",
   "04394059670238eb": "Failed to update release gate.",
+  "ab707725bba6f164": "{count, plural, one {{count} active release} other {{count} active releases}}",
+  "cfacf12e7d3fb32a": "{count, plural, one {{count} repo} other {{count} repos}}",
   "9dd9dd54edb5f9ee": "Awaiting sign-off",
   "b9b3644c0f404990": "Rejection reason (notifies owners)...",
   "411b6c54896cbbfa": "e.g. v2.4.0",
@@ -6039,9 +6481,12 @@
   "95d06584824a7554": "Highlights, breaking changes, and verification summary...",
   "80b23f7f0f29ac9d": "No project selected",
   "01314c3df196865a": "Select or create a project to coordinate cross-repository releases.",
+  "56e1d4fadb83a020": "Plan Release",
+  "991cd5c8c681b2a0": "Coordinate dev → main release freezes, cross-repository snapshots, and QA, Security, and Production Go/No-Go sign-offs.",
+  "5de854b3fb2e92bc": "Dual-Trunk Release Studio",
+  "27bbb98f8b7a9272": "Release Trains & Sign-off Gates",
   "b901d8a75fdd232b": "In Progress",
   "2fcaba58023037ad": "Shipped",
-  "56e1d4fadb83a020": "Plan Release",
   "c63c828746d641de": "No releases planned yet",
   "bc432c90cd31d745": "Coordinate cross-repository snapshots, rollback plans, and QA, Security, and Production Go/No-Go sign-offs in one release train.",
   "5b309c8f9778c0f3": "Plan First Release",
@@ -6621,6 +7066,7 @@
     " core events by default (digest ready, bot-blocked PR, ready for human review, blocker attention, and release ready)."
   ],
   "ab1a69a25ba51db8": "AI Reviewer",
+  "5c412fd3159e13f3": "{count, plural, one {{count} open PR} other {{count} open PRs}}",
   "484cd83bb303bab8": "Sök pull requests",
   "aa06ab58f10f5d47": "Search PR, repo, author, branch...",
   "7d7a761d5c5e2009": "Bot-Blocked Review",
@@ -6630,6 +7076,26 @@
   "e967616b6ecbe8b0": "Auto-Merged (Integration)",
   "e0b196715ec7a4a6": "Utkast",
   "090b3201b8c67490": ">400 lines",
+  "11752948dccc8dfd": "Automated review gates and 400-line diff guardrails are active. Open a pull request or sync a repository to inspect live review signals.",
+  "6910b966c0eab687": "Automated bot audits, CI quality checks, and 400-line diff guardrails prioritized for fast human review.",
+  "5491be8490b902f8": "PR Audit & Guardrails",
+  "163c6d29dc0b50e5": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " bot-blocked"
+  ],
+  "601671c9ba2b81a9": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " CI blocked"
+  ],
+  "51562e5adc0c001a": "Pull Request Review Triage",
   "b82defc09325891a": "Review queue is clear",
   "953a241963e6ae08": "No open pull requests require triage right now. Sync a repository in Setup or open a PR to see live review signals here.",
   "4ab5f42b38d52f33": "Human Review",
@@ -6696,10 +7162,11 @@
   "d76d02a85b53bc34": "Drive end-to-end delivery from requirement intake, AI PRD, and prototype to GitHub issue, dev branch, PR review, and release.",
   "d1db72238bd4afe7": "Work Item Details",
   "0f63393085912ff2": "Loading work item details...",
-  "2b0a2c079945af95": "AI Delivery Actions",
   "c702fa3d4afb7f23": "Launch a scoped U3 Code agent thread with live spec, acceptance criteria, and branch workflow guardrails.",
-  "8785ce94c9b54fab": "Manage Prompts",
+  "2b0a2c079945af95": "AI Delivery Actions",
+  "99099b67fbe23e4d": "AI Delivery Studio",
   "517ee0a8bdff25d7": "Add a local repository in the sidebar first.",
+  "8785ce94c9b54fab": "Manage Prompts",
   "e05f828b4ca93e88": "Opening...",
   "63253a4c6c30bbd8": "Start Date",
   "0d150f63d538446b": "PRD Status",

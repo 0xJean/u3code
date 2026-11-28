@@ -15,13 +15,14 @@ export type CockpitIconBadgeTone =
   | "violet";
 
 const ICON_BADGE_TONE_CLASS: Record<CockpitIconBadgeTone, string> = {
-  neutral: "border-border/60 bg-muted/50 text-muted-foreground",
-  primary: "border-primary/20 bg-primary/10 text-primary",
-  success: "border-success/20 bg-success/10 text-success-foreground",
-  info: "border-info/20 bg-info/10 text-info-foreground",
-  warning: "border-warning/20 bg-warning/10 text-warning-foreground",
-  error: "border-destructive/20 bg-destructive/10 text-destructive",
-  violet: "border-guest/25 bg-guest/12 text-guest-foreground",
+  neutral: "border-border/65 bg-linear-to-b from-muted/75 to-muted/25 text-muted-foreground",
+  primary: "border-primary/28 bg-linear-to-b from-primary/20 to-primary/5 text-primary",
+  success: "border-success/28 bg-linear-to-b from-success/20 to-success/5 text-success-foreground",
+  info: "border-info/28 bg-linear-to-b from-info/20 to-info/5 text-info-foreground",
+  warning: "border-warning/28 bg-linear-to-b from-warning/20 to-warning/5 text-warning-foreground",
+  error:
+    "border-destructive/28 bg-linear-to-b from-destructive/20 to-destructive/5 text-destructive",
+  violet: "border-guest/30 bg-linear-to-b from-guest/22 to-guest/6 text-guest-foreground",
 };
 
 const ICON_BADGE_SIZE_CLASS = {
@@ -45,7 +46,7 @@ export function CockpitIconBadge({
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center border shadow-2xs",
+        "inline-flex shrink-0 items-center justify-center border shadow-2xs ring-1 ring-inset ring-foreground/8",
         ICON_BADGE_TONE_CLASS[tone],
         ICON_BADGE_SIZE_CLASS[size],
         className,
@@ -134,7 +135,8 @@ export function CockpitSectionHeader({
 }
 
 const SURFACE_VARIANT_CLASS = {
-  grouped: "rounded-xl border border-border/55 bg-card/35 shadow-xs/5",
+  grouped:
+    "rounded-xl border border-border/60 bg-linear-to-b from-card/65 to-card/35 shadow-xs ring-1 ring-inset ring-foreground/4",
   subtle: "rounded-xl border border-border/45 bg-muted/15",
   card: "rounded-lg border border-border/55 bg-background/95 shadow-2xs",
 } as const;

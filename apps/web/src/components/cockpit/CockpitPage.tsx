@@ -1325,10 +1325,13 @@ export function CockpitPage() {
 
                   {deliverySubTab === "kanban" ? (
                     stages.length === 0 ? (
-                      <CockpitSurface variant="grouped">
+                      <CockpitSurface
+                        className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+                        variant="grouped"
+                      >
                         <Empty size="compact">
                           <EmptyMedia>
-                            <CockpitIllustration kind="empty_work_items" />
+                            <CockpitIllustration className="w-72 sm:w-80" kind="empty_work_items" />
                           </EmptyMedia>
                           <EmptyHeader>
                             <EmptyTitle>
@@ -1354,10 +1357,13 @@ export function CockpitPage() {
                         </Empty>
                       </CockpitSurface>
                     ) : allCards.length === 0 ? (
-                      <CockpitSurface variant="grouped">
+                      <CockpitSurface
+                        className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+                        variant="grouped"
+                      >
                         <Empty size="compact">
                           <EmptyMedia>
-                            <CockpitIllustration kind="empty_work_items" />
+                            <CockpitIllustration className="w-72 sm:w-80" kind="empty_work_items" />
                           </EmptyMedia>
                           <EmptyHeader>
                             <EmptyTitle>
@@ -1450,10 +1456,16 @@ export function CockpitPage() {
                         </div>
 
                         {filteredCards.length === 0 && boardFilter !== "all" ? (
-                          <CockpitSurface variant="grouped">
+                          <CockpitSurface
+                            className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+                            variant="grouped"
+                          >
                             <Empty size="compact">
                               <EmptyMedia>
-                                <CockpitIllustration kind="empty_work_items" />
+                                <CockpitIllustration
+                                  className="w-72 sm:w-80"
+                                  kind="empty_work_items"
+                                />
                               </EmptyMedia>
                               <EmptyHeader>
                                 <EmptyTitle>
@@ -1486,8 +1498,8 @@ export function CockpitPage() {
                               return (
                                 <CockpitSurface
                                   key={stage.id}
-                                  className="flex w-80 shrink-0 flex-col gap-3"
-                                  padding="sm"
+                                  className="flex w-80 shrink-0 flex-col gap-3.5 rounded-2xl border-border/50 bg-muted/20 p-3.5"
+                                  padding="none"
                                   variant="subtle"
                                 >
                                   <CockpitSectionHeader
@@ -1694,13 +1706,26 @@ export function CockpitPage() {
       </div>
 
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogPopup className="max-w-xl">
+        <DialogPopup className="max-w-2xl">
           <DialogHeader>
-            <div className="flex items-start gap-3 pr-8">
+            <div className="flex items-start gap-3.5 pr-8 pb-1">
               <CockpitIconBadge className="mt-0.5 shrink-0" size="lg" tone="primary">
                 <CockpitStageArtworkIcon stage="intake" />
               </CockpitIconBadge>
-              <div className="min-w-0 flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+                  <T>Requirement Intake</T>
+                  {selectedProject ? (
+                    <>
+                      <span aria-hidden className="opacity-35">
+                        ·
+                      </span>
+                      <span className="font-mono tracking-normal text-foreground/80 normal-case">
+                        {selectedProject.key} · {selectedProject.name}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
                 <DialogTitle>
                   <T>New Work Item</T>
                 </DialogTitle>
@@ -1714,7 +1739,7 @@ export function CockpitPage() {
             </div>
           </DialogHeader>
           <DialogPanel>
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <CockpitFieldLabel htmlFor="wi-title">
                   <T>Title</T>
@@ -1734,12 +1759,12 @@ export function CockpitPage() {
                 />
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border/50 bg-muted/15 p-3.5">
-                <div className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+              <div className="space-y-3.5 rounded-xl border border-border/55 bg-linear-to-b from-muted/25 to-muted/10 p-4">
+                <div className="text-2xs font-medium tracking-wider text-muted-foreground uppercase">
                   <T>Scope &amp; Schedule</T>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                   <div>
                     <CockpitFieldLabel htmlFor="wi-type">
                       <T>Type</T>
@@ -1883,7 +1908,7 @@ export function CockpitPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
                   <div>
                     <CockpitFieldLabel htmlFor="wi-assignee">
                       <T>Assignee</T>
@@ -1956,8 +1981,8 @@ export function CockpitPage() {
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border/50 bg-card/40 p-3.5">
-                <div className="flex items-center gap-1.5 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+              <div className="space-y-3.5 rounded-xl border border-border/55 bg-linear-to-b from-card/75 to-card/35 p-4">
+                <div className="flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
                   <CockpitStageArtworkIcon
                     className="size-3.5 shrink-0 text-info-foreground"
                     stage="prd"
@@ -2153,8 +2178,8 @@ function WorkItemCardView({
 
   return (
     <CockpitSurface
-      className="space-y-3 transition-colors hover:border-border/90"
-      padding="sm"
+      className="space-y-3.5 rounded-xl border-border/60 bg-transparent bg-linear-to-b from-card/90 to-card/55 p-4 shadow-xs ring-1 ring-inset ring-foreground/5 transition-colors hover:border-border"
+      padding="none"
       variant="card"
     >
       <div className="flex items-center justify-between gap-2">
@@ -2218,32 +2243,32 @@ function WorkItemCardView({
           {hasPrd ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5",
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 leading-tight",
                 lifecycle.prdStatus === "approved"
-                  ? "border-success/30 bg-success/10 text-success-foreground"
-                  : "border-info/25 bg-info/10 text-info-foreground",
+                  ? "border-success/25 bg-success/8 text-success-foreground"
+                  : "border-info/25 bg-info/8 text-info-foreground",
               )}
             >
-              <CockpitStageArtworkIcon className="size-3 shrink-0" stage="prd" />
+              <CockpitStageArtworkIcon className="size-3 shrink-0 opacity-85" stage="prd" />
               <T>PRD</T>
             </span>
           ) : null}
           {hasProto ? (
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5",
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 leading-tight",
                 lifecycle.prototypeStatus === "approved"
-                  ? "border-success/30 bg-success/10 text-success-foreground"
-                  : "border-border/55 bg-muted/40 text-muted-foreground",
+                  ? "border-success/25 bg-success/8 text-success-foreground"
+                  : "border-border/45 bg-muted/30 text-muted-foreground",
               )}
             >
-              <CockpitArtifactIcon className="size-3 shrink-0" kind="prototype" />
+              <CockpitArtifactIcon className="size-3 shrink-0 opacity-85" kind="prototype" />
               <T>Proto</T>
             </span>
           ) : null}
           {issueNumber !== null ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 text-muted-foreground">
-              <CockpitArtifactIcon className="size-3 shrink-0" kind="github_issue" />
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/45 bg-muted/30 px-2 py-0.5 leading-tight text-muted-foreground">
+              <CockpitArtifactIcon className="size-3 shrink-0 opacity-80" kind="github_issue" />
               <span>#{issueNumber}</span>
             </span>
           ) : null}
@@ -2251,10 +2276,10 @@ function WorkItemCardView({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="inline-flex max-w-36 items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 text-muted-foreground" />
+                  <span className="inline-flex max-w-36 items-center gap-1 rounded-md border border-border/45 bg-muted/30 px-2 py-0.5 leading-tight text-muted-foreground" />
                 }
               >
-                <CockpitArtifactIcon className="size-3 shrink-0" kind="branch" />
+                <CockpitArtifactIcon className="size-3 shrink-0 opacity-80" kind="branch" />
                 <span className="truncate">{branchName}</span>
               </TooltipTrigger>
               <TooltipPopup>{branchName}</TooltipPopup>
@@ -2265,8 +2290,8 @@ function WorkItemCardView({
               className={cn(
                 "tabular-nums",
                 schedule.isOverdue
-                  ? "rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
-                  : "text-muted-foreground",
+                  ? "rounded-md border border-destructive/25 bg-destructive/8 px-2 py-0.5 leading-tight font-medium text-destructive"
+                  : "px-0.5 text-muted-foreground/85",
               )}
             >
               {dueDateDisplay}
@@ -2302,10 +2327,10 @@ function WorkItemCardView({
               <button
                 key={cr.id}
                 className={cn(
-                  "flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors",
+                  "flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors",
                   isSelected
                     ? "border-border bg-accent/65 text-foreground"
-                    : "border-border/50 bg-muted/20 text-foreground hover:border-border/80 hover:bg-accent/40",
+                    : "border-border/45 bg-background/45 text-foreground hover:border-border/80 hover:bg-accent/35",
                 )}
                 type="button"
                 onClick={() => onOpenChangeRequest(cr)}
@@ -2361,7 +2386,7 @@ function WorkItemCardView({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2.5">
+      <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-3">
         <Button size="micro" variant="ghost-muted" onClick={onOpenDetail}>
           <T>Details</T>
         </Button>
@@ -2461,32 +2486,32 @@ function WorkItemListRowView({
         {hasPrd ? (
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-2xs",
+              "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-2xs leading-tight",
               lifecycle.prdStatus === "approved"
-                ? "border-success/30 bg-success/10 text-success-foreground"
-                : "border-info/25 bg-info/10 text-info-foreground",
+                ? "border-success/25 bg-success/8 text-success-foreground"
+                : "border-info/25 bg-info/8 text-info-foreground",
             )}
           >
-            <CockpitStageArtworkIcon className="size-3 shrink-0" stage="prd" />
+            <CockpitStageArtworkIcon className="size-3 shrink-0 opacity-85" stage="prd" />
             <T>PRD</T>
           </span>
         ) : null}
         {hasProto ? (
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-2xs",
+              "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-2xs leading-tight",
               lifecycle.prototypeStatus === "approved"
-                ? "border-success/30 bg-success/10 text-success-foreground"
-                : "border-border/55 bg-muted/40 text-muted-foreground",
+                ? "border-success/25 bg-success/8 text-success-foreground"
+                : "border-border/45 bg-muted/30 text-muted-foreground",
             )}
           >
-            <CockpitArtifactIcon className="size-3 shrink-0" kind="prototype" />
+            <CockpitArtifactIcon className="size-3 shrink-0 opacity-85" kind="prototype" />
             <T>Proto</T>
           </span>
         ) : null}
         {issueNumber !== null ? (
-          <span className="inline-flex items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
-            <CockpitArtifactIcon className="size-3 shrink-0" kind="github_issue" />
+          <span className="inline-flex items-center gap-1 rounded-md border border-border/45 bg-muted/30 px-2 py-0.5 font-mono text-2xs leading-tight text-muted-foreground">
+            <CockpitArtifactIcon className="size-3 shrink-0 opacity-80" kind="github_issue" />
             <span>#{issueNumber}</span>
           </span>
         ) : null}
@@ -2494,10 +2519,10 @@ function WorkItemListRowView({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="inline-flex max-w-32 items-center gap-1 rounded-md border border-border/55 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground" />
+                <span className="inline-flex max-w-32 items-center gap-1 rounded-md border border-border/45 bg-muted/30 px-2 py-0.5 font-mono text-2xs leading-tight text-muted-foreground" />
               }
             >
-              <CockpitArtifactIcon className="size-3 shrink-0" kind="branch" />
+              <CockpitArtifactIcon className="size-3 shrink-0 opacity-80" kind="branch" />
               <span className="truncate">{branchName}</span>
             </TooltipTrigger>
             <TooltipPopup>{branchName}</TooltipPopup>
@@ -2508,8 +2533,8 @@ function WorkItemListRowView({
             className={cn(
               "font-mono text-2xs tabular-nums",
               schedule.isOverdue
-                ? "rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive"
-                : "text-muted-foreground",
+                ? "rounded-md border border-destructive/25 bg-destructive/8 px-2 py-0.5 leading-tight font-medium text-destructive"
+                : "text-muted-foreground/85",
             )}
           >
             {dueDateDisplay}

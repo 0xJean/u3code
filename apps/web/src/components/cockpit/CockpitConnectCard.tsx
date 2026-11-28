@@ -109,10 +109,10 @@ export function CockpitConnectCard({
   return (
     <div className="mx-auto my-8 w-full max-w-2xl">
       <CockpitSurface className="overflow-hidden" variant="grouped">
-        <div className="border-b border-border/45 bg-muted/15 px-6 pt-7 pb-6">
+        <div className="border-b border-border/45 bg-linear-to-b from-card/90 via-card/55 to-muted/15 px-6 pt-7 pb-6">
           <div className="flex flex-col items-center text-center">
-            <CockpitIllustration className="h-32 w-52" kind="connect_hub" />
-            <h2 className="mt-3 text-lg font-semibold tracking-tight text-foreground">
+            <CockpitIllustration className="mx-auto w-full max-w-96" kind="connect_hub" />
+            <h2 className="mt-5 text-lg font-semibold tracking-tight text-foreground">
               <T>Connect to Team Hub</T>
             </h2>
             <p className="mt-1.5 max-w-lg text-xs leading-relaxed text-muted-foreground">
@@ -123,12 +123,12 @@ export function CockpitConnectCard({
             </p>
           </div>
 
-          <div className="mt-5 grid gap-2.5 sm:grid-cols-3">
-            <div className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-background/85 p-3 text-left shadow-2xs">
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="flex items-start gap-3 rounded-xl border border-border/55 bg-linear-to-b from-card/90 to-card/45 p-3.5 text-left shadow-2xs ring-1 ring-inset ring-foreground/4">
               <CockpitIconBadge className="mt-0.5" size="md" tone="violet">
                 <CockpitStageArtworkIcon stage="prd" />
               </CockpitIconBadge>
-              <div className="min-w-0 space-y-0.5">
+              <div className="min-w-0 space-y-1">
                 <div className="text-xs font-medium text-foreground">
                   <T>AI PRDs & Prototypes</T>
                 </div>
@@ -138,11 +138,11 @@ export function CockpitConnectCard({
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-background/85 p-3 text-left shadow-2xs">
+            <div className="flex items-start gap-3 rounded-xl border border-border/55 bg-linear-to-b from-card/90 to-card/45 p-3.5 text-left shadow-2xs ring-1 ring-inset ring-foreground/4">
               <CockpitIconBadge className="mt-0.5" size="md" tone="info">
                 <CockpitStageArtworkIcon stage="dev" />
               </CockpitIconBadge>
-              <div className="min-w-0 space-y-0.5">
+              <div className="min-w-0 space-y-1">
                 <div className="text-xs font-medium text-foreground">
                   <T>Swarm Collaboration Board</T>
                 </div>
@@ -152,11 +152,11 @@ export function CockpitConnectCard({
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5 rounded-lg border border-border/50 bg-background/85 p-3 text-left shadow-2xs">
+            <div className="flex items-start gap-3 rounded-xl border border-border/55 bg-linear-to-b from-card/90 to-card/45 p-3.5 text-left shadow-2xs ring-1 ring-inset ring-foreground/4">
               <CockpitIconBadge className="mt-0.5" size="md" tone="success">
                 <CockpitStageArtworkIcon stage="release" />
               </CockpitIconBadge>
-              <div className="min-w-0 space-y-0.5">
+              <div className="min-w-0 space-y-1">
                 <div className="text-xs font-medium text-foreground">
                   <T>Bot-Gated Releases</T>
                 </div>

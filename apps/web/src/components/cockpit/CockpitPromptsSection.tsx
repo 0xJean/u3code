@@ -22,11 +22,11 @@ import {
   CockpitArtifactIcon,
   CockpitIllustration,
   CockpitStageArtworkIcon,
+  CockpitStudioBanner,
   type CockpitStageArtKind,
 } from "./CockpitArtwork";
 import {
   CockpitIconBadge,
-  CockpitSectionHeader,
   CockpitStatusDot,
   CockpitSurface,
   CockpitSurfaceRow,
@@ -146,7 +146,7 @@ export function CockpitPromptsSection({
   if (!project) {
     return (
       <CockpitSurface variant="grouped">
-        <Empty size="compact">
+        <Empty>
           <EmptyMedia>
             <CockpitIllustration kind="empty_prompts" />
           </EmptyMedia>
@@ -252,64 +252,96 @@ export function CockpitPromptsSection({
 
   return (
     <div className="space-y-5">
-      <CockpitSectionHeader
-        action={
-          <span className="text-xs text-muted-foreground">
-            <T>
-              Active default language: <Var>{languageLabel}</Var>
-            </T>
+      <CockpitStudioBanner
+        art="prompt_memory"
+        compact
+        description={
+          <T>
+            Customize the AI instructions used across this project&apos;s delivery stages. Saved
+            templates sync to every teammate in <Var>{project.name}</Var>; uncustomized slots follow
+            each user&apos;s interface language automatically.
+          </T>
+        }
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5">
+            <CockpitArtifactIcon className="size-3.5 text-primary" kind="prompt_template" />
+            <span>{project.name}</span>
           </span>
         }
-        count={`${customizedCount}/${COCKPIT_PROMPT_SLOTS.length}`}
-        icon={
-          <CockpitIconBadge size="sm" tone="primary">
-            <CockpitArtifactIcon kind="prompt_template" />
-          </CockpitIconBadge>
+        meta={
+          <>
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/55 bg-background/75 px-2 py-0.5 text-2xs font-medium text-foreground">
+              <CockpitStatusDot
+                ring={customizedCount > 0}
+                tone={customizedCount > 0 ? "success" : "neutral"}
+              />
+              <span className="tabular-nums">
+                <T>
+                  <Var>{customizedCount}</Var>/<Var>{COCKPIT_PROMPT_SLOTS.length}</Var> customized
+                </T>
+              </span>
+            </span>
+            <span className="inline-flex items-center rounded-md border border-border/55 bg-background/75 px-2 py-0.5 text-2xs text-muted-foreground">
+              <T>
+                Active default language: <Var>{languageLabel}</Var>
+              </T>
+            </span>
+          </>
         }
         title={<T>Team Prompt Templates</T>}
       />
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        <T>
-          Customize the AI instructions used across this project&apos;s delivery stages. Saved
-          templates sync to every teammate in <Var>{project.name}</Var>; uncustomized slots follow
-          each user&apos;s interface language automatically.
-        </T>
-      </p>
-
-      <div className="grid gap-4 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <CockpitSurface divided variant="grouped">
-          {COCKPIT_PROMPT_SLOTS.map((slot) => {
-            const meta = getPromptSlotMeta(slot, gt);
-            const visual = getPromptSlotVisual(slot);
-            const active = slot === selectedSlot;
-            const customized = (savedTemplates[slot]?.trim().length ?? 0) > 0;
-            return (
-              <button
-                key={slot}
-                className={cn(
-                  "flex w-full cursor-pointer items-center justify-between gap-2.5 px-3 py-2.5 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  active
-                    ? "bg-accent/60 font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/30 hover:text-foreground",
-                )}
-                type="button"
-                onClick={() => setSelectedSlot(slot)}
-              >
-                <span className="flex min-w-0 items-center gap-2.5">
-                  <CockpitIconBadge size="sm" tone={visual.tone}>
-                    <CockpitStageArtworkIcon stage={visual.stage} />
-                  </CockpitIconBadge>
-                  <span className="truncate">{meta.label}</span>
-                </span>
-                <CockpitStatusDot tone={customized ? "success" : "neutral"} />
-              </button>
-            );
-          })}
+      <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <CockpitSurface className="overflow-hidden" variant="grouped">
+          <div className="flex items-center justify-between border-b border-border/45 bg-muted/15 px-3.5 py-2.5 text-2xs font-medium text-muted-foreground">
+            <span>
+              <T>Workflow Stages</T>
+            </span>
+            <span className="font-mono tabular-nums text-muted-foreground/70">
+              {COCKPIT_PROMPT_SLOTS.length}
+            </span>
+          </div>
+          <div className="space-y-0.5 p-1.5">
+            {COCKPIT_PROMPT_SLOTS.map((slot) => {
+              const meta = getPromptSlotMeta(slot, gt);
+              const visual = getPromptSlotVisual(slot);
+              const active = slot === selectedSlot;
+              const customized = (savedTemplates[slot]?.trim().length ?? 0) > 0;
+              return (
+                <button
+                  key={slot}
+                  aria-current={active ? "true" : undefined}
+                  className={cn(
+                    "relative flex w-full cursor-pointer items-center justify-between gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    active
+                      ? "bg-accent/70 font-medium text-foreground shadow-2xs"
+                      : "text-muted-foreground hover:bg-muted/35 hover:text-foreground",
+                  )}
+                  type="button"
+                  onClick={() => setSelectedSlot(slot)}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute inset-y-1.5 left-0.5 w-0.5 rounded-full transition-opacity",
+                      active ? "bg-primary opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="flex min-w-0 items-center gap-2.5 pl-1">
+                    <CockpitIconBadge size="sm" tone={visual.tone}>
+                      <CockpitStageArtworkIcon stage={visual.stage} />
+                    </CockpitIconBadge>
+                    <span className="truncate">{meta.label}</span>
+                  </span>
+                  <CockpitStatusDot ring={customized} tone={customized ? "success" : "neutral"} />
+                </button>
+              );
+            })}
+          </div>
         </CockpitSurface>
 
         <CockpitSurface divided variant="grouped">
-          <CockpitSurfaceRow className="flex flex-wrap items-start justify-between gap-3">
+          <CockpitSurfaceRow className="flex flex-wrap items-start justify-between gap-3 bg-linear-to-b from-muted/20 to-transparent">
             <div className="flex min-w-0 items-start gap-3">
               <CockpitIconBadge size="lg" tone={selectedVisual.tone}>
                 <CockpitStageArtworkIcon stage={selectedVisual.stage} />
@@ -326,8 +358,16 @@ export function CockpitPromptsSection({
                       <T>Built-in Default</T>
                     </Badge>
                   )}
+                  {hasUnsavedChanges ? (
+                    <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-warning-foreground">
+                      <CockpitStatusDot tone="warning" />
+                      <T>Unsaved changes</T>
+                    </span>
+                  ) : null}
                 </div>
-                <p className="text-xs text-muted-foreground">{selectedMeta.description}</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {selectedMeta.description}
+                </p>
               </div>
             </div>
 
@@ -357,9 +397,9 @@ export function CockpitPromptsSection({
             </div>
           </CockpitSurfaceRow>
 
-          <CockpitSurfaceRow className="space-y-3">
-            <div className="space-y-2 rounded-lg border border-border/45 bg-muted/15 p-2.5">
-              <div className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+          <CockpitSurfaceRow className="space-y-2 bg-muted/12" density="compact">
+            <div className="flex items-center justify-between gap-2 text-2xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
                 <CockpitArtifactIcon
                   className="size-3.5 shrink-0 text-primary"
                   kind="prompt_template"
@@ -367,21 +407,29 @@ export function CockpitPromptsSection({
                 <span>
                   <T>Click a placeholder to insert</T>
                 </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {slotVariables.map((variableName) => (
-                  <button
-                    key={variableName}
-                    className="cursor-pointer rounded-md border border-border/60 bg-background/80 px-2 py-0.5 font-mono text-2xs text-foreground/80 transition-colors hover:border-primary/40 hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    type="button"
-                    onClick={() => handleInsertVariable(variableName)}
-                  >
-                    {`{{${variableName}}}`}
-                  </button>
-                ))}
-              </div>
+              </span>
+              <span className="font-mono tabular-nums text-muted-foreground/70">
+                {slotVariables.length}
+              </span>
             </div>
+            <div className="flex flex-wrap gap-1.5">
+              {slotVariables.map((variableName) => (
+                <button
+                  key={variableName}
+                  className="cursor-pointer rounded-md border border-border/55 bg-background/85 px-2 py-0.5 font-mono text-2xs text-foreground/85 shadow-2xs transition-colors hover:border-primary/40 hover:bg-primary/8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  type="button"
+                  onClick={() => handleInsertVariable(variableName)}
+                >
+                  {`{{${variableName}}}`}
+                </button>
+              ))}
+            </div>
+          </CockpitSurfaceRow>
 
+          <CockpitSurfaceRow className="space-y-2.5">
+            <div className="text-2xs font-medium text-muted-foreground">
+              <T>Prompt Template</T>
+            </div>
             <Textarea
               aria-label={selectedMeta.label}
               rows={13}
@@ -391,11 +439,14 @@ export function CockpitPromptsSection({
           </CockpitSurfaceRow>
 
           {showPreview ? (
-            <CockpitSurfaceRow className="space-y-2 bg-muted/15">
-              <div className="text-2xs font-medium text-muted-foreground">
-                <T>Rendered Preview (Sample Data)</T>
+            <CockpitSurfaceRow className="space-y-2.5 bg-muted/15">
+              <div className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+                <EyeIcon aria-hidden className="size-3.5 shrink-0" />
+                <span>
+                  <T>Rendered Preview (Sample Data)</T>
+                </span>
               </div>
-              <pre className="max-h-72 overflow-y-auto rounded-lg border border-border/50 bg-background/80 p-3 font-mono text-2xs leading-relaxed whitespace-pre-wrap text-foreground/90">
+              <pre className="max-h-72 overflow-y-auto rounded-xl border border-border/55 bg-background/85 p-3.5 font-mono text-2xs leading-relaxed whitespace-pre-wrap text-foreground/90">
                 {renderedPreview}
               </pre>
             </CockpitSurfaceRow>

@@ -61,6 +61,7 @@ import {
   CockpitArtifactIcon,
   CockpitIllustration,
   CockpitStageArtworkIcon,
+  CockpitStudioBanner,
 } from "./CockpitArtwork";
 import {
   CockpitFieldLabel,
@@ -686,10 +687,13 @@ export function CockpitReleasesTab({
 
   if (!selectedProjectId) {
     return (
-      <CockpitSurface variant="grouped">
+      <CockpitSurface
+        className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+        variant="grouped"
+      >
         <Empty size="compact">
           <EmptyMedia>
-            <CockpitIllustration kind="empty_releases" />
+            <CockpitIllustration className="w-72 sm:w-80" kind="empty_releases" />
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>
@@ -706,47 +710,109 @@ export function CockpitReleasesTab({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <ToggleGroup
-          size="segmented"
-          variant="segmented"
-          value={[filter]}
-          onValueChange={(next) => {
-            const value = next[0];
-            if (value === "all" || value === "active" || value === "released") {
-              setFilter(value);
-            }
-          }}
-        >
-          <Toggle value="all">
-            <T>All</T>
-            <span className="ml-1 tabular-nums opacity-60">{allReleases.length}</span>
-          </Toggle>
-          <Toggle value="active">
-            <T>In Progress</T>
-            {activeCount > 0 ? (
-              <span className="ml-1 tabular-nums opacity-60">{activeCount}</span>
+      <CockpitStudioBanner
+        actions={
+          <Button size="sm" variant="default" onClick={() => setCreateOpen(true)}>
+            <PlusIcon />
+            <T>Plan Release</T>
+          </Button>
+        }
+        art="release_train"
+        compact
+        description={
+          <T>
+            Coordinate dev → main release freezes, cross-repository snapshots, and QA, Security, and
+            Production Go/No-Go sign-offs.
+          </T>
+        }
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+            <CockpitStatusDot ring={activeCount > 0} tone={activeCount > 0 ? "info" : "neutral"} />
+            <T>Dual-Trunk Release Studio</T>
+          </span>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <CockpitStatusDot tone={activeCount > 0 ? "info" : "neutral"} />
+              <span className="font-medium text-foreground">
+                {gt(
+                  "{count, plural, one {{count} active release} other {{count} active releases}}",
+                  { count: activeCount },
+                )}
+              </span>
+            </span>
+            <span aria-hidden className="opacity-35">
+              ·
+            </span>
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <CockpitStatusDot tone={shippedCount > 0 ? "success" : "neutral"} />
+              <span>
+                <T>
+                  <Var>{shippedCount}</Var> shipped
+                </T>
+              </span>
+            </span>
+            {repos.length > 0 ? (
+              <>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="font-mono text-2xs tabular-nums">
+                  {gt("{count, plural, one {{count} repo} other {{count} repos}}", {
+                    count: repos.length,
+                  })}
+                </span>
+              </>
             ) : null}
-          </Toggle>
-          <Toggle value="released">
-            <T>Shipped</T>
-            {shippedCount > 0 ? (
-              <span className="ml-1 tabular-nums opacity-60">{shippedCount}</span>
-            ) : null}
-          </Toggle>
-        </ToggleGroup>
+          </div>
+        }
+        title={<T>Release Trains &amp; Sign-off Gates</T>}
+      />
 
-        <Button size="sm" variant="default" onClick={() => setCreateOpen(true)}>
-          <PlusIcon />
-          <T>Plan Release</T>
-        </Button>
-      </div>
+      {allReleases.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ToggleGroup
+            size="segmented"
+            variant="segmented"
+            value={[filter]}
+            onValueChange={(next) => {
+              const value = next[0];
+              if (value === "all" || value === "active" || value === "released") {
+                setFilter(value);
+              }
+            }}
+          >
+            <Toggle value="all">
+              <T>All</T>
+              <span className="ml-1 tabular-nums opacity-60">{allReleases.length}</span>
+            </Toggle>
+            <Toggle value="active">
+              <T>In Progress</T>
+              {activeCount > 0 ? (
+                <span className="ml-1 tabular-nums opacity-60">{activeCount}</span>
+              ) : null}
+            </Toggle>
+            <Toggle value="released">
+              <T>Shipped</T>
+              {shippedCount > 0 ? (
+                <span className="ml-1 tabular-nums opacity-60">{shippedCount}</span>
+              ) : null}
+            </Toggle>
+          </ToggleGroup>
+        </div>
+      ) : null}
 
       {allReleases.length === 0 ? (
-        <CockpitSurface variant="grouped">
+        <CockpitSurface
+          className="border-border/60 bg-linear-to-b from-card/80 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+          variant="grouped"
+        >
           <Empty size="compact">
             <EmptyMedia>
-              <CockpitIllustration kind="empty_releases" />
+              <CockpitIconBadge size="lg" tone="primary">
+                <CockpitStageArtworkIcon stage="release" />
+              </CockpitIconBadge>
             </EmptyMedia>
             <EmptyHeader>
               <EmptyTitle>
@@ -768,10 +834,15 @@ export function CockpitReleasesTab({
           </Empty>
         </CockpitSurface>
       ) : visibleReleases.length === 0 ? (
-        <CockpitSurface variant="grouped">
+        <CockpitSurface
+          className="border-border/60 bg-linear-to-b from-card/80 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+          variant="grouped"
+        >
           <Empty size="compact">
             <EmptyMedia>
-              <CockpitIllustration kind="empty_releases" />
+              <CockpitIconBadge size="lg" tone="neutral">
+                <CockpitStageArtworkIcon stage="release" />
+              </CockpitIconBadge>
             </EmptyMedia>
             <EmptyHeader>
               <EmptyTitle>
@@ -789,7 +860,7 @@ export function CockpitReleasesTab({
           </Empty>
         </CockpitSurface>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-6">
           {visibleReleases.map((card) => {
             const latestGates = resolveLatestGateApprovals(card.gateApprovals);
             const snapshots = Object.entries(card.release.repoSnapshots);
@@ -879,11 +950,11 @@ export function CockpitReleasesTab({
             return (
               <CockpitSurface
                 key={card.release.id}
-                className="overflow-hidden border-border/60 bg-card/35"
+                className="overflow-hidden border-border/65 bg-linear-to-b from-card/85 to-card/45 shadow-sm ring-1 ring-inset ring-foreground/5"
                 variant="grouped"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+                  <div className="flex min-w-0 items-center gap-3.5">
                     <CockpitIconBadge
                       className="shrink-0"
                       size="lg"
@@ -939,21 +1010,21 @@ export function CockpitReleasesTab({
                 </div>
 
                 {card.release.status !== "rolled_back" ? (
-                  <div className="grid grid-cols-4 gap-3 border-y border-border/50 bg-muted/15 px-6 py-3">
+                  <div className="grid grid-cols-4 gap-3.5 border-y border-border/50 bg-muted/15 px-6 py-3.5">
                     {PIPELINE_STEPS.map((step, idx) => {
                       const reached = currentStepIdx >= idx;
                       const current = currentStepIdx === idx;
                       const completedAll = card.release.status === "released";
                       return (
-                        <div key={step} className="space-y-1">
+                        <div key={step} className="space-y-1.5">
                           <div
                             className={cn(
-                              "h-1 rounded-full transition-colors",
+                              "h-1.5 rounded-full transition-colors",
                               reached
                                 ? completedAll
                                   ? "bg-success"
                                   : "bg-foreground/80"
-                                : "bg-border/70",
+                                : "bg-border/65",
                             )}
                           />
                           <div
@@ -975,56 +1046,58 @@ export function CockpitReleasesTab({
                 ) : null}
 
                 {isActiveRelease ? (
-                  <div className="border-b border-border/50 bg-background/35 px-6 py-3">
-                    <div className="flex flex-wrap items-center gap-2 text-2xs">
-                      <div className="mr-1 inline-flex shrink-0 items-center gap-2">
-                        <CockpitIconBadge size="sm" tone="info">
-                          <CockpitArtifactIcon kind="branch" />
-                        </CockpitIconBadge>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-foreground">
-                            <T>Dual-Trunk Flow</T>
-                          </span>
-                          <span className="font-mono text-muted-foreground/75">
-                            {`${devBranchLabel} → ${mainBranchLabel}`}
-                          </span>
-                        </div>
+                  <div className="space-y-2.5 border-b border-border/50 bg-background/35 px-6 py-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-2xs">
+                      <div className="inline-flex items-center gap-1.5">
+                        <CockpitArtifactIcon
+                          className="size-3.5 shrink-0 text-info-foreground"
+                          kind="branch"
+                        />
+                        <span className="font-medium text-foreground">
+                          <T>Dual-Trunk Flow</T>
+                        </span>
+                        <span className="font-mono text-muted-foreground/80">
+                          {`${devBranchLabel} → ${mainBranchLabel}`}
+                        </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {dualTrunkSteps.map((step, idx) => (
-                          <Fragment key={step.key}>
-                            {idx > 0 ? (
-                              <ChevronRightIcon
-                                aria-hidden
-                                className="size-3 shrink-0 text-muted-foreground/45"
-                              />
+                      <span className="font-mono text-muted-foreground/80">
+                        {gitRefs.releaseBranch}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-2xs">
+                      {dualTrunkSteps.map((step, idx) => (
+                        <Fragment key={step.key}>
+                          {idx > 0 ? (
+                            <ChevronRightIcon
+                              aria-hidden
+                              className="size-3 shrink-0 text-muted-foreground/40"
+                            />
+                          ) : null}
+                          <span
+                            className={cn(
+                              "inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 whitespace-nowrap",
+                              step.state === "done"
+                                ? "border-success/25 bg-success/8 text-success-foreground"
+                                : step.state === "current"
+                                  ? "border-primary/35 bg-primary/10 font-medium text-foreground"
+                                  : "border-border/45 bg-card/45 text-muted-foreground/75",
+                            )}
+                          >
+                            {step.state === "done" ? (
+                              <CheckIcon aria-hidden className="size-2.5 shrink-0" />
                             ) : null}
-                            <span
-                              className={cn(
-                                "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 whitespace-nowrap",
-                                step.state === "done"
-                                  ? "border-success/25 bg-success/10 text-success-foreground"
-                                  : step.state === "current"
-                                    ? "border-primary/35 bg-primary/10 font-medium text-foreground"
-                                    : "border-border/45 bg-muted/20 text-muted-foreground/75",
-                              )}
-                            >
-                              {step.state === "done" ? (
-                                <CheckIcon aria-hidden className="size-2.5 shrink-0" />
-                              ) : null}
-                              <span>{step.label}</span>
-                              {step.hint ? (
-                                <span className="text-muted-foreground/75">({step.hint})</span>
-                              ) : null}
-                            </span>
-                          </Fragment>
-                        ))}
-                      </div>
+                            <span>{step.label}</span>
+                            {step.hint ? (
+                              <span className="text-muted-foreground/70">({step.hint})</span>
+                            ) : null}
+                          </span>
+                        </Fragment>
+                      ))}
                     </div>
                   </div>
                 ) : null}
 
-                <div className="space-y-5 px-6 py-5">
+                <div className="space-y-6 px-6 py-5">
                   <div className="space-y-2.5">
                     <CockpitSectionHeader
                       action={
@@ -1033,13 +1106,21 @@ export function CockpitReleasesTab({
                         </span>
                       }
                       icon={
-                        <CockpitIconBadge size="sm" tone={signOffTone}>
-                          <CockpitStageArtworkIcon stage="governance" />
-                        </CockpitIconBadge>
+                        <CockpitStageArtworkIcon
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            signOffTone === "error"
+                              ? "text-destructive"
+                              : signOffTone === "success"
+                                ? "text-success-foreground"
+                                : "text-muted-foreground",
+                          )}
+                          stage="governance"
+                        />
                       }
                       title={<T>Release Sign-off Gates</T>}
                     />
-                    <div className="divide-y divide-border/50 rounded-lg border border-border/50 bg-background/40">
+                    <div className="divide-y divide-border/50 rounded-xl border border-border/50 bg-background/40">
                       {RELEASE_GATES.map((gate) => {
                         const latest = latestGates.get(gate.key);
                         const status = latest?.status ?? null;
@@ -1299,12 +1380,13 @@ export function CockpitReleasesTab({
                           </div>
                         ) : null}
 
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-                              <CockpitIconBadge size="sm" tone="neutral">
-                                <ListChecksIcon />
-                              </CockpitIconBadge>
+                            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                              <ListChecksIcon
+                                aria-hidden
+                                className="size-3.5 shrink-0 text-muted-foreground"
+                              />
                               <T>Release Readiness Checklist</T>
                             </div>
                             <span
@@ -1321,13 +1403,13 @@ export function CockpitReleasesTab({
                               </T>
                             </span>
                           </div>
-                          <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-background/40">
+                          <div className="divide-y divide-border/40 rounded-xl border border-border/50 bg-background/40">
                             {RELEASE_CHECKLIST_ITEMS.map((item) => {
                               const checked = checkedKeys.has(item.key);
                               return (
                                 <label
                                   key={item.key}
-                                  className="flex cursor-pointer items-center gap-2.5 px-3.5 py-2 text-xs transition-colors hover:bg-accent/25"
+                                  className="flex cursor-pointer items-center gap-2.5 px-4 py-2.5 text-xs transition-colors hover:bg-accent/25"
                                 >
                                   <Checkbox
                                     checked={checked}
@@ -1355,24 +1437,25 @@ export function CockpitReleasesTab({
                           </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-2.5">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-                              <CockpitIconBadge size="sm" tone="warning">
-                                <TerminalIcon />
-                              </CockpitIconBadge>
+                            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+                              <TerminalIcon
+                                aria-hidden
+                                className="size-3.5 shrink-0 text-warning-foreground"
+                              />
                               <T>Safe Git Tag &amp; Back-Merge Commands</T>
                             </div>
                             <span className="text-2xs text-warning-foreground">
                               <T>Never squash-merge main → dev; tags are immutable.</T>
                             </span>
                           </div>
-                          <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-background/40">
+                          <div className="divide-y divide-border/40 rounded-xl border border-border/50 bg-background/40">
                             {gitCommands.map((cmd) => {
                               const copyKey = `${card.release.id}:${cmd.key}`;
                               const copied = isCopied && lastCopiedCommandKey === copyKey;
                               return (
-                                <div key={cmd.key} className="space-y-1.5 px-3.5 py-2.5">
+                                <div key={cmd.key} className="space-y-1.5 px-4 py-3">
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="text-xs font-medium text-foreground">
                                       {gitCommandLabel(cmd.key)}

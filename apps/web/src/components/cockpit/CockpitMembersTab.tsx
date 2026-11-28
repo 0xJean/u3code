@@ -1,14 +1,5 @@
 import { T, useGT } from "gt-react";
-import {
-  ActivityIcon,
-  AtSignIcon,
-  BotIcon,
-  CrownIcon,
-  MessageSquareIcon,
-  ShieldCheckIcon,
-  UserIcon,
-  UsersIcon,
-} from "lucide-react";
+import { ActivityIcon, AtSignIcon, BotIcon, MessageSquareIcon, UsersIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
@@ -36,55 +27,9 @@ export interface CockpitMembersTabProps {
 
 type MemberBadgeTone = "neutral" | "primary" | "success" | "info" | "warning" | "error" | "violet";
 type MemberRoleFilter = "all" | "human" | "coding_agent" | "ai_reviewer" | "working";
-type MemberRoleIconKind =
-  | "owner"
-  | "ai_reviewer"
-  | "coding_agent"
-  | "security"
-  | "maintainer"
-  | "member";
 
 function isAiReviewer(member: CockpitTeamMember): boolean {
   return member.kind === "agent" && member.roles.includes("reviewer");
-}
-
-function resolveMemberRoleBadge(member: CockpitTeamMember): {
-  readonly tone: MemberBadgeTone;
-  readonly iconKind: MemberRoleIconKind;
-} {
-  if (member.isOwner) {
-    return { tone: "warning", iconKind: "owner" };
-  }
-  if (isAiReviewer(member)) {
-    return { tone: "violet", iconKind: "ai_reviewer" };
-  }
-  if (member.kind === "agent") {
-    return { tone: "primary", iconKind: "coding_agent" };
-  }
-  if (member.roles.some((role) => role.includes("security"))) {
-    return { tone: "error", iconKind: "security" };
-  }
-  if (member.roles.some((role) => role.includes("admin") || role.includes("maintainer"))) {
-    return { tone: "info", iconKind: "maintainer" };
-  }
-  return { tone: "neutral", iconKind: "member" };
-}
-
-function renderMemberRoleIcon(iconKind: MemberRoleIconKind) {
-  switch (iconKind) {
-    case "owner":
-      return <CrownIcon />;
-    case "ai_reviewer":
-      return <CockpitArtifactIcon kind="governance" />;
-    case "coding_agent":
-      return <BotIcon />;
-    case "security":
-      return <CockpitArtifactIcon kind="security" />;
-    case "maintainer":
-      return <ShieldCheckIcon />;
-    case "member":
-      return <UserIcon />;
-  }
 }
 
 function formatRoleLabel(member: CockpitTeamMember, gt: ReturnType<typeof useGT>): string {
@@ -155,7 +100,6 @@ export function CockpitMembersTab({
 
   const activeMembers = remainingMembers.filter((member) => member.state === "working");
   const standingByMembers = remainingMembers.filter((member) => member.state === "standing_by");
-  const featuredOwnerBadge = featuredOwner ? resolveMemberRoleBadge(featuredOwner) : null;
 
   const summaryCards: readonly {
     readonly key: Exclude<MemberRoleFilter, "all">;
@@ -191,7 +135,7 @@ export function CockpitMembersTab({
   return (
     <div className="space-y-6">
       {roster.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {summaryCards.map((card) => {
             const isSelected = roleFilter === card.key;
             return (
@@ -199,10 +143,10 @@ export function CockpitMembersTab({
                 key={card.key}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  "flex cursor-pointer items-center gap-3.5 rounded-xl border px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                   isSelected
-                    ? "border-foreground/30 bg-accent/65 shadow-2xs"
-                    : "border-border/55 bg-card/35 hover:border-border hover:bg-accent/35",
+                    ? "border-primary/45 bg-linear-to-b from-accent/70 to-card/55 shadow-xs ring-1 ring-primary/35"
+                    : "border-border/55 bg-linear-to-b from-card/85 to-card/40 shadow-2xs ring-1 ring-inset ring-foreground/4 hover:border-border hover:bg-accent/35",
                 )}
                 type="button"
                 onClick={() => setRoleFilter((prev) => (prev === card.key ? "all" : card.key))}
@@ -222,10 +166,10 @@ export function CockpitMembersTab({
                   )}
                 </CockpitIconBadge>
                 <div className="min-w-0">
-                  <div className="font-mono text-base font-semibold leading-tight tabular-nums text-foreground">
+                  <div className="font-mono text-lg leading-none font-semibold tabular-nums text-foreground">
                     {card.count}
                   </div>
-                  <div className="truncate text-2xs text-muted-foreground">{card.label}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{card.label}</div>
                 </div>
               </button>
             );
@@ -289,7 +233,11 @@ export function CockpitMembersTab({
       ) : (
         <div className="space-y-6">
           {featuredOwner ? (
-            <CockpitSurface padding="md" variant="grouped">
+            <CockpitSurface
+              className="bg-linear-to-b from-card/85 to-card/45"
+              padding="md"
+              variant="grouped"
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <CockpitSwarmAvatar
@@ -319,15 +267,21 @@ export function CockpitMembersTab({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2 font-mono text-2xs text-muted-foreground">
-                  {featuredOwnerBadge ? (
-                    <CockpitIconBadge size="sm" tone={featuredOwnerBadge.tone}>
-                      {renderMemberRoleIcon(featuredOwnerBadge.iconKind)}
-                    </CockpitIconBadge>
-                  ) : null}
-                  <span>{formatRoleLabel(featuredOwner, gt)}</span>
-                  {featuredOwner.latestPost ? <span>· #{featuredOwner.latestPost.seq}</span> : null}
-                </div>
+                {featuredOwner.subtitle || featuredOwner.latestPost ? (
+                  <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    {featuredOwner.subtitle ? <span>{featuredOwner.subtitle}</span> : null}
+                    {featuredOwner.subtitle && featuredOwner.latestPost ? (
+                      <span aria-hidden className="opacity-45">
+                        ·
+                      </span>
+                    ) : null}
+                    {featuredOwner.latestPost ? (
+                      <span className="font-mono text-2xs tabular-nums">
+                        #{featuredOwner.latestPost.seq}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-3 space-y-1.5">
@@ -356,7 +310,7 @@ export function CockpitMembersTab({
                 </p>
               </div>
 
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3.5 flex items-center gap-2">
                 <Button
                   size="xs"
                   variant="outline"
@@ -392,103 +346,97 @@ export function CockpitMembersTab({
               </div>
 
               <CockpitSurface divided variant="grouped">
-                {activeMembers.map((member) => {
-                  const roleBadge = resolveMemberRoleBadge(member);
-                  return (
-                    <div
-                      key={member.handle}
-                      className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between"
-                    >
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <CockpitSwarmAvatar
-                          className="mt-0.5"
-                          displayName={member.displayName}
-                          handle={member.handle}
-                          kind={member.kind}
-                          presence="working"
-                          size="md"
-                        />
+                {activeMembers.map((member) => (
+                  <div
+                    key={member.handle}
+                    className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-accent/20 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <CockpitSwarmAvatar
+                        className="mt-0.5"
+                        displayName={member.displayName}
+                        handle={member.handle}
+                        kind={member.kind}
+                        presence="working"
+                        size="md"
+                      />
 
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-sm font-semibold text-foreground">
-                              @{member.handle}
-                            </span>
-                            <span className="text-xs font-medium text-info-foreground">
-                              <T>Working</T>
-                            </span>
-                            {member.kind === "agent" ? (
-                              <Badge size="sm" variant="secondary">
-                                <T>Agent</T>
-                              </Badge>
-                            ) : null}
-                            {member.displayName.toLowerCase() !== member.handle ? (
-                              <span className="truncate text-xs text-muted-foreground">
-                                {member.displayName}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          {member.currentActivity ? (
-                            <div className="text-xs text-foreground/90">
-                              {member.currentWorkItemId ? (
-                                <button
-                                  className="max-w-full cursor-pointer truncate text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                                  type="button"
-                                  onClick={() => {
-                                    if (member.currentWorkItemId) {
-                                      onOpenWorkItem(member.currentWorkItemId);
-                                    }
-                                  }}
-                                >
-                                  {member.currentActivity}
-                                </button>
-                              ) : (
-                                <span className="block truncate">{member.currentActivity}</span>
-                              )}
-                            </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-foreground">
+                            @{member.handle}
+                          </span>
+                          <span className="text-xs font-medium text-info-foreground">
+                            <T>Working</T>
+                          </span>
+                          {member.kind === "agent" ? (
+                            <Badge size="sm" variant="secondary">
+                              <T>Agent</T>
+                            </Badge>
                           ) : null}
-
-                          {member.latestPost ? (
-                            <p className="line-clamp-1 text-xs text-muted-foreground">
-                              <span className="mr-1.5 font-mono text-2xs text-muted-foreground/75">
-                                #{member.latestPost.seq}
-                              </span>
-                              {member.latestPost.body}
-                            </p>
+                          {member.displayName.toLowerCase() !== member.handle ? (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {member.displayName}
+                            </span>
                           ) : null}
                         </div>
-                      </div>
 
-                      <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-                        <span className="hidden items-center gap-1.5 text-2xs text-muted-foreground sm:inline-flex">
-                          <CockpitIconBadge size="sm" tone={roleBadge.tone}>
-                            {renderMemberRoleIcon(roleBadge.iconKind)}
-                          </CockpitIconBadge>
-                          <span>{formatRoleLabel(member, gt)}</span>
-                        </span>
-                        {member.postCount > 0 ? (
-                          <Button
-                            size="xs"
-                            variant="ghost-muted"
-                            onClick={() => onFilterBoardByMember(member.handle)}
-                          >
-                            <MessageSquareIcon />
-                            <span className="font-mono tabular-nums">{member.postCount}</span>
-                          </Button>
+                        {member.currentActivity ? (
+                          <div className="text-xs text-foreground/90">
+                            {member.currentWorkItemId ? (
+                              <button
+                                className="max-w-full cursor-pointer truncate text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                type="button"
+                                onClick={() => {
+                                  if (member.currentWorkItemId) {
+                                    onOpenWorkItem(member.currentWorkItemId);
+                                  }
+                                }}
+                              >
+                                {member.currentActivity}
+                              </button>
+                            ) : (
+                              <span className="block truncate">{member.currentActivity}</span>
+                            )}
+                          </div>
                         ) : null}
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => onMentionMember(member.handle)}
-                        >
-                          <AtSignIcon />
-                          <T>Mention</T>
-                        </Button>
+
+                        {member.latestPost ? (
+                          <p className="line-clamp-1 text-xs text-muted-foreground">
+                            <span className="mr-1.5 font-mono text-2xs text-muted-foreground/75">
+                              #{member.latestPost.seq}
+                            </span>
+                            {member.latestPost.body}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="flex shrink-0 items-center gap-2.5 self-end sm:self-center">
+                      <span className="hidden text-xs text-muted-foreground sm:inline">
+                        {formatRoleLabel(member, gt)}
+                      </span>
+                      {member.postCount > 0 ? (
+                        <Button
+                          size="xs"
+                          variant="ghost-muted"
+                          onClick={() => onFilterBoardByMember(member.handle)}
+                        >
+                          <MessageSquareIcon />
+                          <span className="font-mono tabular-nums">{member.postCount}</span>
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onMentionMember(member.handle)}
+                      >
+                        <AtSignIcon />
+                        <T>Mention</T>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </CockpitSurface>
             </section>
           ) : null}
@@ -505,78 +453,72 @@ export function CockpitMembersTab({
               </div>
 
               <CockpitSurface divided variant="grouped">
-                {standingByMembers.map((member) => {
-                  const roleBadge = resolveMemberRoleBadge(member);
-                  return (
-                    <div
-                      key={member.handle}
-                      className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <CockpitSwarmAvatar
-                          displayName={member.displayName}
-                          handle={member.handle}
-                          kind={member.kind}
-                          presence="standing_by"
-                          size="md"
-                        />
+                {standingByMembers.map((member) => (
+                  <div
+                    key={member.handle}
+                    className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-accent/20 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <CockpitSwarmAvatar
+                        displayName={member.displayName}
+                        handle={member.handle}
+                        kind={member.kind}
+                        presence="standing_by"
+                        size="md"
+                      />
 
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-sm font-medium text-foreground">
-                              @{member.handle}
-                            </span>
-                            {member.kind === "agent" ? (
-                              <Badge size="sm" variant="secondary">
-                                <T>Agent</T>
-                              </Badge>
-                            ) : null}
-                            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                              <CockpitIconBadge size="sm" tone={roleBadge.tone}>
-                                {renderMemberRoleIcon(roleBadge.iconKind)}
-                              </CockpitIconBadge>
-                              <span className="truncate">{formatRoleLabel(member, gt)}</span>
-                            </span>
-                          </div>
-
-                          <p className="line-clamp-1 text-xs text-muted-foreground">
-                            {member.latestPost ? (
-                              <>
-                                <span className="mr-1.5 font-mono text-2xs text-muted-foreground/75">
-                                  #{member.latestPost.seq}
-                                </span>
-                                {member.latestPost.body}
-                              </>
-                            ) : (
-                              <T>No posts yet</T>
-                            )}
-                          </p>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-medium text-foreground">
+                            @{member.handle}
+                          </span>
+                          {member.kind === "agent" ? (
+                            <Badge size="sm" variant="secondary">
+                              <T>Agent</T>
+                            </Badge>
+                          ) : null}
+                          <span className="truncate text-xs text-muted-foreground">
+                            {formatRoleLabel(member, gt)}
+                          </span>
                         </div>
-                      </div>
 
-                      <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-                        {member.postCount > 0 ? (
-                          <Button
-                            size="xs"
-                            variant="ghost-muted"
-                            onClick={() => onFilterBoardByMember(member.handle)}
-                          >
-                            <MessageSquareIcon />
-                            <span className="font-mono tabular-nums">{member.postCount}</span>
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => onMentionMember(member.handle)}
-                        >
-                          <AtSignIcon />
-                          <T>Mention</T>
-                        </Button>
+                        <p className="line-clamp-1 text-xs text-muted-foreground">
+                          {member.latestPost ? (
+                            <>
+                              <span className="mr-1.5 font-mono text-2xs text-muted-foreground/75">
+                                #{member.latestPost.seq}
+                              </span>
+                              {member.latestPost.body}
+                            </>
+                          ) : (
+                            <T>No posts yet</T>
+                          )}
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+                      {member.postCount > 0 ? (
+                        <Button
+                          size="xs"
+                          variant="ghost-muted"
+                          onClick={() => onFilterBoardByMember(member.handle)}
+                        >
+                          <MessageSquareIcon />
+                          <span className="font-mono tabular-nums">{member.postCount}</span>
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onMentionMember(member.handle)}
+                      >
+                        <AtSignIcon />
+                        <T>Mention</T>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </CockpitSurface>
             </section>
           ) : null}

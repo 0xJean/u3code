@@ -34,6 +34,7 @@ import {
   CockpitArtifactIcon,
   CockpitIllustration,
   CockpitStageArtworkIcon,
+  CockpitStudioBanner,
 } from "./CockpitArtwork";
 import {
   CockpitIconBadge,
@@ -192,7 +193,7 @@ function DigestProse({ markdown }: { readonly markdown: string }) {
   }
 
   return (
-    <div className="space-y-3 px-6 py-5 text-sm leading-6 text-foreground/90">
+    <div className="space-y-3.5 px-6 py-6 text-sm leading-6 text-foreground/90">
       {blocks.map((block) => {
         if (block.kind === "heading") {
           const headingClass =
@@ -316,6 +317,86 @@ export function CockpitMemoryTab({
 
   return (
     <div className="space-y-6">
+      <CockpitStudioBanner
+        actions={
+          <Button
+            disabled={generatingDigest}
+            size="sm"
+            variant="default"
+            onClick={handleGenerateDigestClick}
+          >
+            <FileTextIcon />
+            {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
+          </Button>
+        }
+        art="prompt_memory"
+        compact
+        description={
+          <T>
+            Executive delivery summaries paired with locked owner directives, architecture
+            decisions, and recurring risk patterns.
+          </T>
+        }
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+            <CockpitStatusDot
+              ring={activeDirectivesCount > 0}
+              tone={activeDirectivesCount > 0 ? "info" : "neutral"}
+            />
+            <T>Knowledge &amp; Digests Studio</T>
+          </span>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <CockpitStatusDot tone={digestList.length > 0 ? "info" : "neutral"} />
+              <span className="font-medium text-foreground">
+                {gt("{count, plural, one {{count} digest} other {{count} digests}}", {
+                  count: digestList.length,
+                })}
+              </span>
+            </span>
+            <span aria-hidden className="opacity-35">
+              ·
+            </span>
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <CockpitStatusDot tone={activeDirectivesCount > 0 ? "success" : "neutral"} />
+              <span>
+                {gt(
+                  "{count, plural, one {{count} active directive} other {{count} active directives}}",
+                  { count: activeDirectivesCount },
+                )}
+              </span>
+            </span>
+            {architectureDecisions.length > 0 ? (
+              <>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="tabular-nums">
+                  {gt("{count, plural, one {{count} decision} other {{count} decisions}}", {
+                    count: architectureDecisions.length,
+                  })}
+                </span>
+              </>
+            ) : null}
+            {memory ? (
+              <>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="font-mono text-2xs tabular-nums">
+                  <T>
+                    v<Var>{memory.version}</Var>
+                  </T>
+                </span>
+              </>
+            ) : null}
+          </div>
+        }
+        title={<T>Project Memory &amp; AI Digests</T>}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ToggleGroup
           aria-label={gt("Memory & Digests sections")}
@@ -338,24 +419,14 @@ export function CockpitMemoryTab({
           </Toggle>
           <Toggle value="memory">
             <LockIcon />
-            <T>Directives & Memory</T>
+            <T>Directives &amp; Memory</T>
             {activeDirectivesCount > 0 ? (
               <span className="ml-1 tabular-nums opacity-60">{activeDirectivesCount}</span>
             ) : null}
           </Toggle>
         </ToggleGroup>
 
-        {activeSubTab === "digests" ? (
-          <Button
-            disabled={generatingDigest}
-            size="sm"
-            variant="default"
-            onClick={handleGenerateDigestClick}
-          >
-            <FileTextIcon />
-            {generatingDigest ? <T>Synthesizing...</T> : <T>Generate Digest</T>}
-          </Button>
-        ) : memory ? (
+        {activeSubTab === "memory" && memory ? (
           <Badge size="sm" variant="outline">
             <T>
               v<Var>{memory.version}</Var>
@@ -366,10 +437,13 @@ export function CockpitMemoryTab({
 
       {activeSubTab === "digests" ? (
         !activeDigest ? (
-          <CockpitSurface variant="grouped">
+          <CockpitSurface
+            className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+            variant="grouped"
+          >
             <Empty size="compact">
               <EmptyMedia>
-                <CockpitIllustration kind="empty_memory" />
+                <CockpitIllustration className="w-72 sm:w-80" kind="empty_memory" />
               </EmptyMedia>
               <EmptyHeader>
                 <EmptyTitle>
@@ -396,9 +470,12 @@ export function CockpitMemoryTab({
             </Empty>
           </CockpitSurface>
         ) : (
-          <CockpitSurface className="overflow-hidden border-border/60 bg-card/35" variant="grouped">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-muted/15 px-6 py-3.5">
-              <div className="flex items-center gap-2.5">
+          <CockpitSurface
+            className="overflow-hidden border-border/65 bg-linear-to-b from-card/85 to-card/45 shadow-sm ring-1 ring-inset ring-foreground/5"
+            variant="grouped"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 bg-muted/15 px-6 py-4">
+              <div className="flex items-center gap-3">
                 <CockpitIconBadge size="md" tone="violet">
                   <CockpitArtifactIcon kind="prompt_template" />
                 </CockpitIconBadge>
@@ -450,24 +527,29 @@ export function CockpitMemoryTab({
           </CockpitSurface>
         )
       ) : (
-        <div className="space-y-6">
-          <section className="space-y-2.5">
+        <div className="space-y-7">
+          <section className="space-y-3">
             <CockpitSectionHeader
               count={directives.length}
               icon={
-                <CockpitIconBadge size="sm" tone="primary">
-                  <CockpitStageArtworkIcon stage="governance" />
-                </CockpitIconBadge>
+                <CockpitStageArtworkIcon
+                  className="size-3.5 shrink-0 text-primary"
+                  stage="governance"
+                />
               }
               title={<T>Owner Directives</T>}
             />
-            <p className="px-1 text-xs text-muted-foreground">
+            <p className="px-1 text-xs leading-relaxed text-muted-foreground">
               <T>Locked project rules preserved against AI overwrite during digest synthesis.</T>
             </p>
 
-            <CockpitSurface divided variant="grouped">
+            <CockpitSurface
+              className="border-border/60 bg-linear-to-b from-card/85 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+              divided
+              variant="grouped"
+            >
               {directives.length === 0 ? (
-                <CockpitSurfaceRow className="px-5 py-3.5">
+                <CockpitSurfaceRow className="px-5 py-4">
                   <p className="text-xs text-muted-foreground">
                     <T>
                       No directives locked yet. Add permanent engineering or release guardrails
@@ -511,7 +593,7 @@ export function CockpitMemoryTab({
                 })
               )}
 
-              <CockpitSurfaceRow className="bg-muted/15 px-5 py-3">
+              <CockpitSurfaceRow className="bg-muted/15 px-5 py-3.5">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Input
@@ -543,10 +625,13 @@ export function CockpitMemoryTab({
           </section>
 
           {architectureDecisions.length === 0 && recurringRisks.length === 0 ? (
-            <CockpitSurface variant="grouped">
+            <CockpitSurface
+              className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+              variant="grouped"
+            >
               <Empty size="compact">
                 <EmptyMedia>
-                  <CockpitIllustration kind="empty_memory" />
+                  <CockpitIllustration className="w-72 sm:w-80" kind="empty_memory" />
                 </EmptyMedia>
                 <EmptyHeader>
                   <EmptyTitle>
@@ -575,26 +660,26 @@ export function CockpitMemoryTab({
           ) : (
             <>
               {architectureDecisions.length > 0 ? (
-                <section className="space-y-2.5">
+                <section className="space-y-3">
                   <CockpitSectionHeader
                     count={architectureDecisions.length}
-                    icon={
-                      <CockpitIconBadge size="sm" tone="info">
-                        <LayersIcon />
-                      </CockpitIconBadge>
-                    }
+                    icon={<LayersIcon className="size-3.5 shrink-0 text-info-foreground" />}
                     title={<T>Architecture Decisions</T>}
                   />
-                  <CockpitSurface divided variant="grouped">
+                  <CockpitSurface
+                    className="border-border/60 bg-linear-to-b from-card/85 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+                    divided
+                    variant="grouped"
+                  >
                     {architectureDecisions.map((adr) => (
-                      <CockpitSurfaceRow key={adr.id} className="space-y-1 px-5 py-3.5">
+                      <CockpitSurfaceRow key={adr.id} className="space-y-1.5 px-5 py-4">
                         <p className="text-sm leading-relaxed font-medium text-foreground">
                           {adr.summary}
                         </p>
                         <div className="flex flex-wrap items-center gap-2 font-mono text-2xs tabular-nums text-muted-foreground">
                           <span>{adr.date}</span>
                           {adr.repoFullName ? (
-                            <span className="rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-foreground/80">
+                            <span className="rounded border border-border/55 bg-muted/30 px-1.5 py-0.5 text-foreground/80">
                               {adr.repoFullName}
                             </span>
                           ) : null}
@@ -606,28 +691,30 @@ export function CockpitMemoryTab({
               ) : null}
 
               {recurringRisks.length > 0 ? (
-                <section className="space-y-2.5">
+                <section className="space-y-3">
                   <CockpitSectionHeader
                     count={recurringRisks.length}
                     icon={
-                      <CockpitIconBadge size="sm" tone="warning">
-                        <AlertTriangleIcon />
-                      </CockpitIconBadge>
+                      <AlertTriangleIcon className="size-3.5 shrink-0 text-warning-foreground" />
                     }
                     title={<T>Recurring Risks</T>}
                   />
-                  <CockpitSurface divided variant="grouped">
+                  <CockpitSurface
+                    className="border-border/60 bg-linear-to-b from-card/85 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5"
+                    divided
+                    variant="grouped"
+                  >
                     {recurringRisks.map((risk) => (
                       <CockpitSurfaceRow
                         key={risk.id}
-                        className="flex items-start justify-between gap-4 px-5 py-3.5"
+                        className="flex items-start justify-between gap-4 px-5 py-4"
                       >
                         <div className="flex min-w-0 flex-1 items-start gap-2.5">
                           <CockpitStatusDot
                             className="mt-1.5"
                             tone={risk.severity === "high" ? "error" : "warning"}
                           />
-                          <div className="min-w-0 space-y-0.5">
+                          <div className="min-w-0 space-y-1">
                             <p className="text-sm font-medium text-foreground">{risk.title}</p>
                             <p className="text-xs leading-relaxed text-muted-foreground">
                               {risk.mitigation}

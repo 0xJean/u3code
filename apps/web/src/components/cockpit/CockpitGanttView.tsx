@@ -24,8 +24,8 @@ import {
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
-import { CockpitArtifactIcon, CockpitIllustration } from "./CockpitArtwork";
-import { CockpitSurface } from "./CockpitPrimitives";
+import { CockpitArtifactIcon, CockpitIllustration, CockpitStudioBanner } from "./CockpitArtwork";
+import { CockpitStatusDot, CockpitSurface } from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
   isWorkItemDoneStage,
@@ -505,10 +505,13 @@ export function CockpitGanttView({
 
   if (cards.length === 0) {
     return (
-      <CockpitSurface variant="grouped">
+      <CockpitSurface
+        className="border-border/60 bg-linear-to-b from-card/80 to-card/45 py-4 shadow-xs ring-1 ring-inset ring-foreground/5"
+        variant="grouped"
+      >
         <Empty size="compact">
           <EmptyMedia>
-            <CockpitIllustration kind="empty_gantt" />
+            <CockpitIllustration className="w-72 sm:w-80" kind="empty_gantt" />
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>
@@ -537,6 +540,7 @@ export function CockpitGanttView({
   const timeline = buildGanttTimeline(cards, releases, zoom, undefined, roster);
   const stageLabelById = new Map(stages.map((stage) => [stage.id, stage.label]));
   const overdueCount = timeline.rows.filter((row) => row.isOverdue).length;
+  const scheduleRangeLabel = `${formatMonthDay(timeline.startDay)} – ${formatMonthDay(timeline.endDay)}`;
 
   const groups: GanttRowGroup[] = [];
   if (groupBy === "all") {
@@ -605,7 +609,79 @@ export function CockpitGanttView({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <CockpitStudioBanner
+        actions={
+          onCreateItem ? (
+            <Button size="sm" variant="default" onClick={onCreateItem}>
+              <PlusIcon />
+              <T>New Requirement</T>
+            </Button>
+          ) : undefined
+        }
+        art="gantt_shield"
+        compact
+        description={
+          <T>
+            Track delivery windows across stages and assignees, spot overdue work early, and align
+            with upcoming release milestones.
+          </T>
+        }
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+            <CockpitStatusDot
+              ring={overdueCount > 0}
+              tone={overdueCount > 0 ? "error" : "success"}
+            />
+            <T>Delivery Schedule Studio</T>
+          </span>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground tabular-nums">
+              {gt("{count, plural, one {{count} scheduled item} other {{count} scheduled items}}", {
+                count: timeline.rows.length,
+              })}
+            </span>
+            <span aria-hidden className="opacity-35">
+              ·
+            </span>
+            {overdueCount > 0 ? (
+              <span className="inline-flex items-center gap-1.5 font-medium text-destructive tabular-nums">
+                <CockpitStatusDot tone="error" />
+                <T>
+                  <Var>{overdueCount}</Var> overdue
+                </T>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-success-foreground">
+                <CockpitStatusDot tone="success" />
+                <T>All on schedule</T>
+              </span>
+            )}
+            <span aria-hidden className="opacity-35">
+              ·
+            </span>
+            <span className="font-mono text-2xs tabular-nums text-foreground/85">
+              {scheduleRangeLabel}
+            </span>
+            {timeline.releaseMarkers.length > 0 ? (
+              <>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="tabular-nums">
+                  {gt("{count, plural, one {{count} milestone} other {{count} milestones}}", {
+                    count: timeline.releaseMarkers.length,
+                  })}
+                </span>
+              </>
+            ) : null}
+          </div>
+        }
+        title={<T>Timeline &amp; Release Milestones</T>}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup
@@ -672,16 +748,10 @@ export function CockpitGanttView({
             <span aria-hidden className="inline-block size-2 rotate-45 rounded-xs bg-primary" />
             <T>Release milestone</T>
           </span>
-          {onCreateItem ? (
-            <Button size="xs" variant="outline" onClick={onCreateItem}>
-              <PlusIcon />
-              <T>New Requirement</T>
-            </Button>
-          ) : null}
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/55 bg-card/30">
+      <div className="overflow-hidden rounded-2xl border border-border/65 bg-linear-to-b from-card/80 to-card/45 shadow-xs ring-1 ring-inset ring-foreground/5">
         <div className="overflow-x-auto">
           <div style={{ minWidth: `${timelineMinWidthPx + 264}px` }}>
             <div className="flex h-12 border-b border-border/55 bg-muted/15">

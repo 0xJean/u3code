@@ -4,7 +4,7 @@ import type {
   TeamBoardMessage,
   TeamBoardMessageKind,
 } from "@u3code/hub-contracts";
-import { T, useGT, Var } from "gt-react";
+import { Plural, T, useGT, Var } from "gt-react";
 import {
   ActivityIcon,
   ArrowRightIcon,
@@ -39,8 +39,12 @@ import { Textarea } from "~/components/ui/textarea";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
-import { CockpitIllustration, CockpitStageArtworkIcon } from "./CockpitArtwork";
-import { CockpitIconBadge, CockpitSurface } from "./CockpitPrimitives";
+import {
+  CockpitIllustration,
+  CockpitStageArtworkIcon,
+  CockpitStudioBanner,
+} from "./CockpitArtwork";
+import { CockpitIconBadge, CockpitStatusDot, CockpitSurface } from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
   parseMessageTokens,
@@ -311,9 +315,100 @@ export function CockpitBoardTab({
 
   const hasActiveFilters =
     kindFilter !== "all" || normalizedMemberFilter !== null || normalizedQuery.length > 0;
+  const handoffCount = messages.filter((message) => message.kind === "handoff").length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <CockpitStudioBanner
+        art="swarm_board"
+        compact
+        description={
+          <T>
+            Coordinate teammates and coding agents with @mentions, review alerts, and release
+            handoffs.
+          </T>
+        }
+        eyebrow={
+          <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wide text-muted-foreground">
+            <CockpitStatusDot
+              ring={messages.length > 0}
+              tone={messages.length > 0 ? "info" : "neutral"}
+            />
+            <T>Swarm Coordination</T>
+          </span>
+        }
+        meta={
+          <div className="flex flex-wrap items-center gap-2 text-2xs text-muted-foreground tabular-nums">
+            <span className="font-mono text-foreground/85">
+              <T>
+                <Plural
+                  n={messages.length}
+                  one={
+                    <>
+                      <Var>{messages.length}</Var> message
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{messages.length}</Var> messages
+                    </>
+                  }
+                />
+              </T>
+            </span>
+            {handoffCount > 0 ? (
+              <>
+                <span aria-hidden className="opacity-40">
+                  ·
+                </span>
+                <span>
+                  <T>
+                    <Plural
+                      n={handoffCount}
+                      one={
+                        <>
+                          <Var>{handoffCount}</Var> handoff
+                        </>
+                      }
+                      other={
+                        <>
+                          <Var>{handoffCount}</Var> handoffs
+                        </>
+                      }
+                    />
+                  </T>
+                </span>
+              </>
+            ) : null}
+            {roster.length > 0 ? (
+              <>
+                <span aria-hidden className="opacity-40">
+                  ·
+                </span>
+                <span>
+                  <T>
+                    <Plural
+                      n={roster.length}
+                      one={
+                        <>
+                          <Var>{roster.length}</Var> member
+                        </>
+                      }
+                      other={
+                        <>
+                          <Var>{roster.length}</Var> members
+                        </>
+                      }
+                    />
+                  </T>
+                </span>
+              </>
+            ) : null}
+          </div>
+        }
+        title={<T>Team Message Board</T>}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="w-full sm:max-w-sm sm:flex-1">
           <Input
@@ -518,7 +613,7 @@ export function CockpitBoardTab({
               <article
                 key={message.id}
                 className={cn(
-                  "flex items-start gap-3 px-4 py-3.5",
+                  "flex items-start gap-3.5 px-5 py-4 transition-colors hover:bg-accent/20",
                   marker?.accentClass,
                   marker?.rowTintClass,
                 )}
@@ -538,7 +633,7 @@ export function CockpitBoardTab({
                   />
                 )}
 
-                <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="min-w-0 flex-1 space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                       <button
@@ -575,18 +670,7 @@ export function CockpitBoardTab({
                         </span>
                       ) : null}
 
-                      {marker && message.authorType !== "system" ? (
-                        <span className="inline-flex items-center gap-1">
-                          <CockpitIconBadge size="sm" tone={marker.tone}>
-                            {renderBoardMarkerIcon(marker.iconKind)}
-                          </CockpitIconBadge>
-                          {badgeText ? (
-                            <Badge size="sm" variant={kindBadgeVariant(message.kind)}>
-                              {badgeText}
-                            </Badge>
-                          ) : null}
-                        </span>
-                      ) : badgeText ? (
+                      {badgeText ? (
                         <Badge size="sm" variant={kindBadgeVariant(message.kind)}>
                           {badgeText}
                         </Badge>

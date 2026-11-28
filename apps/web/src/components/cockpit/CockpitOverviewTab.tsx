@@ -28,8 +28,8 @@ import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import {
   CockpitArtifactIcon,
-  CockpitIllustration,
   CockpitStageArtworkIcon,
+  CockpitStudioBanner,
 } from "./CockpitArtwork";
 import {
   CockpitDiffStat,
@@ -118,7 +118,6 @@ type ActiveNowRow =
   | {
       readonly key: string;
       readonly kind: "work_item";
-      readonly tone: CockpitTone;
       readonly title: string;
       readonly detail: string;
       readonly cues: readonly LifecycleCue[];
@@ -131,7 +130,6 @@ type ActiveNowRow =
   | {
       readonly key: string;
       readonly kind: "change_request";
-      readonly tone: CockpitTone;
       readonly title: string;
       readonly detail: string;
       readonly cues: readonly LifecycleCue[];
@@ -203,12 +201,6 @@ function releaseStatusLabel(status: ReleaseStatus, gt: ReturnType<typeof useGT>)
     case "rolled_back":
       return gt("Rolled Back");
   }
-}
-
-function workItemHealthTone(health: string): CockpitTone {
-  if (health === "blocked") return "error";
-  if (health === "at_risk") return "warning";
-  return "info";
 }
 
 function workItemBadgeTone(itemType: WorkItemType, health: string): OverviewBadgeTone {
@@ -482,7 +474,6 @@ export function CockpitOverviewTab({
     allActiveRows.push({
       key: `wi:${card.workItem.id}`,
       kind: "work_item",
-      tone: workItemHealthTone(card.workItem.health),
       title: `${card.workItem.code} · ${card.workItem.title}`,
       detail: pulseSummary,
       cues,
@@ -518,7 +509,6 @@ export function CockpitOverviewTab({
     allActiveRows.push({
       key: `cr:${cr.id}`,
       kind: "change_request",
-      tone: changeRequestTone(cr),
       title: `${cr.repoFullName}#${cr.number} · ${cr.title}`,
       detail,
       cues: [],
@@ -573,46 +563,260 @@ export function CockpitOverviewTab({
   const workingMembersCount = roster.filter((member) => member.state === "working").length;
   const leadMember = roster.find((member) => member.isOwner) ?? roster[0] ?? null;
 
+  const activeProject = overview?.project ?? null;
+  const projectKey = activeProject?.key.trim() || null;
+  const projectName = activeProject?.name.trim() || null;
+  const blockerCount = blockedCards.length + botBlockedPrs.length;
+  const heroStatusTone: CockpitTone =
+    blockerCount > 0 ? "error" : activeCards.length > 0 ? "success" : "info";
+
   return (
     <div className="space-y-6">
-      {totalItems === 0 ? (
-        <section aria-label={gt("Get started")}>
-          <CockpitSurface className="overflow-hidden" variant="grouped">
-            <div className="flex flex-col items-center gap-5 px-5 py-6 sm:flex-row sm:items-center sm:px-6">
-              <div className="shrink-0 rounded-xl border border-border/45 bg-muted/20 p-2.5">
-                <CockpitIllustration className="h-24 w-52 sm:w-56" kind="delivery_banner" />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5 text-center sm:text-left">
-                <h2 className="text-base font-semibold tracking-tight text-foreground">
-                  <T>Launch your delivery pipeline</T>
-                </h2>
-                <p className="max-w-xl text-xs leading-relaxed text-muted-foreground">
-                  <T>
-                    Capture a requirement, draft an AI PRD and interactive prototype, then dispatch
-                    GitHub issues and PRs across your team.
-                  </T>
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2 sm:justify-start">
-                  {onOpenIntake ? (
-                    <Button size="sm" variant="default" onClick={onOpenIntake}>
-                      <PlusIcon />
-                      <T>Create Work Item & Draft PRD</T>
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" onClick={() => onNavigateDelivery("kanban")}>
-                    <T>Open Delivery Board</T>
-                  </Button>
-                </div>
-              </div>
+      <section aria-label={gt("Delivery Studio")}>
+        <CockpitStudioBanner
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {onOpenIntake ? (
+                <Button size="sm" variant="default" onClick={onOpenIntake}>
+                  <PlusIcon />
+                  {totalItems === 0 ? <T>Create Work Item & Draft PRD</T> : <T>New Work Item</T>}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => onNavigateDelivery("kanban")}>
+                <T>Open Delivery Board</T>
+              </Button>
             </div>
-          </CockpitSurface>
-        </section>
-      ) : null}
+          }
+          art="hero_pipeline"
+          description={
+            totalItems === 0 ? (
+              <T>
+                Capture a requirement, draft an AI PRD and interactive prototype, then dispatch
+                GitHub issues and PRs across your team.
+              </T>
+            ) : blockerCount > 0 ? (
+              <T>
+                <Plural
+                  n={activeCards.length}
+                  one={
+                    <>
+                      <Var>{activeCards.length}</Var> active work item
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{activeCards.length}</Var> active work items
+                    </>
+                  }
+                />{" "}
+                in motion with{" "}
+                <Plural
+                  n={blockerCount}
+                  one={
+                    <>
+                      <Var>{blockerCount}</Var> blocker
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{blockerCount}</Var> blockers
+                    </>
+                  }
+                />{" "}
+                requiring attention.
+              </T>
+            ) : readyForReviewPrs.length > 0 ? (
+              <T>
+                <Plural
+                  n={activeCards.length}
+                  one={
+                    <>
+                      <Var>{activeCards.length}</Var> active work item
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{activeCards.length}</Var> active work items
+                    </>
+                  }
+                />{" "}
+                in flight and{" "}
+                <Plural
+                  n={readyForReviewPrs.length}
+                  one={
+                    <>
+                      <Var>{readyForReviewPrs.length}</Var> PR
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{readyForReviewPrs.length}</Var> PRs
+                    </>
+                  }
+                />{" "}
+                awaiting human review.
+              </T>
+            ) : latestActiveRelease?.release.status === "ready" ? (
+              <T>
+                Release <Var>{latestActiveRelease.release.versionLabel}</Var> is ready to ship with
+                all gates aligned across{" "}
+                <Plural
+                  n={totalItems}
+                  one={
+                    <>
+                      <Var>{totalItems}</Var> work item
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{totalItems}</Var> work items
+                    </>
+                  }
+                />
+                .
+              </T>
+            ) : activeCards.length > 0 ? (
+              <T>
+                <Plural
+                  n={activeCards.length}
+                  one={
+                    <>
+                      <Var>{activeCards.length}</Var> active work item
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{activeCards.length}</Var> active work items
+                    </>
+                  }
+                />{" "}
+                flowing smoothly from specification through review and release.
+              </T>
+            ) : (
+              <T>
+                All{" "}
+                <Plural
+                  n={doneItems.length}
+                  one={
+                    <>
+                      <Var>{doneItems.length}</Var> work item is
+                    </>
+                  }
+                  other={
+                    <>
+                      <Var>{doneItems.length}</Var> work items are
+                    </>
+                  }
+                />{" "}
+                shipped. Capture the next requirement when ready.
+              </T>
+            )
+          }
+          eyebrow={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {projectKey ? (
+                <span className="inline-flex items-center rounded-md border border-border/65 bg-background/75 px-1.5 py-0.5 font-mono text-2xs font-semibold tracking-wide text-foreground">
+                  {projectKey}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wide text-muted-foreground">
+                <CockpitStatusDot
+                  ring={activeCards.length > 0 || blockerCount > 0}
+                  tone={heroStatusTone}
+                />
+                {totalItems === 0 ? (
+                  <T>Ready to launch</T>
+                ) : blockerCount > 0 ? (
+                  <T>Attention needed</T>
+                ) : (
+                  <T>Live delivery</T>
+                )}
+              </span>
+            </span>
+          }
+          meta={
+            totalItems > 0 || openPrs.length > 0 || latestActiveRelease ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground tabular-nums">
+                <span className="inline-flex items-center gap-1.5">
+                  <CockpitStatusDot tone={activeCards.length > 0 ? "info" : "success"} />
+                  <T>
+                    <Var>{activeCards.length}</Var> active
+                  </T>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <CockpitStatusDot
+                    tone={
+                      botBlockedPrs.length > 0
+                        ? "error"
+                        : readyForReviewPrs.length > 0
+                          ? "warning"
+                          : "neutral"
+                    }
+                  />
+                  {readyForReviewPrs.length > 0 ? (
+                    <T>
+                      <Var>{readyForReviewPrs.length}</Var> awaiting review
+                    </T>
+                  ) : (
+                    <T>
+                      <Plural
+                        n={openPrs.length}
+                        one={
+                          <>
+                            <Var>{openPrs.length}</Var> open PR
+                          </>
+                        }
+                        other={
+                          <>
+                            <Var>{openPrs.length}</Var> open PRs
+                          </>
+                        }
+                      />
+                    </T>
+                  )}
+                </span>
+                {latestActiveRelease ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <CockpitStatusDot
+                      tone={
+                        latestActiveRelease.release.status === "ready" ||
+                        latestActiveRelease.release.status === "released"
+                          ? "success"
+                          : "info"
+                      }
+                    />
+                    <T>
+                      <Var>{latestActiveRelease.release.versionLabel}</Var> ·{" "}
+                      <Var>{releaseSignedCount}</Var>/3 signed
+                    </T>
+                  </span>
+                ) : doneItems.length > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 text-success-foreground">
+                    <CockpitStatusDot tone="success" />
+                    <T>
+                      <Var>{doneItems.length}</Var> shipped
+                    </T>
+                  </span>
+                ) : null}
+              </div>
+            ) : undefined
+          }
+          title={
+            projectName ? (
+              <T>
+                <Var>{projectName}</Var> Delivery Studio
+              </T>
+            ) : (
+              <T>End-to-End AI Delivery Pipeline</T>
+            )
+          }
+        />
+      </section>
 
       <section aria-label={gt("Delivery Pipeline")}>
         <CockpitSurface variant="grouped">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/45 px-4 py-2.5">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/45 px-4 py-3">
+            <div className="flex items-center gap-2.5">
               <h2 className="text-xs font-medium text-muted-foreground">
                 <T>Delivery Pipeline</T>
               </h2>
@@ -632,7 +836,7 @@ export function CockpitOverviewTab({
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4 md:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2.5 p-3.5 sm:grid-cols-4 md:grid-cols-7">
             {PIPELINE_STEPS.map((step) => {
               const stat = phaseStats.get(step.stage) ?? { count: 0, blocked: 0, overdue: 0 };
               const hasBottleneck = stat.blocked > 0 || stat.overdue > 0;
@@ -660,12 +864,12 @@ export function CockpitOverviewTab({
                 <button
                   key={step.stage}
                   className={cn(
-                    "flex min-w-0 cursor-pointer flex-col gap-2 rounded-lg border px-2.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                    "flex min-w-0 cursor-pointer flex-col gap-2.5 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                     hasBottleneck
-                      ? "border-destructive/35 bg-destructive/6 hover:border-destructive/50 hover:bg-destructive/10"
+                      ? "border-destructive/35 bg-linear-to-b from-destructive/10 to-card/45 hover:border-destructive/55 hover:from-destructive/14"
                       : isActive
-                        ? "border-border/65 bg-background/80 shadow-2xs hover:border-border hover:bg-accent/45"
-                        : "border-border/35 bg-muted/15 hover:border-border/60 hover:bg-accent/30",
+                        ? "border-border/65 bg-linear-to-b from-card/85 to-card/40 shadow-2xs ring-1 ring-inset ring-foreground/4 hover:border-border hover:bg-accent/40"
+                        : "border-border/40 bg-linear-to-b from-card/55 to-card/25 hover:border-border/65 hover:bg-accent/30",
                   )}
                   type="button"
                   onClick={() => onNavigateDelivery(step.targetSubView)}
@@ -676,39 +880,32 @@ export function CockpitOverviewTab({
                     </CockpitIconBadge>
                     <span
                       className={cn(
-                        "font-mono text-sm tabular-nums",
+                        "font-mono text-base leading-none tabular-nums",
                         stat.blocked > 0
                           ? "font-semibold text-destructive"
                           : stat.overdue > 0
                             ? "font-semibold text-warning-foreground"
                             : isActive
                               ? "font-semibold text-foreground"
-                              : "font-medium text-muted-foreground/55",
+                              : "font-medium text-muted-foreground/50",
                       )}
                     >
                       {stat.count}
                     </span>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-1">
-                      <span
-                        className={cn(
-                          "truncate text-xs",
-                          isActive ? "font-medium text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        {pipelineStageLabel(step.stage, gt)}
-                      </span>
-                      {stat.blocked > 0 ? (
-                        <CockpitStatusDot tone="error" />
-                      ) : stat.overdue > 0 ? (
-                        <CockpitStatusDot tone="warning" />
-                      ) : null}
-                    </div>
+                  <div className="space-y-2">
+                    <span
+                      className={cn(
+                        "block truncate text-xs",
+                        isActive ? "font-medium text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {pipelineStageLabel(step.stage, gt)}
+                    </span>
                     <div
                       aria-hidden
-                      className="h-1 w-full overflow-hidden rounded-full bg-muted/55"
+                      className="h-1 w-full overflow-hidden rounded-full bg-muted/60"
                     >
                       {barWidthPct > 0 ? (
                         <div
@@ -773,7 +970,7 @@ export function CockpitOverviewTab({
                 {visibleActiveRows.slice(0, 8).map((row) => (
                   <button
                     key={row.key}
-                    className="flex w-full cursor-pointer items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    className="flex w-full cursor-pointer items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     type="button"
                     onClick={() => {
                       if (row.kind === "work_item") {
@@ -805,12 +1002,9 @@ export function CockpitOverviewTab({
                         </CockpitIconBadge>
                       )}
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <CockpitStatusDot tone={row.tone} />
-                          <span className="truncate text-sm font-medium text-foreground">
-                            {row.title}
-                          </span>
-                        </div>
+                        <span className="block truncate text-sm font-medium text-foreground">
+                          {row.title}
+                        </span>
                         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                           <span className="min-w-0 truncate">{row.detail}</span>
                           {row.cues.length > 0 ? (
