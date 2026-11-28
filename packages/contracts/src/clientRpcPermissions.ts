@@ -65,6 +65,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.teamHubCreateWorkspace]: AuthSettingsWriteScope,
   [WS_METHODS.teamHubCreateProject]: AuthSettingsWriteScope,
   [WS_METHODS.teamHubUpdateProjectPrompts]: AuthSettingsWriteScope,
+  [WS_METHODS.teamHubUpdateProjectPlanning]: AuthSettingsWriteScope,
   [WS_METHODS.teamHubAddProjectRepo]: AuthSettingsWriteScope,
   [WS_METHODS.teamHubCreateNotificationChannel]: AuthSettingsWriteScope,
   [WS_METHODS.teamHubUpdateProfile]: AuthSettingsWriteScope,

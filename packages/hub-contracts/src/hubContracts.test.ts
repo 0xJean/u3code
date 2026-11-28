@@ -1,21 +1,32 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  AgileHorizon,
   ArtifactStatus,
   BranchTopology,
+  CycleStatus,
   DEFAULT_REPO_POLICY,
   DesignTier,
   HubWsEvent,
+  MilestoneStatus,
+  MilestoneTone,
   PipelinePhase,
+  ProjectCycle,
+  ProjectMilestone,
   PulseCreateInput,
   RepoPolicy,
+  STORY_POINT_SCALE,
   TeamBoardCreateInput,
   TeamBoardListResponse,
   TeamBoardMessage,
   WORKFLOW_PRESETS,
   WorkItemLifecycleMeta,
   WorkflowConfig,
+  buildCycleBurnupSeries,
   buildLifecycleAttributesPatch,
+  computeCycleProgress,
+  computeMilestoneProgress,
+  computeTeamVelocity,
   createWorkflowConfigFromPreset,
   deriveWorkItemPipelinePhase,
   extractBoardMentions,
@@ -25,7 +36,9 @@ import {
   resolveLatestGateApprovals,
   resolveWorkItemSchedule,
   standardGitHubLabels,
+  suggestNextCycleDraft,
   suggestWorkItemBranchName,
+  type CockpitWorkItemCard,
 } from "./index.ts";
 
 const decodeDesignTier = Schema.decodeSync(DesignTier);
@@ -243,6 +256,10 @@ describe("hub-contracts schemas and presets", () => {
       branchTopology: "dual_trunk",
       branchName: null,
       targetBranch: null,
+      cycleId: null,
+      milestoneId: null,
+      roadmapHorizon: null,
+      storyPoints: null,
     });
 
     const inferredFromArtifacts = readWorkItemLifecycle({
@@ -546,6 +563,458 @@ describe("hub-contracts schemas and presets", () => {
       dueDate: "2026-12-02",
       isEstimated: false,
       isOverdue: false,
+    });
+  });
+
+  it("validates agile cycle/milestone schemas, clones them in presets, and patches lifecycle agile attributes including null clears", () => {
+    const decodeHorizon = Schema.decodeSync(AgileHorizon);
+    const decodeMilestoneStatus = Schema.decodeSync(MilestoneStatus);
+    const decodeMilestoneTone = Schema.decodeSync(MilestoneTone);
+    const decodeCycleStatus = Schema.decodeSync(CycleStatus);
+    const decodeMilestone = Schema.decodeUnknownSync(ProjectMilestone);
+    const decodeCycle = Schema.decodeUnknownSync(ProjectCycle);
+    const decodeWorkflow = Schema.decodeUnknownSync(WorkflowConfig);
+
+    expect(STORY_POINT_SCALE).toEqual([1, 2, 3, 5, 8, 13]);
+    expect(decodeHorizon("now")).toBe("now");
+    expect(decodeMilestoneStatus("active")).toBe("active");
+    expect(decodeMilestoneTone("violet")).toBe("violet");
+    expect(decodeCycleStatus("active")).toBe("active");
+
+    const cycle = decodeCycle({
+      id: "cyc_1",
+      number: 1,
+      name: "Cycle 1",
+      goal: "Ship Agile planning",
+      startDate: "2026-11-01",
+      endDate: "2026-11-14",
+      status: "active",
+      capacityPoints: 24,
+      completedPoints: null,
+      completedAt: null,
+    });
+    const milestone = decodeMilestone({
+      id: "mls_1",
+      name: "Q4 Cockpit GA",
+      description: "Core delivery cockpit launch",
+      horizon: "now",
+      status: "active",
+      targetDate: "2026-12-15",
+      colorTone: "primary",
+      createdAt: "2026-11-01T00:00:00.000Z",
+    });
+
+    const cloned = createWorkflowConfigFromPreset("full-delivery", {
+      cycles: [cycle],
+      milestones: [milestone],
+    });
+    expect(decodeWorkflow(cloned).cycles).toEqual([cycle]);
+    expect(decodeWorkflow(cloned).milestones).toEqual([milestone]);
+    expect(WORKFLOW_PRESETS["full-delivery"].cycles).toBeUndefined();
+    expect(WORKFLOW_PRESETS["full-delivery"].milestones).toBeUndefined();
+
+    const parsedLifecycle = readWorkItemLifecycle({
+      itemType: "feature",
+      priority: "p1",
+      code: "AGL-1",
+      title: "Cycle burnup chart",
+      specMarkdown: "",
+      previewUrls: [],
+      attributes: {
+        cycleId: " cyc_1 ",
+        milestoneId: " mls_1 ",
+        roadmapHorizon: "next",
+        storyPoints: "8",
+      },
+    });
+    expect(parsedLifecycle.cycleId).toBe("cyc_1");
+    expect(parsedLifecycle.milestoneId).toBe("mls_1");
+    expect(parsedLifecycle.roadmapHorizon).toBe("next");
+    expect(parsedLifecycle.storyPoints).toBe(8);
+
+    const invalidLifecycle = readWorkItemLifecycle({
+      itemType: "bug",
+      priority: "p2",
+      code: "AGL-2",
+      title: "Edge validation",
+      specMarkdown: "",
+      previewUrls: [],
+      attributes: {
+        cycleId: "   ",
+        milestoneId: 123,
+        roadmapHorizon: "someday",
+        storyPoints: 101,
+      },
+    });
+    expect(invalidLifecycle.cycleId).toBeNull();
+    expect(invalidLifecycle.milestoneId).toBeNull();
+    expect(invalidLifecycle.roadmapHorizon).toBeNull();
+    expect(invalidLifecycle.storyPoints).toBeNull();
+
+    const zeroPoints = readWorkItemLifecycle({
+      itemType: "chore",
+      priority: "p3",
+      code: "AGL-3",
+      title: "Zero points invalid",
+      specMarkdown: "",
+      previewUrls: [],
+      attributes: { storyPoints: 0 },
+    });
+    expect(zeroPoints.storyPoints).toBeNull();
+
+    const patchSet = buildLifecycleAttributesPatch({
+      cycleId: " cyc_1 ",
+      milestoneId: " mls_1 ",
+      roadmapHorizon: "now",
+      storyPoints: 5,
+    });
+    expect(patchSet).toEqual({
+      cycleId: "cyc_1",
+      milestoneId: "mls_1",
+      roadmapHorizon: "now",
+      storyPoints: 5,
+    });
+
+    const patchClear = buildLifecycleAttributesPatch({
+      cycleId: null,
+      milestoneId: null,
+      roadmapHorizon: null,
+      storyPoints: null,
+    });
+    expect(patchClear).toEqual({
+      cycleId: null,
+      milestoneId: null,
+      roadmapHorizon: null,
+      storyPoints: null,
+    });
+    expect("dueAt" in patchClear).toBe(false);
+  });
+
+  it("computes cycle progress, burnup series, team velocity, milestone progress, and next cycle drafts deterministically", () => {
+    const makeCard = (
+      id: string,
+      overrides: Partial<CockpitWorkItemCard["workItem"]> = {},
+      changeRequests: CockpitWorkItemCard["changeRequests"] = [],
+    ): CockpitWorkItemCard => ({
+      workItem: {
+        id,
+        projectId: "prj_1",
+        seqNo: 1,
+        code: `AGL-${id}`,
+        title: `Item ${id}`,
+        itemType: "feature",
+        priority: "p1",
+        stage: "dev",
+        health: "on_track",
+        assigneeType: "unassigned",
+        assigneeUserId: null,
+        assigneeRunnerId: null,
+        specMarkdown: "",
+        specUrl: null,
+        previewUrls: [],
+        checklistItems: [],
+        attributes: {},
+        createdBy: "usr_1",
+        createdAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-05T00:00:00.000Z",
+        ...overrides,
+      },
+      latestPulse: null,
+      changeRequests,
+      gateApprovals: [],
+      checklistVerifiedCount: 0,
+      checklistTotalCount: 0,
+    });
+
+    const activeCycle: ProjectCycle = {
+      id: "cyc_2",
+      number: 2,
+      name: "Cycle 2",
+      startDate: "2026-11-01",
+      endDate: "2026-11-14",
+      status: "active",
+      capacityPoints: 20,
+    };
+
+    const cards: CockpitWorkItemCard[] = [
+      makeCard("1", {
+        stage: "done",
+        updatedAt: "2026-11-03T15:00:00.000Z",
+        attributes: { cycleId: "cyc_2", milestoneId: "mls_1", storyPoints: 5 },
+      }),
+      makeCard("2", {
+        stage: "done",
+        updatedAt: "2026-11-06T12:00:00.000Z",
+        attributes: { cycleId: "cyc_2", milestoneId: "mls_1", storyPoints: 3 },
+      }),
+      makeCard("3", {
+        stage: "dev",
+        health: "on_track",
+        attributes: { cycleId: "cyc_2", milestoneId: "mls_1", storyPoints: 8, dueAt: "2026-11-05" },
+      }),
+      makeCard("4", {
+        stage: "prd",
+        health: "blocked",
+        attributes: {
+          cycleId: "cyc_other",
+          milestoneId: "mls_1",
+          storyPoints: 5,
+          dueAt: "2026-11-20",
+        },
+      }),
+      makeCard("5", {
+        stage: "review",
+        attributes: { milestoneId: "mls_1", storyPoints: 3, dueAt: "2026-11-20" },
+      }),
+    ];
+
+    const healthyProgress = computeCycleProgress(activeCycle, cards, "2026-11-07");
+    expect(healthyProgress).toEqual({
+      totalItems: 3,
+      doneItems: 2,
+      activeItems: 1,
+      blockedItems: 0,
+      totalPoints: 16,
+      donePoints: 8,
+      itemCompletionPct: 67,
+      pointsCompletionPct: 50,
+      daysTotal: 14,
+      daysElapsed: 7,
+      daysRemaining: 7,
+      idealPacePct: 50,
+      capacityPoints: 20,
+      capacityUtilizationPct: 80,
+      scopeHealth: "healthy",
+    });
+
+    // Near end of sprint with <75% items done triggers at_risk
+    const nearEndProgress = computeCycleProgress(activeCycle, cards, "2026-11-12");
+    expect(nearEndProgress.daysRemaining).toBe(2);
+    expect(nearEndProgress.scopeHealth).toBe("at_risk");
+
+    // Overcommitted when points exceed capacityPoints
+    const overcommittedProgress = computeCycleProgress(
+      { ...activeCycle, capacityPoints: 12 },
+      cards,
+      "2026-11-07",
+    );
+    expect(overcommittedProgress.capacityUtilizationPct).toBe(133);
+    expect(overcommittedProgress.scopeHealth).toBe("overcommitted");
+
+    // Unestimated cycle falls back pointsCompletionPct to itemCompletionPct
+    const unestimatedCards = [
+      makeCard("u1", { stage: "done", updatedAt: "2026-11-02", attributes: { cycleId: "cyc_u" } }),
+      makeCard("u2", { stage: "dev", attributes: { cycleId: "cyc_u" } }),
+    ];
+    const unestimatedCycle: ProjectCycle = {
+      id: "cyc_u",
+      number: 1,
+      name: "Unestimated",
+      startDate: "2026-11-01",
+      endDate: "2026-11-10",
+      status: "active",
+    };
+    const unestimatedProgress = computeCycleProgress(
+      unestimatedCycle,
+      unestimatedCards,
+      "2026-11-03",
+    );
+    expect(unestimatedProgress.totalPoints).toBe(0);
+    expect(unestimatedProgress.itemCompletionPct).toBe(50);
+    expect(unestimatedProgress.pointsCompletionPct).toBe(50);
+
+    // Burnup series for 14-day cycle has 14 day-by-day points, null after today
+    const burnup = buildCycleBurnupSeries(activeCycle, cards, "2026-11-07");
+    expect(burnup).toHaveLength(14);
+    expect(burnup[0]).toEqual({
+      dayIndex: 0,
+      date: "2026-11-01",
+      idealPoints: 0,
+      scopePoints: 16,
+      completedPoints: 0,
+    });
+    expect(burnup[2]?.date).toBe("2026-11-03");
+    expect(burnup[2]?.completedPoints).toBe(5);
+    expect(burnup[5]?.date).toBe("2026-11-06");
+    expect(burnup[5]?.completedPoints).toBe(8);
+    expect(burnup[6]?.date).toBe("2026-11-07");
+    expect(burnup[6]?.completedPoints).toBe(8);
+    expect(burnup[7]?.date).toBe("2026-11-08");
+    expect(burnup[7]?.completedPoints).toBeNull();
+    expect(burnup[13]?.idealPoints).toBe(16);
+
+    // Unestimated burnup uses item count as scale
+    const unestimatedBurnup = buildCycleBurnupSeries(
+      unestimatedCycle,
+      unestimatedCards,
+      "2026-11-03",
+    );
+    expect(unestimatedBurnup[0]?.scopePoints).toBe(2);
+    expect(unestimatedBurnup[1]?.completedPoints).toBe(1);
+
+    // Long cycle (>15 days) samples down to 15 evenly spaced points from startDate to endDate
+    const longBurnup = buildCycleBurnupSeries(
+      { ...activeCycle, startDate: "2026-11-01", endDate: "2026-12-30" },
+      cards,
+      "2026-11-15",
+    );
+    expect(longBurnup).toHaveLength(15);
+    expect(longBurnup[0]?.date).toBe("2026-11-01");
+    expect(longBurnup[14]?.date).toBe("2026-12-30");
+
+    // Velocity calculation across completed cycles (respects completedPoints ?? donePointsFromCards)
+    expect(computeTeamVelocity([], cards)).toEqual({
+      completedCycles: 0,
+      averagePoints: 0,
+      latestPoints: 0,
+      trend: "none",
+    });
+    const velocity = computeTeamVelocity(
+      [
+        {
+          id: "cyc_3",
+          number: 3,
+          name: "Cycle 3",
+          startDate: "2026-10-15",
+          endDate: "2026-10-28",
+          status: "completed",
+          completedPoints: 24,
+        },
+        {
+          id: "cyc_1",
+          number: 1,
+          name: "Cycle 1",
+          startDate: "2026-10-01",
+          endDate: "2026-10-14",
+          status: "completed",
+          completedPoints: 16,
+        },
+        activeCycle,
+      ],
+      cards,
+    );
+    expect(velocity).toEqual({
+      completedCycles: 2,
+      averagePoints: 20,
+      latestPoints: 24,
+      trend: "up",
+    });
+
+    const cardFallbackVelocity = computeTeamVelocity(
+      [
+        {
+          id: "cyc_prev",
+          number: 1,
+          name: "Cycle 1",
+          startDate: "2026-10-01",
+          endDate: "2026-10-14",
+          status: "completed",
+          completedPoints: 20,
+        },
+        {
+          id: "cyc_2",
+          number: 2,
+          name: "Cycle 2",
+          startDate: "2026-11-01",
+          endDate: "2026-11-14",
+          status: "completed",
+        },
+      ],
+      cards,
+    );
+    expect(cardFallbackVelocity).toEqual({
+      completedCycles: 2,
+      averagePoints: 14,
+      latestPoints: 8,
+      trend: "down",
+    });
+
+    // Milestone progress summary
+    const milestone: ProjectMilestone = {
+      id: "mls_1",
+      name: "Core Launch",
+      horizon: "now",
+      status: "active",
+      targetDate: "2026-12-01",
+    };
+    const milestoneProgress = computeMilestoneProgress(milestone, cards, "2026-11-07");
+    expect(milestoneProgress).toEqual({
+      totalItems: 5,
+      doneItems: 2,
+      activeItems: 3,
+      overdueItems: 1,
+      blockedItems: 1,
+      totalPoints: 24,
+      donePoints: 8,
+      completionPct: 33,
+      prdCount: 1,
+      devCount: 1,
+      reviewCount: 1,
+    });
+
+    // Next cycle draft suggestions
+    expect(suggestNextCycleDraft([], "2026-11-28")).toEqual({
+      number: 1,
+      name: "Cycle 1",
+      startDate: "2026-11-28",
+      endDate: "2026-12-11",
+      capacityPoints: 20,
+    });
+
+    expect(
+      suggestNextCycleDraft(
+        [
+          {
+            id: "cyc_1",
+            number: 1,
+            name: "Cycle 1",
+            startDate: "2026-11-01",
+            endDate: "2026-11-14",
+            status: "completed",
+            completedPoints: 18,
+          },
+          {
+            id: "cyc_2",
+            number: 2,
+            name: "Cycle 2",
+            startDate: "2026-11-15",
+            endDate: "2026-11-28",
+            status: "completed",
+            completedPoints: 25,
+          },
+        ],
+        "2026-11-20",
+      ),
+    ).toEqual({
+      number: 3,
+      name: "Cycle 3",
+      startDate: "2026-11-29",
+      endDate: "2026-12-12",
+      capacityPoints: 22,
+    });
+
+    // When all existing cycles ended in the past, starts today
+    expect(
+      suggestNextCycleDraft(
+        [
+          {
+            id: "cyc_1",
+            number: 4,
+            name: "Cycle 4",
+            startDate: "2026-10-01",
+            endDate: "2026-10-14",
+            status: "completed",
+            completedPoints: 15,
+          },
+        ],
+        "2026-11-28",
+      ),
+    ).toEqual({
+      number: 5,
+      name: "Cycle 5",
+      startDate: "2026-11-28",
+      endDate: "2026-12-11",
+      capacityPoints: 15,
     });
   });
 });

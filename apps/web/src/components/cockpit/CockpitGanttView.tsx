@@ -2,14 +2,28 @@ import {
   deriveWorkItemPipelinePhase,
   readWorkItemLifecycle,
   resolveWorkItemSchedule,
+  type AgileHorizon,
   type CockpitWorkItemCard,
+  type CycleStatus,
+  type MilestoneStatus,
+  type MilestoneTone,
   type PipelinePhase,
+  type ProjectCycle,
+  type ProjectMilestone,
   type ReleaseCard,
   type ReleaseStatus,
   type WorkItemType,
 } from "@u3code/hub-contracts";
 import { T, useGT, Var } from "gt-react";
-import { ChevronLeftIcon, ChevronRightIcon, CrosshairIcon, PlusIcon, UserIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CrosshairIcon,
+  FlagIcon,
+  PlusIcon,
+  RepeatIcon,
+  UserIcon,
+} from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -31,7 +45,12 @@ import {
   CockpitStudioBanner,
   type CockpitStageArtKind,
 } from "./CockpitArtwork";
-import { CockpitIconBadge, CockpitStatusDot, CockpitSurface } from "./CockpitPrimitives";
+import {
+  CockpitIconBadge,
+  CockpitStatusDot,
+  CockpitSurface,
+  type CockpitIconBadgeTone,
+} from "./CockpitPrimitives";
 import {
   CockpitSwarmAvatar,
   isWorkItemDoneStage,
@@ -39,13 +58,15 @@ import {
 } from "./CockpitSwarmAvatar";
 
 export type GanttZoomLevel = "2w" | "1m" | "3m";
-export type GanttGroupBy = "all" | "stage" | "assignee";
+export type GanttGroupBy = "all" | "stage" | "assignee" | "milestone" | "cycle";
 
 export interface CockpitGanttViewProps {
   readonly cards: readonly CockpitWorkItemCard[];
   readonly releases: readonly ReleaseCard[];
   readonly roster: readonly CockpitTeamMember[];
   readonly stages: readonly { readonly id: string; readonly label: string }[];
+  readonly cycles?: ReadonlyArray<ProjectCycle>;
+  readonly milestones?: ReadonlyArray<ProjectMilestone>;
   readonly onOpenWorkItem: (workItemId: string) => void;
   readonly onUpdateSchedule: (
     workItemId: string,
@@ -85,6 +106,16 @@ export interface GanttReleaseMarker {
   readonly offsetPct: number;
 }
 
+export interface GanttMilestoneMarker {
+  readonly milestoneId: string;
+  readonly name: string;
+  readonly horizon: AgileHorizon;
+  readonly status: MilestoneStatus;
+  readonly colorTone: MilestoneTone;
+  readonly date: string;
+  readonly offsetPct: number;
+}
+
 export interface GanttTimelineModel {
   readonly startDay: string;
   readonly endDay: string;
@@ -93,6 +124,7 @@ export interface GanttTimelineModel {
   readonly todayOffsetPct: number;
   readonly rows: readonly GanttTimelineRow[];
   readonly releaseMarkers: readonly GanttReleaseMarker[];
+  readonly milestoneMarkers: readonly GanttMilestoneMarker[];
 }
 
 const MS_PER_DAY = 86_400_000;
@@ -255,6 +287,7 @@ export function buildGanttTimeline(
   zoom: GanttZoomLevel,
   todayIso?: string,
   roster: readonly CockpitTeamMember[] = [],
+  milestones: readonly ProjectMilestone[] = [],
 ): GanttTimelineModel {
   const today = normalizeIsoDate(todayIso) ?? formatUtcDateFromMs(Date.now());
 
@@ -411,6 +444,23 @@ export function buildGanttTimeline(
     });
   }
 
+  const milestoneMarkers: GanttMilestoneMarker[] = [];
+  for (const milestone of milestones) {
+    const targetDate = normalizeIsoDate(milestone.targetDate);
+    if (!targetDate) continue;
+    const offsetDays = diffIsoDays(startDay, targetDate);
+    if (offsetDays < 0 || offsetDays >= totalDays) continue;
+    milestoneMarkers.push({
+      milestoneId: milestone.id,
+      name: milestone.name,
+      horizon: milestone.horizon,
+      status: milestone.status,
+      colorTone: milestone.colorTone ?? "info",
+      date: targetDate,
+      offsetPct: ((offsetDays + 0.5) / totalDays) * 100,
+    });
+  }
+
   return {
     startDay,
     endDay,
@@ -419,6 +469,7 @@ export function buildGanttTimeline(
     todayOffsetPct,
     rows,
     releaseMarkers,
+    milestoneMarkers,
   };
 }
 
@@ -427,6 +478,12 @@ interface GanttRowGroup {
   readonly label: string | null;
   readonly assignee: CockpitTeamMember | null;
   readonly stageArtKind: CockpitStageArtKind | null;
+  readonly iconKind: "milestone" | "cycle" | null;
+  readonly iconTone: CockpitIconBadgeTone;
+  readonly badgePill: { readonly label: string; readonly className: string } | null;
+  readonly dateRangeLabel: string | null;
+  readonly doneCount: number | null;
+  readonly spanPct: { readonly leftPct: number; readonly widthPct: number } | null;
   readonly overdueCount: number;
   readonly rows: readonly GanttTimelineRow[];
 }
@@ -527,6 +584,140 @@ function getReleaseMarkerClasses(status: ReleaseStatus): {
   };
 }
 
+function getMilestoneMarkerClasses(tone: MilestoneTone): {
+  readonly pill: string;
+  readonly diamond: string;
+  readonly line: string;
+} {
+  switch (tone) {
+    case "success":
+      return {
+        pill: "border-success/40 bg-background/95 text-success-foreground",
+        diamond: "border-success bg-success/20",
+        line: "border-success/30",
+      };
+    case "warning":
+      return {
+        pill: "border-warning/45 bg-background/95 text-warning-foreground",
+        diamond: "border-warning bg-warning/20",
+        line: "border-warning/30",
+      };
+    case "violet":
+      return {
+        pill: "border-guest/40 bg-background/95 text-guest-foreground",
+        diamond: "border-guest bg-guest/20",
+        line: "border-guest/30",
+      };
+    case "primary":
+      return {
+        pill: "border-primary/40 bg-background/95 text-primary",
+        diamond: "border-primary bg-primary/20",
+        line: "border-primary/30",
+      };
+    case "info":
+      return {
+        pill: "border-info/40 bg-background/95 text-info-foreground",
+        diamond: "border-info bg-info/20",
+        line: "border-info/30",
+      };
+  }
+}
+
+function milestoneHorizonLabel(horizon: AgileHorizon, gt: ReturnType<typeof useGT>): string {
+  switch (horizon) {
+    case "now":
+      return gt("Now");
+    case "next":
+      return gt("Next");
+    case "later":
+      return gt("Later");
+  }
+}
+
+function milestoneHorizonPillClass(horizon: AgileHorizon): string {
+  switch (horizon) {
+    case "now":
+      return "border-primary/30 bg-primary/10 text-primary";
+    case "next":
+      return "border-info/30 bg-info/10 text-info-foreground";
+    case "later":
+      return "border-guest/30 bg-guest/10 text-guest-foreground";
+  }
+}
+
+function milestoneHorizonRank(horizon: AgileHorizon): number {
+  switch (horizon) {
+    case "now":
+      return 0;
+    case "next":
+      return 1;
+    case "later":
+      return 2;
+  }
+}
+
+function cycleStatusLabel(status: CycleStatus, gt: ReturnType<typeof useGT>): string {
+  switch (status) {
+    case "active":
+      return gt("Active");
+    case "upcoming":
+      return gt("Upcoming");
+    case "completed":
+      return gt("Completed");
+  }
+}
+
+function cycleStatusPillClass(status: CycleStatus): string {
+  switch (status) {
+    case "active":
+      return "border-success/35 bg-success/10 text-success-foreground";
+    case "upcoming":
+      return "border-info/35 bg-info/10 text-info-foreground";
+    case "completed":
+      return "border-border/60 bg-muted/40 text-muted-foreground";
+  }
+}
+
+function cycleStatusRank(status: CycleStatus): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "upcoming":
+      return 1;
+    case "completed":
+      return 2;
+  }
+}
+
+function formatCycleGroupLabel(cycle: ProjectCycle, gt: ReturnType<typeof useGT>): string {
+  const trimmedName = cycle.name.trim();
+  const cyclePrefix = gt("Cycle {number}", { number: cycle.number });
+  if (!trimmedName) return cyclePrefix;
+  if (trimmedName.toLowerCase().startsWith(`cycle ${cycle.number}`)) {
+    return trimmedName;
+  }
+  return `${cyclePrefix} · ${trimmedName}`;
+}
+
+function computeTimelineSpanPct(
+  spanStartRaw: string | null | undefined,
+  spanEndRaw: string | null | undefined,
+  timelineStart: string,
+  totalDays: number,
+): { readonly leftPct: number; readonly widthPct: number } | null {
+  const spanStart = normalizeIsoDate(spanStartRaw);
+  const spanEnd = normalizeIsoDate(spanEndRaw);
+  if (!spanStart || !spanEnd || totalDays <= 0) return null;
+  const effectiveEnd = spanEnd < spanStart ? spanStart : spanEnd;
+  const startOffset = diffIsoDays(timelineStart, spanStart);
+  const endOffset = diffIsoDays(timelineStart, effectiveEnd) + 1;
+  if (endOffset <= 0 || startOffset >= totalDays) return null;
+  const clippedLeft = Math.max(0, Math.min(100, (startOffset / totalDays) * 100));
+  const clippedRight = Math.max(clippedLeft, Math.min(100, (endOffset / totalDays) * 100));
+  if (clippedRight <= clippedLeft) return null;
+  return { leftPct: clippedLeft, widthPct: clippedRight - clippedLeft };
+}
+
 function getBarVisualClasses(row: GanttTimelineRow): {
   readonly track: string;
   readonly fill: string;
@@ -596,6 +787,8 @@ export function CockpitGanttView({
   releases,
   roster,
   stages,
+  cycles = [],
+  milestones = [],
   onOpenWorkItem,
   onUpdateSchedule,
   onCreateItem,
@@ -640,22 +833,36 @@ export function CockpitGanttView({
     );
   }
 
-  const timeline = buildGanttTimeline(cards, releases, zoom, undefined, roster);
+  const timeline = buildGanttTimeline(cards, releases, zoom, undefined, roster, milestones);
   const stageLabelById = new Map(stages.map((stage) => [stage.id, stage.label]));
   const overdueCount = timeline.rows.filter((row) => row.isOverdue).length;
   const scheduleRangeLabel = `${formatMonthDay(timeline.startDay)} – ${formatMonthDay(timeline.endDay)}`;
+  const releaseMarkerDates = new Set(timeline.releaseMarkers.map((marker) => marker.date));
+
+  const effectiveGroupBy: GanttGroupBy =
+    groupBy === "milestone" && milestones.length === 0
+      ? "all"
+      : groupBy === "cycle" && cycles.length === 0
+        ? "all"
+        : groupBy;
 
   const groups: GanttRowGroup[] = [];
-  if (groupBy === "all") {
+  if (effectiveGroupBy === "all") {
     groups.push({
       key: "all",
       label: null,
       assignee: null,
       stageArtKind: null,
+      iconKind: null,
+      iconTone: "neutral",
+      badgePill: null,
+      dateRangeLabel: null,
+      doneCount: null,
+      spanPct: null,
       overdueCount: 0,
       rows: timeline.rows,
     });
-  } else if (groupBy === "stage") {
+  } else if (effectiveGroupBy === "stage") {
     const byStage = new Map<string, GanttTimelineRow[]>();
     for (const stage of stages) {
       byStage.set(stage.id, []);
@@ -676,11 +883,17 @@ export function CockpitGanttView({
         label: stageLabelById.get(stageId) ?? stageId,
         assignee: null,
         stageArtKind: resolveStageArtKind(stageId, stageRows),
+        iconKind: null,
+        iconTone: "neutral",
+        badgePill: null,
+        dateRangeLabel: null,
+        doneCount: null,
+        spanPct: null,
         overdueCount: stageRows.filter((row) => row.isOverdue).length,
         rows: stageRows,
       });
     }
-  } else {
+  } else if (effectiveGroupBy === "assignee") {
     const byAssignee = new Map<
       string,
       { assignee: CockpitTeamMember | null; rows: GanttTimelineRow[] }
@@ -705,8 +918,168 @@ export function CockpitGanttView({
         label: entry.assignee ? `@${entry.assignee.handle}` : gt("Unassigned"),
         assignee: entry.assignee,
         stageArtKind: null,
+        iconKind: null,
+        iconTone: "neutral",
+        badgePill: null,
+        dateRangeLabel: null,
+        doneCount: null,
+        spanPct: null,
         overdueCount: entry.rows.filter((row) => row.isOverdue).length,
         rows: entry.rows,
+      });
+    }
+  } else if (effectiveGroupBy === "milestone") {
+    const orderedMilestones = [...milestones].toSorted((a, b) => {
+      const hDiff = milestoneHorizonRank(a.horizon) - milestoneHorizonRank(b.horizon);
+      if (hDiff !== 0) return hDiff;
+      if (a.targetDate && b.targetDate) return a.targetDate.localeCompare(b.targetDate);
+      if (a.targetDate) return -1;
+      if (b.targetDate) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    const rowsByMilestoneId = new Map<string, GanttTimelineRow[]>();
+    for (const milestone of orderedMilestones) {
+      rowsByMilestoneId.set(milestone.id, []);
+    }
+    const unassignedRows: GanttTimelineRow[] = [];
+    for (const row of timeline.rows) {
+      const milestoneId = readWorkItemLifecycle(row.card.workItem).milestoneId;
+      const list = milestoneId ? rowsByMilestoneId.get(milestoneId) : undefined;
+      if (list) {
+        list.push(row);
+      } else {
+        unassignedRows.push(row);
+      }
+    }
+    for (const milestone of orderedMilestones) {
+      const milestoneRows = rowsByMilestoneId.get(milestone.id) ?? [];
+      if (milestoneRows.length === 0) continue;
+      const normalizedTarget = normalizeIsoDate(milestone.targetDate);
+      let earliestRowStart: string | null = null;
+      let latestRowDue: string | null = null;
+      for (const row of milestoneRows) {
+        if (!earliestRowStart || row.startDate < earliestRowStart) {
+          earliestRowStart = row.startDate;
+        }
+        if (!latestRowDue || row.dueDate > latestRowDue) {
+          latestRowDue = row.dueDate;
+        }
+      }
+      const dateRangeLabel = normalizedTarget
+        ? earliestRowStart && earliestRowStart <= normalizedTarget
+          ? `${formatShortMonthDay(earliestRowStart)} – ${formatShortMonthDay(normalizedTarget)}`
+          : gt("Target {date}", { date: formatShortMonthDay(normalizedTarget) })
+        : earliestRowStart && latestRowDue
+          ? `${formatShortMonthDay(earliestRowStart)} – ${formatShortMonthDay(latestRowDue)}`
+          : null;
+      groups.push({
+        key: `milestone:${milestone.id}`,
+        label: milestone.name,
+        assignee: null,
+        stageArtKind: null,
+        iconKind: "milestone",
+        iconTone: milestone.colorTone ?? "info",
+        badgePill: {
+          label: milestoneHorizonLabel(milestone.horizon, gt),
+          className: milestoneHorizonPillClass(milestone.horizon),
+        },
+        dateRangeLabel,
+        doneCount: milestoneRows.filter((row) => isWorkItemDoneStage(row.card.workItem.stage))
+          .length,
+        spanPct: computeTimelineSpanPct(
+          earliestRowStart,
+          normalizedTarget ?? latestRowDue,
+          timeline.startDay,
+          timeline.totalDays,
+        ),
+        overdueCount: milestoneRows.filter((row) => row.isOverdue).length,
+        rows: milestoneRows,
+      });
+    }
+    if (unassignedRows.length > 0) {
+      groups.push({
+        key: "milestone:unassigned",
+        label: gt("No Milestone"),
+        assignee: null,
+        stageArtKind: null,
+        iconKind: "milestone",
+        iconTone: "neutral",
+        badgePill: null,
+        dateRangeLabel: null,
+        doneCount: unassignedRows.filter((row) => isWorkItemDoneStage(row.card.workItem.stage))
+          .length,
+        spanPct: null,
+        overdueCount: unassignedRows.filter((row) => row.isOverdue).length,
+        rows: unassignedRows,
+      });
+    }
+  } else {
+    const orderedCycles = [...cycles].toSorted((a, b) => {
+      const sDiff = cycleStatusRank(a.status) - cycleStatusRank(b.status);
+      if (sDiff !== 0) return sDiff;
+      return a.status === "completed" ? b.number - a.number : a.number - b.number;
+    });
+    const rowsByCycleId = new Map<string, GanttTimelineRow[]>();
+    for (const cycle of orderedCycles) {
+      rowsByCycleId.set(cycle.id, []);
+    }
+    const backlogRows: GanttTimelineRow[] = [];
+    for (const row of timeline.rows) {
+      const cycleId = readWorkItemLifecycle(row.card.workItem).cycleId;
+      const list = cycleId ? rowsByCycleId.get(cycleId) : undefined;
+      if (list) {
+        list.push(row);
+      } else {
+        backlogRows.push(row);
+      }
+    }
+    for (const cycle of orderedCycles) {
+      const cycleRows = rowsByCycleId.get(cycle.id) ?? [];
+      if (cycleRows.length === 0) continue;
+      const normalizedStart = normalizeIsoDate(cycle.startDate);
+      const normalizedEnd = normalizeIsoDate(cycle.endDate);
+      const dateRangeLabel =
+        normalizedStart && normalizedEnd
+          ? `${formatShortMonthDay(normalizedStart)} – ${formatShortMonthDay(normalizedEnd)}`
+          : null;
+      groups.push({
+        key: `cycle:${cycle.id}`,
+        label: formatCycleGroupLabel(cycle, gt),
+        assignee: null,
+        stageArtKind: null,
+        iconKind: "cycle",
+        iconTone:
+          cycle.status === "active" ? "primary" : cycle.status === "upcoming" ? "info" : "neutral",
+        badgePill: {
+          label: cycleStatusLabel(cycle.status, gt),
+          className: cycleStatusPillClass(cycle.status),
+        },
+        dateRangeLabel,
+        doneCount: cycleRows.filter((row) => isWorkItemDoneStage(row.card.workItem.stage)).length,
+        spanPct: computeTimelineSpanPct(
+          cycle.startDate,
+          cycle.endDate,
+          timeline.startDay,
+          timeline.totalDays,
+        ),
+        overdueCount: cycleRows.filter((row) => row.isOverdue).length,
+        rows: cycleRows,
+      });
+    }
+    if (backlogRows.length > 0) {
+      groups.push({
+        key: "cycle:backlog",
+        label: gt("Product Backlog"),
+        assignee: null,
+        stageArtKind: null,
+        iconKind: "cycle",
+        iconTone: "neutral",
+        badgePill: null,
+        dateRangeLabel: null,
+        doneCount: backlogRows.filter((row) => isWorkItemDoneStage(row.card.workItem.stage)).length,
+        spanPct: null,
+        overdueCount: backlogRows.filter((row) => row.isOverdue).length,
+        rows: backlogRows,
       });
     }
   }
@@ -811,6 +1184,18 @@ export function CockpitGanttView({
                 </span>
               </>
             ) : null}
+            {timeline.milestoneMarkers.length > 0 ? (
+              <>
+                <span aria-hidden className="opacity-35">
+                  ·
+                </span>
+                <span className="tabular-nums">
+                  {gt("{count, plural, one {{count} target} other {{count} targets}}", {
+                    count: timeline.milestoneMarkers.length,
+                  })}
+                </span>
+              </>
+            ) : null}
           </div>
         }
         title={<T>Timeline &amp; Release Milestones</T>}
@@ -844,11 +1229,17 @@ export function CockpitGanttView({
           <ToggleGroup
             aria-label={gt("Group timeline rows")}
             size="segmented"
-            value={[groupBy]}
+            value={[effectiveGroupBy]}
             variant="segmented"
             onValueChange={(next) => {
               const value = next[0];
-              if (value === "all" || value === "stage" || value === "assignee") {
+              if (
+                value === "all" ||
+                value === "stage" ||
+                value === "assignee" ||
+                value === "milestone" ||
+                value === "cycle"
+              ) {
                 setGroupBy(value);
               }
             }}
@@ -862,6 +1253,16 @@ export function CockpitGanttView({
             <Toggle value="assignee">
               <T>By Assignee</T>
             </Toggle>
+            {milestones.length > 0 ? (
+              <Toggle value="milestone">
+                <T>By Milestone</T>
+              </Toggle>
+            ) : null}
+            {cycles.length > 0 ? (
+              <Toggle value="cycle">
+                <T>By Cycle</T>
+              </Toggle>
+            ) : null}
           </ToggleGroup>
         </div>
 
@@ -964,52 +1365,162 @@ export function CockpitGanttView({
                     </Tooltip>
                   );
                 })}
+
+                {timeline.milestoneMarkers.map((marker) => {
+                  const markerStyle = getMilestoneMarkerClasses(marker.colorTone);
+                  const sharesDateWithRelease = releaseMarkerDates.has(marker.date);
+                  return (
+                    <Tooltip key={`milestone:${marker.milestoneId}`}>
+                      <TooltipTrigger
+                        render={
+                          <span
+                            className={cn(
+                              "pointer-events-auto absolute z-20 inline-flex -translate-x-1/2 cursor-default items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-3xs font-medium shadow-2xs",
+                              sharesDateWithRelease ? "top-1" : "bottom-1",
+                              markerStyle.pill,
+                            )}
+                            style={{ left: `${marker.offsetPct}%` }}
+                          >
+                            <span
+                              aria-hidden
+                              className={cn(
+                                "inline-block size-2 shrink-0 rotate-45 rounded-xs border-2",
+                                markerStyle.diamond,
+                              )}
+                            />
+                            <span className="max-w-24 truncate">{marker.name}</span>
+                          </span>
+                        }
+                      />
+                      <TooltipPopup>
+                        <T>
+                          Milestone · <Var>{marker.name}</Var> · <Var>{marker.date}</Var>
+                        </T>
+                      </TooltipPopup>
+                    </Tooltip>
+                  );
+                })}
               </div>
             </div>
 
             {groups.map((group) => (
               <div key={group.key}>
                 {group.label ? (
-                  <div className="flex h-9 border-b border-border/50 bg-linear-to-r from-muted/35 via-muted/20 to-muted/10">
-                    <div className="sticky left-0 z-10 flex w-[264px] shrink-0 items-center justify-between gap-2 border-r border-border/55 bg-card/95 px-3 text-xs">
-                      <div className="flex min-w-0 items-center gap-2">
-                        {group.assignee ? (
-                          <CockpitSwarmAvatar
-                            displayName={group.assignee.displayName}
-                            handle={group.assignee.handle}
-                            kind={group.assignee.kind}
-                            size="sm"
-                          />
-                        ) : group.stageArtKind ? (
-                          <CockpitIconBadge
-                            size="sm"
-                            tone={group.overdueCount > 0 ? "error" : "neutral"}
-                          >
-                            <CockpitStageArtworkIcon stage={group.stageArtKind} />
-                          </CockpitIconBadge>
-                        ) : (
-                          <CockpitIconBadge size="sm" tone="neutral">
-                            <UserIcon />
-                          </CockpitIconBadge>
-                        )}
-                        <span className="truncate font-medium text-foreground">{group.label}</span>
-                        <span className="shrink-0 rounded-sm bg-muted/60 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-muted-foreground">
-                          {group.rows.length}
-                        </span>
+                  <div
+                    className={cn(
+                      "flex border-b border-border/50 bg-linear-to-r from-muted/35 via-muted/20 to-muted/10",
+                      group.doneCount !== null ? "min-h-12" : "h-9",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "sticky left-0 z-10 flex w-[264px] shrink-0 border-r border-border/55 bg-card/95 px-3 text-xs",
+                        group.doneCount !== null
+                          ? "flex-col justify-center gap-1 py-1.5"
+                          : "items-center justify-between gap-2",
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          {group.assignee ? (
+                            <CockpitSwarmAvatar
+                              displayName={group.assignee.displayName}
+                              handle={group.assignee.handle}
+                              kind={group.assignee.kind}
+                              size="sm"
+                            />
+                          ) : group.stageArtKind ? (
+                            <CockpitIconBadge
+                              size="sm"
+                              tone={group.overdueCount > 0 ? "error" : "neutral"}
+                            >
+                              <CockpitStageArtworkIcon stage={group.stageArtKind} />
+                            </CockpitIconBadge>
+                          ) : group.iconKind === "milestone" ? (
+                            <CockpitIconBadge size="sm" tone={group.iconTone}>
+                              <FlagIcon />
+                            </CockpitIconBadge>
+                          ) : group.iconKind === "cycle" ? (
+                            <CockpitIconBadge size="sm" tone={group.iconTone}>
+                              <RepeatIcon />
+                            </CockpitIconBadge>
+                          ) : (
+                            <CockpitIconBadge size="sm" tone="neutral">
+                              <UserIcon />
+                            </CockpitIconBadge>
+                          )}
+                          <span className="min-w-0 truncate font-medium text-foreground">
+                            {group.label}
+                          </span>
+                          {group.badgePill ? (
+                            <span
+                              className={cn(
+                                "inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                                group.badgePill.className,
+                              )}
+                            >
+                              {group.badgePill.label}
+                            </span>
+                          ) : group.doneCount === null ? (
+                            <span className="shrink-0 rounded-sm bg-muted/60 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-muted-foreground">
+                              {group.rows.length}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {group.doneCount === null && group.overdueCount > 0 ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-destructive">
+                            <CockpitStatusDot tone="error" />
+                            <T>
+                              <Var>{group.overdueCount}</Var> overdue
+                            </T>
+                          </span>
+                        ) : null}
                       </div>
-                      {group.overdueCount > 0 ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-px font-mono text-3xs font-medium tabular-nums text-destructive">
-                          <CockpitStatusDot tone="error" />
-                          <T>
-                            <Var>{group.overdueCount}</Var> overdue
-                          </T>
-                        </span>
+
+                      {group.doneCount !== null ? (
+                        <div className="flex items-center justify-between gap-2 pl-8 text-3xs text-muted-foreground tabular-nums">
+                          <div className="flex min-w-0 items-center gap-1.5 truncate font-mono">
+                            <span className="shrink-0">
+                              <T>
+                                <Var>{group.doneCount}</Var>/<Var>{group.rows.length}</Var> done
+                              </T>
+                            </span>
+                            {group.dateRangeLabel ? (
+                              <>
+                                <span aria-hidden className="opacity-40">
+                                  ·
+                                </span>
+                                <span className="truncate">{group.dateRangeLabel}</span>
+                              </>
+                            ) : null}
+                          </div>
+
+                          {group.overdueCount > 0 ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-destructive/30 bg-destructive/10 px-1.5 py-px font-mono text-3xs font-medium text-destructive">
+                              <CockpitStatusDot tone="error" />
+                              <T>
+                                <Var>{group.overdueCount}</Var> overdue
+                              </T>
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                     <div
                       className="relative flex-1"
                       style={{ minWidth: `${timelineMinWidthPx}px` }}
                     >
+                      {group.spanPct ? (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-2 rounded-sm border border-primary/20 bg-primary/8"
+                          style={{
+                            left: `${group.spanPct.leftPct}%`,
+                            width: `${group.spanPct.widthPct}%`,
+                          }}
+                        />
+                      ) : null}
                       {timeline.releaseMarkers.map((marker) => {
                         const markerStyle = getReleaseMarkerClasses(marker.status);
                         return (
@@ -1018,6 +1529,20 @@ export function CockpitGanttView({
                             aria-hidden
                             className={cn(
                               "pointer-events-none absolute inset-y-0 border-l border-dashed",
+                              markerStyle.line,
+                            )}
+                            style={{ left: `${marker.offsetPct}%` }}
+                          />
+                        );
+                      })}
+                      {timeline.milestoneMarkers.map((marker) => {
+                        const markerStyle = getMilestoneMarkerClasses(marker.colorTone);
+                        return (
+                          <div
+                            key={`ms-group:${marker.milestoneId}`}
+                            aria-hidden
+                            className={cn(
+                              "pointer-events-none absolute inset-y-0 border-l border-dotted",
                               markerStyle.line,
                             )}
                             style={{ left: `${marker.offsetPct}%` }}
@@ -1204,6 +1729,21 @@ export function CockpitGanttView({
                           );
                         })}
 
+                        {timeline.milestoneMarkers.map((marker) => {
+                          const markerStyle = getMilestoneMarkerClasses(marker.colorTone);
+                          return (
+                            <div
+                              key={`ms-row:${marker.milestoneId}`}
+                              aria-hidden
+                              className={cn(
+                                "pointer-events-none absolute inset-y-0 border-l border-dotted",
+                                markerStyle.line,
+                              )}
+                              style={{ left: `${marker.offsetPct}%` }}
+                            />
+                          );
+                        })}
+
                         <div
                           aria-hidden
                           className="pointer-events-none absolute inset-y-0 z-10 w-px bg-primary/70"
@@ -1357,6 +1897,15 @@ export function CockpitGanttView({
               />
               <T>Release Milestone</T>
             </span>
+            {timeline.milestoneMarkers.length > 0 || milestones.length > 0 ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="inline-block size-2 rotate-45 rounded-xs border-2 border-info bg-info/20"
+                />
+                <T>Milestone Target</T>
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1.5">
               <span
                 aria-hidden

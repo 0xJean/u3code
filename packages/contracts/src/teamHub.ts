@@ -1,11 +1,13 @@
 import * as Schema from "effect/Schema";
 import {
+  AgileHorizon,
   AssigneeType,
   ChangeRequestAudit,
   ChecklistItem,
   CockpitDigest,
   CockpitOverview,
   CockpitPromptSlot,
+  CycleStatus,
   DigestTriggerType,
   ForgeKind,
   GateApproval,
@@ -14,13 +16,17 @@ import {
   HubPluginsListResponse,
   HubUser,
   HubWsEvent,
+  MilestoneStatus,
+  MilestoneTone,
   NotificationChannelSummary,
   NotificationEventKind,
   NotificationHandles,
   NotifierDriverKind,
   Project,
+  ProjectCycle,
   ProjectDirective,
   ProjectMemory,
+  ProjectMilestone,
   ProjectRepo,
   Pulse,
   PulseCreateInput,
@@ -237,6 +243,18 @@ export const TeamHubUpdateProjectPromptsResult = Schema.Struct({
   project: Project,
 });
 export type TeamHubUpdateProjectPromptsResult = typeof TeamHubUpdateProjectPromptsResult.Type;
+
+export const TeamHubUpdateProjectPlanningInput = Schema.Struct({
+  projectId: TrimmedNonEmptyString,
+  cycles: Schema.optional(Schema.Array(ProjectCycle)),
+  milestones: Schema.optional(Schema.Array(ProjectMilestone)),
+});
+export type TeamHubUpdateProjectPlanningInput = typeof TeamHubUpdateProjectPlanningInput.Type;
+
+export const TeamHubUpdateProjectPlanningResult = Schema.Struct({
+  project: Project,
+});
+export type TeamHubUpdateProjectPlanningResult = typeof TeamHubUpdateProjectPlanningResult.Type;
 
 export const TeamHubAddProjectRepoInput = Schema.Struct({
   projectId: TrimmedNonEmptyString,
@@ -469,10 +487,16 @@ export const TeamHubPostBoardMessageResult = Schema.Struct({
 export type TeamHubPostBoardMessageResult = typeof TeamHubPostBoardMessageResult.Type;
 
 export {
+  AgileHorizon,
   AssigneeType,
   CockpitOverview,
   CockpitPromptSlot,
+  CycleStatus,
   HubWsEvent,
+  MilestoneStatus,
+  MilestoneTone,
+  ProjectCycle,
+  ProjectMilestone,
   PulseDraft,
   TeamBoardAuthorType,
   TeamBoardMessage,

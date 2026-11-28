@@ -147,6 +147,8 @@ import {
   TeamHubUpdateMemberRolesResult,
   TeamHubUpdateProfileInput,
   TeamHubUpdateProfileResult,
+  TeamHubUpdateProjectPlanningInput,
+  TeamHubUpdateProjectPlanningResult,
   TeamHubUpdateProjectPromptsInput,
   TeamHubUpdateProjectPromptsResult,
   TeamHubUpdateReleaseInput,
@@ -809,6 +811,7 @@ export const WS_METHODS = {
   teamHubCreateWorkspace: "teamHub.createWorkspace",
   teamHubCreateProject: "teamHub.createProject",
   teamHubUpdateProjectPrompts: "teamHub.updateProjectPrompts",
+  teamHubUpdateProjectPlanning: "teamHub.updateProjectPlanning",
   teamHubAddProjectRepo: "teamHub.addProjectRepo",
   teamHubListNotificationChannels: "teamHub.listNotificationChannels",
   teamHubCreateNotificationChannel: "teamHub.createNotificationChannel",
@@ -1755,6 +1758,12 @@ const WsTeamHubCreateProjectRpc = Rpc.make(WS_METHODS.teamHubCreateProject, {
 const WsTeamHubUpdateProjectPromptsRpc = Rpc.make(WS_METHODS.teamHubUpdateProjectPrompts, {
   payload: TeamHubUpdateProjectPromptsInput,
   success: TeamHubUpdateProjectPromptsResult,
+  error: TeamHubRpcError,
+});
+
+const WsTeamHubUpdateProjectPlanningRpc = Rpc.make(WS_METHODS.teamHubUpdateProjectPlanning, {
+  payload: TeamHubUpdateProjectPlanningInput,
+  success: TeamHubUpdateProjectPlanningResult,
   error: TeamHubRpcError,
 });
 
@@ -3011,6 +3020,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamHubCreateWorkspaceRpc,
   WsTeamHubCreateProjectRpc,
   WsTeamHubUpdateProjectPromptsRpc,
+  WsTeamHubUpdateProjectPlanningRpc,
   WsTeamHubAddProjectRepoRpc,
   WsTeamHubListNotificationChannelsRpc,
   WsTeamHubCreateNotificationChannelRpc,

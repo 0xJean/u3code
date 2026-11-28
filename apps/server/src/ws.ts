@@ -2104,6 +2104,7 @@ export const layerWsRpc = (
         [WS_METHODS.teamHubCreateWorkspace]: (input) => teamHub.createWorkspace(input),
         [WS_METHODS.teamHubCreateProject]: (input) => teamHub.createProject(input),
         [WS_METHODS.teamHubUpdateProjectPrompts]: (input) => teamHub.updateProjectPrompts(input),
+        [WS_METHODS.teamHubUpdateProjectPlanning]: (input) => teamHub.updateProjectPlanning(input),
         [WS_METHODS.teamHubAddProjectRepo]: (input) => teamHub.addProjectRepo(input),
         [WS_METHODS.teamHubListNotificationChannels]: (input) =>
           teamHub.listNotificationChannels(input),

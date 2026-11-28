@@ -196,6 +196,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.teamHubCreateWorkspace]: "team-hub",
   [WS_METHODS.teamHubCreateProject]: "team-hub",
   [WS_METHODS.teamHubUpdateProjectPrompts]: "team-hub",
+  [WS_METHODS.teamHubUpdateProjectPlanning]: "team-hub",
   [WS_METHODS.teamHubAddProjectRepo]: "team-hub",
   [WS_METHODS.teamHubListNotificationChannels]: "team-hub",
   [WS_METHODS.teamHubCreateNotificationChannel]: "team-hub",

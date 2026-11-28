@@ -3,7 +3,13 @@ import { Hono } from "hono";
 import {
   DEFAULT_REPO_POLICY,
   createWorkflowConfigFromPreset,
+  type AgileHorizon,
+  type CycleStatus,
+  type MilestoneStatus,
+  type MilestoneTone,
   type NotifierDriverKind,
+  type ProjectCycle,
+  type ProjectMilestone,
   type RepoPolicy,
   type WorkflowConfig,
 } from "@u3code/hub-contracts";
@@ -30,6 +36,214 @@ import type { HubPluginRegistry } from "../plugins/index.ts";
 import { encryptSecretJson, newId } from "../utils/crypto.ts";
 import { syncGitHubOpenPullRequests } from "../webhooks/syncGithub.ts";
 import type { HubSocketBroker } from "../ws/hubSocket.ts";
+
+const VALID_CYCLE_STATUSES = new Set<CycleStatus>(["upcoming", "active", "completed"]);
+const VALID_AGILE_HORIZONS = new Set<AgileHorizon>(["now", "next", "later"]);
+const VALID_MILESTONE_STATUSES = new Set<MilestoneStatus>([
+  "planned",
+  "active",
+  "completed",
+  "paused",
+]);
+const VALID_MILESTONE_TONES = new Set<MilestoneTone>([
+  "primary",
+  "info",
+  "success",
+  "warning",
+  "violet",
+]);
+
+function sanitizeProjectCycles(
+  rawCycles: unknown,
+):
+  | { readonly ok: true; readonly cycles: ProjectCycle[] }
+  | { readonly ok: false; readonly error: string } {
+  if (!Array.isArray(rawCycles)) {
+    return { ok: false, error: "cycles must be an array." };
+  }
+  const seenIds = new Set<string>();
+  const cycles: ProjectCycle[] = [];
+  for (const item of rawCycles) {
+    if (!item || typeof item !== "object") {
+      return { ok: false, error: "Each cycle must be an object." };
+    }
+    const raw = item as Record<string, unknown>;
+    const id =
+      typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id.trim() : newId("cyc");
+    if (seenIds.has(id)) {
+      return { ok: false, error: `Duplicate cycle id '${id}'.` };
+    }
+    seenIds.add(id);
+
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) {
+      return { ok: false, error: "Each cycle requires a non-empty name." };
+    }
+
+    const number = raw.number;
+    if (typeof number !== "number" || !Number.isInteger(number) || number < 1) {
+      return { ok: false, error: `Cycle '${name}' requires a positive integer number.` };
+    }
+
+    const startDate = typeof raw.startDate === "string" ? raw.startDate.trim() : "";
+    const endDate = typeof raw.endDate === "string" ? raw.endDate.trim() : "";
+    if (!startDate || !endDate) {
+      return { ok: false, error: `Cycle '${name}' requires startDate and endDate.` };
+    }
+    if (endDate < startDate) {
+      return { ok: false, error: `Cycle '${name}' endDate cannot be earlier than startDate.` };
+    }
+
+    const status = raw.status;
+    if (typeof status !== "string" || !VALID_CYCLE_STATUSES.has(status as CycleStatus)) {
+      return { ok: false, error: `Cycle '${name}' has invalid status '${String(status)}'.` };
+    }
+
+    let capacityPoints: number | null | undefined;
+    if (raw.capacityPoints !== undefined) {
+      if (raw.capacityPoints === null) {
+        capacityPoints = null;
+      } else if (
+        typeof raw.capacityPoints === "number" &&
+        Number.isInteger(raw.capacityPoints) &&
+        raw.capacityPoints >= 0
+      ) {
+        capacityPoints = raw.capacityPoints;
+      } else {
+        return {
+          ok: false,
+          error: `Cycle '${name}' capacityPoints must be a non-negative integer or null.`,
+        };
+      }
+    }
+
+    let completedPoints: number | null | undefined;
+    if (raw.completedPoints !== undefined) {
+      if (raw.completedPoints === null) {
+        completedPoints = null;
+      } else if (
+        typeof raw.completedPoints === "number" &&
+        Number.isInteger(raw.completedPoints) &&
+        raw.completedPoints >= 0
+      ) {
+        completedPoints = raw.completedPoints;
+      } else {
+        return {
+          ok: false,
+          error: `Cycle '${name}' completedPoints must be a non-negative integer or null.`,
+        };
+      }
+    }
+
+    let completedAt: string | null | undefined;
+    if (raw.completedAt !== undefined) {
+      if (raw.completedAt === null) {
+        completedAt = null;
+      } else if (typeof raw.completedAt === "string") {
+        const trimmed = raw.completedAt.trim();
+        completedAt = trimmed.length > 0 ? trimmed : null;
+      } else {
+        return { ok: false, error: `Cycle '${name}' completedAt must be a string or null.` };
+      }
+    }
+
+    const goal = typeof raw.goal === "string" ? raw.goal.trim() : "";
+
+    cycles.push({
+      id,
+      number,
+      name,
+      ...(goal.length > 0 ? { goal } : {}),
+      startDate,
+      endDate,
+      status: status as CycleStatus,
+      ...(capacityPoints !== undefined ? { capacityPoints } : {}),
+      ...(completedPoints !== undefined ? { completedPoints } : {}),
+      ...(completedAt !== undefined ? { completedAt } : {}),
+    });
+  }
+  return { ok: true, cycles };
+}
+
+function sanitizeProjectMilestones(
+  rawMilestones: unknown,
+):
+  | { readonly ok: true; readonly milestones: ProjectMilestone[] }
+  | { readonly ok: false; readonly error: string } {
+  if (!Array.isArray(rawMilestones)) {
+    return { ok: false, error: "milestones must be an array." };
+  }
+  const seenIds = new Set<string>();
+  const milestones: ProjectMilestone[] = [];
+  for (const item of rawMilestones) {
+    if (!item || typeof item !== "object") {
+      return { ok: false, error: "Each milestone must be an object." };
+    }
+    const raw = item as Record<string, unknown>;
+    const id =
+      typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id.trim() : newId("mls");
+    if (seenIds.has(id)) {
+      return { ok: false, error: `Duplicate milestone id '${id}'.` };
+    }
+    seenIds.add(id);
+
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) {
+      return { ok: false, error: "Each milestone requires a non-empty name." };
+    }
+
+    const horizon = raw.horizon;
+    if (typeof horizon !== "string" || !VALID_AGILE_HORIZONS.has(horizon as AgileHorizon)) {
+      return { ok: false, error: `Milestone '${name}' has invalid horizon '${String(horizon)}'.` };
+    }
+
+    const status = raw.status;
+    if (typeof status !== "string" || !VALID_MILESTONE_STATUSES.has(status as MilestoneStatus)) {
+      return { ok: false, error: `Milestone '${name}' has invalid status '${String(status)}'.` };
+    }
+
+    let colorTone: MilestoneTone | undefined;
+    if (raw.colorTone !== undefined) {
+      if (
+        typeof raw.colorTone !== "string" ||
+        !VALID_MILESTONE_TONES.has(raw.colorTone as MilestoneTone)
+      ) {
+        return {
+          ok: false,
+          error: `Milestone '${name}' has invalid colorTone '${String(raw.colorTone)}'.`,
+        };
+      }
+      colorTone = raw.colorTone as MilestoneTone;
+    }
+
+    let targetDate: string | null | undefined;
+    if (raw.targetDate !== undefined) {
+      if (raw.targetDate === null) {
+        targetDate = null;
+      } else if (typeof raw.targetDate === "string") {
+        const trimmed = raw.targetDate.trim();
+        targetDate = trimmed.length > 0 ? trimmed : null;
+      } else {
+        return { ok: false, error: `Milestone '${name}' targetDate must be a string or null.` };
+      }
+    }
+
+    const description = typeof raw.description === "string" ? raw.description.trim() : "";
+    const createdAt = typeof raw.createdAt === "string" ? raw.createdAt.trim() : "";
+
+    milestones.push({
+      id,
+      name,
+      ...(description.length > 0 ? { description } : {}),
+      horizon: horizon as AgileHorizon,
+      status: status as MilestoneStatus,
+      ...(targetDate !== undefined ? { targetDate } : {}),
+      ...(colorTone !== undefined ? { colorTone } : {}),
+      ...(createdAt.length > 0 ? { createdAt } : {}),
+    });
+  }
+  return { ok: true, milestones };
+}
 
 function isPgUniqueViolation(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -322,6 +536,63 @@ export function createWorkspaceRoutes(deps: {
     const nextWorkflowConfig: WorkflowConfig = {
       ...project.workflowConfig,
       promptTemplates: nextTemplates,
+    };
+
+    const updated = await deps.db
+      .update(projects)
+      .set({
+        workflowConfig: nextWorkflowConfig,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projects.id, projectId))
+      .returning();
+
+    return c.json({ project: updated[0] });
+  });
+
+  app.put("/projects/:projectId/planning", async (c) => {
+    const user = getAuthUser(c);
+    const projectId = c.req.param("projectId");
+    const projectRows = await deps.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    const project = projectRows[0];
+    if (!project) return c.json({ error: "Project not found." }, 404);
+
+    const roles = await getUserWorkspaceRoles(deps.db, project.workspaceId, user.id);
+    if (!hasAnyRole(roles, ["owner", "pm", "dev"])) {
+      return c.json({ error: "Requires owner, pm, or dev role to manage project planning." }, 403);
+    }
+
+    const body = (await c.req.json()) as {
+      readonly cycles?: unknown;
+      readonly milestones?: unknown;
+    };
+
+    let nextCycles: ProjectCycle[] | undefined;
+    if (body.cycles !== undefined) {
+      const sanitized = sanitizeProjectCycles(body.cycles);
+      if (!sanitized.ok) {
+        return c.json({ error: sanitized.error }, 400);
+      }
+      nextCycles = sanitized.cycles;
+    }
+
+    let nextMilestones: ProjectMilestone[] | undefined;
+    if (body.milestones !== undefined) {
+      const sanitized = sanitizeProjectMilestones(body.milestones);
+      if (!sanitized.ok) {
+        return c.json({ error: sanitized.error }, 400);
+      }
+      nextMilestones = sanitized.milestones;
+    }
+
+    const nextWorkflowConfig: WorkflowConfig = {
+      ...project.workflowConfig,
+      ...(nextCycles !== undefined ? { cycles: nextCycles } : {}),
+      ...(nextMilestones !== undefined ? { milestones: nextMilestones } : {}),
     };
 
     const updated = await deps.db

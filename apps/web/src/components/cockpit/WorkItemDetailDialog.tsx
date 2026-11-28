@@ -1,12 +1,14 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, WorkItemDetail } from "@t3tools/contracts";
 import {
+  STORY_POINT_SCALE,
   buildLifecycleAttributesPatch,
   deriveWorkItemPipelinePhase,
   readWorkItemLifecycle,
   resolveLatestGateApprovals,
   standardGitHubLabels,
   suggestWorkItemBranchName,
+  type AgileHorizon,
   type ArtifactStatus,
   type AssigneeType,
   type BranchTopology,
@@ -14,7 +16,9 @@ import {
   type ChecklistItem,
   type DesignTier,
   type Project,
+  type ProjectCycle,
   type ProjectMemory,
+  type ProjectMilestone,
   type ProjectRepo,
   type WorkHealth,
   type WorkItem,
@@ -32,6 +36,7 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   EyeIcon,
+  FlagIcon,
   PencilIcon,
   PlusIcon,
   ShieldAlertIcon,
@@ -66,6 +71,7 @@ import {
 } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { cn } from "~/lib/utils";
 import { useProjects } from "~/state/entities";
@@ -158,6 +164,56 @@ type SpecMarkdownBlock =
   | { readonly kind: "paragraph"; readonly text: string; readonly startLine: number };
 
 const DEFAULT_AGENT_RUNNER_ID = "claude-agent";
+const AGILE_HORIZONS: ReadonlyArray<AgileHorizon> = ["now", "next", "later"];
+
+function agileHorizonLabel(horizon: AgileHorizon, gt: ReturnType<typeof useGT>): string {
+  switch (horizon) {
+    case "now":
+      return gt("Now", { $context: "agile roadmap horizon" });
+    case "next":
+      return gt("Next", { $context: "agile roadmap horizon" });
+    case "later":
+      return gt("Later", { $context: "agile roadmap horizon" });
+  }
+}
+
+function agileHorizonActiveClass(horizon: AgileHorizon): string {
+  switch (horizon) {
+    case "now":
+      return "bg-primary/15 text-primary shadow-2xs ring-1 ring-inset ring-primary/30";
+    case "next":
+      return "bg-info/15 text-info-foreground shadow-2xs ring-1 ring-inset ring-info/30";
+    case "later":
+      return "bg-guest/15 text-guest-foreground shadow-2xs ring-1 ring-inset ring-guest/30";
+  }
+}
+
+function cycleStatusTone(status: ProjectCycle["status"]): CockpitTone {
+  switch (status) {
+    case "active":
+      return "success";
+    case "upcoming":
+      return "info";
+    case "completed":
+      return "neutral";
+  }
+}
+
+function milestoneChipClass(colorTone: ProjectMilestone["colorTone"]): string {
+  switch (colorTone) {
+    case "success":
+      return "border-success/25 bg-success/8 text-success-foreground";
+    case "info":
+      return "border-info/25 bg-info/8 text-info-foreground";
+    case "warning":
+      return "border-warning/25 bg-warning/8 text-warning-foreground";
+    case "violet":
+      return "border-guest/25 bg-guest/10 text-guest-foreground";
+    case "primary":
+    default:
+      return "border-primary/25 bg-primary/8 text-primary";
+  }
+}
 
 const GUIDED_BAR_TONE_CLASS: Record<CockpitIconBadgeTone, string> = {
   error: "border-destructive/30 bg-linear-to-r from-destructive/10 via-card/85 to-card/55",
@@ -747,6 +803,10 @@ export function WorkItemDetailDialog({
   const [assigneeValue, setAssigneeValue] = useState<string>("unassigned");
   const [plannedStartAt, setPlannedStartAt] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [cycleId, setCycleId] = useState("");
+  const [milestoneId, setMilestoneId] = useState("");
+  const [roadmapHorizon, setRoadmapHorizon] = useState<AgileHorizon | null>(null);
+  const [storyPoints, setStoryPoints] = useState<number | null>(null);
   const [designTier, setDesignTier] = useState<DesignTier>("medium");
   const [prdStatus, setPrdStatus] = useState<ArtifactStatus>("none");
   const [prototypeStatus, setPrototypeStatus] = useState<ArtifactStatus>("none");
@@ -799,6 +859,10 @@ export function WorkItemDetailDialog({
     );
     setPlannedStartAt(lifecycle.plannedStartAt ? lifecycle.plannedStartAt.slice(0, 10) : "");
     setDueAt(lifecycle.dueAt ? lifecycle.dueAt.slice(0, 10) : "");
+    setCycleId(lifecycle.cycleId ?? "");
+    setMilestoneId(lifecycle.milestoneId ?? "");
+    setRoadmapHorizon(lifecycle.roadmapHorizon);
+    setStoryPoints(lifecycle.storyPoints);
     setDesignTier(lifecycle.designTier);
     setPrdStatus(lifecycle.prdStatus);
     setPrototypeStatus(lifecycle.prototypeStatus);
@@ -953,6 +1017,15 @@ export function WorkItemDetailDialog({
     return trimmedProtoUrl ? [trimmedProtoUrl, ...preserved] : preserved;
   };
 
+  const projectCycles = project?.workflowConfig.cycles ?? [];
+  const projectMilestones = project?.workflowConfig.milestones ?? [];
+  const selectedCycle = cycleId
+    ? (projectCycles.find((cycle) => cycle.id === cycleId) ?? null)
+    : null;
+  const selectedMilestone = milestoneId
+    ? (projectMilestones.find((milestone) => milestone.id === milestoneId) ?? null)
+    : null;
+
   const buildLifecyclePatch = (): Record<string, unknown> =>
     buildLifecycleAttributesPatch({
       plannedStartAt: plannedStartAt.trim() || null,
@@ -966,6 +1039,10 @@ export function WorkItemDetailDialog({
       githubLabels: standardLabels,
       branchTopology,
       branchName: branchName.trim() || null,
+      cycleId: cycleId.trim() || null,
+      milestoneId: milestoneId.trim() || null,
+      roadmapHorizon,
+      storyPoints,
     });
 
   const draftWorkItem: WorkItem | null = activeDetail
@@ -1571,6 +1648,38 @@ export function WorkItemDetailDialog({
                   </span>
                   <CockpitPriorityDot priority={activeDetail.workItem.priority} />
                   <CockpitHealthDot health={health} label={workHealthLabel(health, gt)} />
+                  {storyPoints !== null ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/8 px-1.5 py-0.5 font-mono text-2xs font-medium tabular-nums text-primary" />
+                        }
+                      >
+                        {gt("{points}pt", { points: storyPoints })}
+                      </TooltipTrigger>
+                      <TooltipPopup>
+                        {gt("{points} story points", { points: storyPoints })}
+                      </TooltipPopup>
+                    </Tooltip>
+                  ) : null}
+                  {selectedMilestone ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span
+                            className={cn(
+                              "inline-flex max-w-44 items-center gap-1 rounded-md border px-1.5 py-0.5 text-2xs font-medium",
+                              milestoneChipClass(selectedMilestone.colorTone),
+                            )}
+                          />
+                        }
+                      >
+                        <FlagIcon aria-hidden className="size-3 shrink-0 opacity-80" />
+                        <span className="truncate">{selectedMilestone.name}</span>
+                      </TooltipTrigger>
+                      <TooltipPopup>{selectedMilestone.name}</TooltipPopup>
+                    </Tooltip>
+                  ) : null}
                 </div>
                 <DialogTitle>{activeDetail.workItem.title}</DialogTitle>
                 <DialogDescription>
@@ -2543,6 +2652,207 @@ export function WorkItemDetailDialog({
                               value={dueAt}
                               onChange={(event) => setDueAt(event.target.value)}
                             />
+                          </div>
+                        </div>
+                      </CockpitSurfaceRow>
+
+                      <CockpitSurfaceRow className="space-y-3 bg-muted/10" density="compact">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+                            <T>Agile Planning</T>
+                          </span>
+                          {storyPoints !== null ? (
+                            <span className="font-mono text-2xs font-medium tabular-nums text-primary">
+                              {gt("{points}pt", { points: storyPoints })}
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <CockpitFieldLabel htmlFor="wid-cycle">
+                            <T>Cycle (Sprint)</T>
+                          </CockpitFieldLabel>
+                          <Select
+                            value={cycleId || "__none__"}
+                            onValueChange={(value) => {
+                              if (!value) return;
+                              setCycleId(value === "__none__" ? "" : value);
+                            }}
+                          >
+                            <SelectTrigger id="wid-cycle" size="sm">
+                              <SelectValue>
+                                {selectedCycle ? (
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot
+                                      tone={cycleStatusTone(selectedCycle.status)}
+                                    />
+                                    <span className="truncate">
+                                      {gt("Cycle {number} · {name}", {
+                                        number: selectedCycle.number,
+                                        name: selectedCycle.name,
+                                      })}
+                                    </span>
+                                  </span>
+                                ) : cycleId ? (
+                                  <span className="truncate font-mono text-xs">{cycleId}</span>
+                                ) : (
+                                  <T>Backlog (No Cycle)</T>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup>
+                              <SelectItem value="__none__">{gt("Backlog (No Cycle)")}</SelectItem>
+                              {projectCycles.map((cycle) => (
+                                <SelectItem key={cycle.id} value={cycle.id}>
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot tone={cycleStatusTone(cycle.status)} />
+                                    <span className="truncate">
+                                      {gt("Cycle {number} · {name}", {
+                                        number: cycle.number,
+                                        name: cycle.name,
+                                      })}
+                                    </span>
+                                  </span>
+                                </SelectItem>
+                              ))}
+                              {cycleId && !selectedCycle ? (
+                                <SelectItem value={cycleId}>{cycleId}</SelectItem>
+                              ) : null}
+                            </SelectPopup>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <CockpitFieldLabel htmlFor="wid-milestone">
+                            <T>Milestone / Phase</T>
+                          </CockpitFieldLabel>
+                          <Select
+                            value={milestoneId || "__none__"}
+                            onValueChange={(value) => {
+                              if (!value) return;
+                              const nextId = value === "__none__" ? "" : value;
+                              setMilestoneId(nextId);
+                              if (nextId && roadmapHorizon === null) {
+                                const matched = projectMilestones.find((m) => m.id === nextId);
+                                if (matched) {
+                                  setRoadmapHorizon(matched.horizon);
+                                }
+                              }
+                            }}
+                          >
+                            <SelectTrigger id="wid-milestone" size="sm">
+                              <SelectValue>
+                                {selectedMilestone ? (
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <FlagIcon
+                                      aria-hidden
+                                      className="size-3 shrink-0 text-muted-foreground"
+                                    />
+                                    <span className="truncate">{selectedMilestone.name}</span>
+                                  </span>
+                                ) : milestoneId ? (
+                                  <span className="truncate font-mono text-xs">{milestoneId}</span>
+                                ) : (
+                                  <T>No Milestone</T>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup>
+                              <SelectItem value="__none__">{gt("No Milestone")}</SelectItem>
+                              {projectMilestones.map((milestone) => (
+                                <SelectItem key={milestone.id} value={milestone.id}>
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <FlagIcon
+                                      aria-hidden
+                                      className="size-3 shrink-0 text-muted-foreground"
+                                    />
+                                    <span className="truncate">{milestone.name}</span>
+                                  </span>
+                                </SelectItem>
+                              ))}
+                              {milestoneId && !selectedMilestone ? (
+                                <SelectItem value={milestoneId}>{milestoneId}</SelectItem>
+                              ) : null}
+                            </SelectPopup>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              <T>Roadmap Horizon</T>
+                            </span>
+                            {roadmapHorizon !== null ? (
+                              <span className="text-2xs text-muted-foreground/75">
+                                {agileHorizonLabel(roadmapHorizon, gt)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            aria-label={gt("Roadmap Horizon")}
+                            className="grid grid-cols-3 gap-0.5 rounded-lg border border-border/60 bg-background/60 p-0.5"
+                            role="group"
+                          >
+                            {AGILE_HORIZONS.map((horizon) => {
+                              const isActive = roadmapHorizon === horizon;
+                              return (
+                                <button
+                                  key={horizon}
+                                  aria-pressed={isActive}
+                                  className={cn(
+                                    "cursor-pointer rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    isActive
+                                      ? agileHorizonActiveClass(horizon)
+                                      : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
+                                  )}
+                                  type="button"
+                                  onClick={() => setRoadmapHorizon(isActive ? null : horizon)}
+                                >
+                                  {agileHorizonLabel(horizon, gt)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              <T>Story Points</T>
+                            </span>
+                            <span className="font-mono text-2xs tabular-nums text-muted-foreground/75">
+                              {storyPoints !== null ? (
+                                gt("{points}pt", { points: storyPoints })
+                              ) : (
+                                <T>Unestimated</T>
+                              )}
+                            </span>
+                          </div>
+                          <div
+                            aria-label={gt("Story Points")}
+                            className="grid grid-cols-6 gap-1"
+                            role="group"
+                          >
+                            {STORY_POINT_SCALE.map((points) => {
+                              const isSelected = storyPoints === points;
+                              return (
+                                <button
+                                  key={points}
+                                  aria-label={gt("{points} story points", { points })}
+                                  aria-pressed={isSelected}
+                                  className={cn(
+                                    "cursor-pointer rounded-md border py-1 font-mono text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                    isSelected
+                                      ? "border-primary/45 bg-primary/15 font-semibold text-primary shadow-2xs"
+                                      : "border-border/55 bg-background/60 text-muted-foreground hover:border-border hover:bg-accent/40 hover:text-foreground",
+                                  )}
+                                  type="button"
+                                  onClick={() => setStoryPoints(isSelected ? null : points)}
+                                >
+                                  {points}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </CockpitSurfaceRow>

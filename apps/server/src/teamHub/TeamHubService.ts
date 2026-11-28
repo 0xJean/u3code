@@ -27,6 +27,7 @@ import {
   TeamHubTestNotificationChannelResult,
   TeamHubUpdateMemberRolesResult,
   TeamHubUpdateProfileResult,
+  TeamHubUpdateProjectPlanningResult,
   TeamHubUpdateProjectPromptsResult,
   TeamHubWorkItemResult,
   WorkItemDetail,
@@ -62,6 +63,7 @@ import {
   type TeamHubUpdateDirectivesInput,
   type TeamHubUpdateMemberRolesInput,
   type TeamHubUpdateProfileInput,
+  type TeamHubUpdateProjectPlanningInput,
   type TeamHubUpdateProjectPromptsInput,
   type TeamHubUpdateReleaseInput,
   type TeamHubUpdateWorkItemInput,
@@ -125,6 +127,7 @@ const decodePublishPulse = Schema.decodeUnknownEffect(TeamHubPublishPulseResult)
 const decodeCreateWorkspace = Schema.decodeUnknownEffect(TeamHubCreateWorkspaceResult);
 const decodeCreateProject = Schema.decodeUnknownEffect(TeamHubCreateProjectResult);
 const decodeUpdateProjectPrompts = Schema.decodeUnknownEffect(TeamHubUpdateProjectPromptsResult);
+const decodeUpdateProjectPlanning = Schema.decodeUnknownEffect(TeamHubUpdateProjectPlanningResult);
 const decodeAddProjectRepo = Schema.decodeUnknownEffect(TeamHubAddProjectRepoResult);
 const decodeListChannels = Schema.decodeUnknownEffect(TeamHubListNotificationChannelsResult);
 const decodeCreateChannel = Schema.decodeUnknownEffect(TeamHubCreateNotificationChannelResult);
@@ -208,6 +211,9 @@ export class TeamHubService extends Context.Service<
     readonly updateProjectPrompts: (
       input: TeamHubUpdateProjectPromptsInput,
     ) => Effect.Effect<TeamHubUpdateProjectPromptsResult, TeamHubError>;
+    readonly updateProjectPlanning: (
+      input: TeamHubUpdateProjectPlanningInput,
+    ) => Effect.Effect<TeamHubUpdateProjectPlanningResult, TeamHubError>;
     readonly addProjectRepo: (
       input: TeamHubAddProjectRepoInput,
     ) => Effect.Effect<TeamHubAddProjectRepoResult, TeamHubError>;
@@ -636,6 +642,20 @@ const make = Effect.gen(function* () {
     });
   });
 
+  const updateProjectPlanning = Effect.fn("TeamHubService.updateProjectPlanning")(function* (
+    input: TeamHubUpdateProjectPlanningInput,
+  ) {
+    return yield* authedRequest({
+      method: "PUT",
+      pathAndQuery: `/api/v1/projects/${encodeURIComponent(input.projectId)}/planning`,
+      body: {
+        ...(input.cycles !== undefined ? { cycles: input.cycles } : {}),
+        ...(input.milestones !== undefined ? { milestones: input.milestones } : {}),
+      },
+      decode: decodeUpdateProjectPlanning,
+    });
+  });
+
   const addProjectRepo = Effect.fn("TeamHubService.addProjectRepo")(function* (
     input: TeamHubAddProjectRepoInput,
   ) {
@@ -995,6 +1015,7 @@ const make = Effect.gen(function* () {
     createWorkspace,
     createProject,
     updateProjectPrompts,
+    updateProjectPlanning,
     addProjectRepo,
     listNotificationChannels,
     createNotificationChannel,

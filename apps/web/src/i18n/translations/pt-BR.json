@@ -5475,9 +5475,536 @@
   "0f54651dc9530e62": "Refresh Token",
   "32db31f0dc62bec8": "Conectando...",
   "90f46dbf8782cfde": "Conectar",
+  "5781a6ef53deca2a": "Story points: {points}. Change estimate",
+  "aefa02be3d83e02d": "Set story points estimate",
+  "961adf85d44363b0": "{points} pt",
+  "06ef0e2df468d1e1": "Est.",
+  "b3dfb087f550eb5b": "{pct}% delivered",
+  "9dad6db998848e83": "Scheduled",
+  "30b849478842938c": "Behind pace",
+  "8df78011bee30c10": "Failed to save cycle plan.",
+  "f60076ce186089fb": "{name} started",
+  "eb3ef70e6ac9e871": "{name} updated",
+  "476cf04fff4acc1b": "{name} created",
+  "07164c1936572583": "{name} is now active",
+  "5500bad8dafd59cd": "Added {code} to {cycleName}",
+  "d63dc399bcc58482": "Failed to add work item to cycle.",
+  "5268aa8732986d7a": "Moved {code} to Product Backlog",
+  "e8076755ca1c5d6e": "Failed to move work item to backlog.",
+  "a75dc570c941a69f": "Set {code} to {points} pt",
+  "d5ced9160a0542af": "Cleared story points for {code}",
+  "fa370496938c0d3f": "Failed to update story points.",
+  "ae0df2d39003ac59": "Failed to complete cycle.",
+  "0b9b1d0624d0c957": "{cycleName} completed, but {count, plural, one {{count} item} other {{count} items}} failed to move.",
+  "e7cae55bb64e0e0b": "Completed {cycleName} and carried {count, plural, one {{count} item} other {{count} items}} to {nextName}",
+  "eded3cad527cb408": "Completed {cycleName} and returned {count, plural, one {{count} item} other {{count} items}} to backlog",
+  "ba5bb8aab13e2e7f": "{cycleName} completed",
+  "83ec2eab9393eab4": "Project cycles",
+  "18aa73a172b3220f": "Edit cycle",
+  "bf96857d6fa90d3d": "Cycle health and burnup",
+  "cfb366ecc3c0edfb": "Healthy",
+  "a8a116f82103085e": "At Risk",
+  "720ff787c5881643": "Overcommitted",
+  "764583e9bcf9c209": "Sprint planning and backlog grooming",
+  "8b9ff44cb81a732b": "Search backlog work items",
+  "d40137d43e978959": "Filter backlog by title, code, or milestone...",
+  "701964090d7b3438": "Clear search",
+  "f29fa73c6c7b5cb4": "All",
+  "cce632b44be4d555": "Unestimated",
+  "439585d225cece44": "e.g. Cycle 1",
+  "cb0db788310f58e5": "What key user outcome should ship by the end of this cycle?",
+  "ef3cf62c3e6a9636": "e.g. 20",
+  "5d5e267d4c9781d2": "Active",
+  "e33cbd789785d35b": "Upcoming",
+  "8e370e3c7b0a9012": "Completed",
+  "4bf94eac54cc16f4": "Story Points",
+  "791cfb08c5435acb": "Clear",
+  "36baed1ff307ec2f": "Burnup & Pace",
+  "fff61b282a370471": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " / ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " pt completed"
+  ],
+  "7583d0e76070ef86": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " / ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " items completed"
+  ],
+  "496f4b9a48eba645": "Completed",
+  "a50dd44f1fc24360": "Ideal pace",
+  "5932e39f562fbbdf": "Scope",
+  "b43beda4edca5243": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " pt"
+  ],
+  "b868fe0378ee9adb": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " item"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " items"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "892bc62763b687b5": "Select a project first",
+  "61c1f69e8bbd5973": "Choose or create a project to plan agile cycles, track burnup velocity, and groom your product backlog.",
+  "c6753beb1fa8c386": "Start Cycle",
+  "caf14c84f4a74570": "Complete Cycle",
+  "d414ddf83ae0a7bc": "New Cycle",
+  "bdcc86c64fa49d63": "Add Item",
+  "e63452d7261496a2": "Keep scope crisp, pace delivery against team capacity, and pull ready work items from the backlog in one click.",
+  "12ede4ad9a30fedf": [
+    "Organize ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " into focused 2-week cycles with live burnup tracking, capacity guardrails, and velocity history."
+  ],
+  "3be410941f510666": "Active Cycle",
+  "83198d33e9648afb": "Upcoming Cycle",
+  "2d6e8909ea435090": "Completed Cycle",
+  "b01cc070bac1d285": "Agile Cycles",
+  "01be02234fef071e": [
+    "Cycle ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "1322ed220d9e056d": "Completed",
+  "0e32858f3b70f6ce": "Ends today",
+  "9192f8297fe04966": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " day left"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " days left"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "f4dd25f99acb8f7b": [
+    "Avg ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " pt/cycle"
+  ],
+  "633e7a027d71f80d": "Avg 0 pt/cycle",
+  "93eb96943a475b9d": "Start Your First Cycle",
+  "b0168f0b85932124": "Plan your first 2-week delivery cycle",
+  "5ba45355a052fa81": [
+    "Kick off ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " (",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ") with a ",
+    {
+      "i": 3,
+      "k": "_gt_value_3",
+      "v": "v"
+    },
+    "-point capacity guardrail, then pull prioritized work items straight from your backlog."
+  ],
+  "d56abfb38e54f912": "Start 2-Week Cycle 1",
+  "e7629af7267d146f": "Customize Dates & Goal",
+  "2291cfa9e8680e64": "Edit cycle",
+  "08e1ac9b906523cb": "Committed Scope",
+  "cf853572203cd2e5": "Unestimated",
+  "188e1907c7e4fde5": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " in progress"
+  ],
+  "473ccbd800c5ea70": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " blocked"
+  ],
+  "1bf0f754588d9f69": "No blockers",
+  "8fbe68e6992f1d19": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    {
+      "t": "span",
+      "i": 2,
+      "c": [
+        "/",
+        {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        },
+        " pt"
+      ]
+    }
+  ],
+  "9536a487e08335ab": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    {
+      "t": "span",
+      "i": 2,
+      "c": [
+        "/",
+        {
+          "i": 3,
+          "k": "_gt_value_3",
+          "v": "v"
+        }
+      ]
+    }
+  ],
+  "dfc6c13f9a206b7e": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " of",
+    " ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " items done"
+  ],
+  "76df1d47694be61e": "Capacity Health",
+  "c9f13f2b341fee3f": "No capacity cap",
+  "8c449dbf7d06e851": "85% sweet-spot target keeps delivery predictable",
+  "166a14b03ad6b6ee": "Edit cycle to configure a target point capacity",
+  "ffb610c2d2060c38": "Historical Velocity",
+  "141ccb11ad90cd49": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " ",
+    {
+      "t": "span",
+      "i": 2,
+      "c": "pt"
+    }
+  ],
+  "f0d1d3ff6e91c6f5": "Rising",
+  "cb864087685af300": "Dipping",
+  "edde74b162e38e68": "Steady",
+  "dc1c94f11ed9cf6a": "Baseline",
+  "e1dab480bb7a069f": [
+    "Latest: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " pt across",
+    " ",
+    {
+      "t": "Plural",
+      "i": 2,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " cycle"
+            ]
+          },
+          "other": {
+            "t": "C3",
+            "i": 3,
+            "c": [
+              {
+                "i": 4,
+                "k": "_gt_value_4",
+                "v": "v"
+              },
+              " cycles"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    }
+  ],
+  "167070280d184a09": "Complete your first cycle to establish a velocity baseline",
+  "2769ade1e5eccf30": "New",
+  "61994fc15aab933c": [
+    "Cycle Scope · ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "976b3b2d527ba110": "Cycle Scope",
+  "bd9c97a9d90db25b": "Start a cycle above to begin committing scope from your backlog.",
+  "11e4c5a5d42a1823": [
+    "No work items are committed to ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " yet. Pull ready items from the Product Backlog or create a new item directly."
+  ],
+  "d995877e8e4b7a21": "Add Item to Cycle",
+  "dde2cbc0b24e7d7a": "Move to Backlog",
+  "9cd03976ae2e4b71": "New Backlog Item",
+  "21fe1153ef59840e": "Product Backlog & Refinement",
+  "3b72f3c7df45685b": "Product backlog is completely triaged. Every open item is already scheduled in a cycle.",
+  "6f1169f2ec93c9aa": "No backlog items match your current filter.",
+  "2043f8e353a7d08a": "Reset Filter",
+  "3cf3fb539a0b7b37": "Add to Cycle",
+  "a4bc277c88f1ea52": "Edit Cycle",
+  "5f7a32876060e957": "Create Agile Cycle",
+  "528987bf13386093": [
+    "Define the cycle window, sprint goal, and target point capacity for",
+    " ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "."
+  ],
+  "af1a994dd31a8024": "Cycle Name",
+  "316fc6c73d1700cc": "Sprint Goal",
+  "63253a4c6c30bbd8": "Start Date",
+  "9572e0bef2f357a5": "End Date",
+  "466b0a5c76acaa08": "End date must be on or after the start date.",
+  "70443dfb0089aa82": "Target Capacity (Points)",
+  "204167c06dc9fb6e": "Status",
+  "ece5e10bd5b5769d": "Salvando...",
+  "532285398002a13b": "Save Changes",
+  "a30bcd07abb243f8": "Create Cycle",
+  "7d23fe610130a105": [
+    "Complete ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "f284f7a9fe978e37": "Lock in delivered velocity and decide where any unfinished work items should move next.",
+  "db3ee4a4c0d2db8d": [
+    {
+      "t": "Plural",
+      "i": 1,
+      "d": {
+        "b": {
+          "one": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " item"
+            ]
+          },
+          "other": {
+            "t": "C2",
+            "i": 2,
+            "c": [
+              {
+                "i": 3,
+                "k": "_gt_value_3",
+                "v": "v"
+              },
+              " items"
+            ]
+          }
+        },
+        "t": "p"
+      }
+    },
+    " ",
+    "· ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " pt"
+  ],
+  "36d192ee622287a9": "Unfinished",
+  "76b35629a6fc7cc5": [
+    "Every item in ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " is complete. Completing this cycle will record ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " delivered points in your team velocity history."
+  ],
+  "83123e1a18fc60e4": "Carry-over destination",
+  "c63dc1b590738627": "Carry unfinished items to Next Cycle",
+  "e0698d11a144d1d0": [
+    "Moves unfinished items into ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " (",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ")."
+  ],
+  "668c7fc917f33560": [
+    "Auto-creates ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " (",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    ") and carries unfinished items forward."
+  ],
+  "f5b2459cfa256ee5": "Return unfinished items to Product Backlog",
+  "dd5be1f75c761b8e": "Clears their cycle assignment so they return to the backlog for re-prioritization.",
+  "471be51e6cd4dde5": [
+    "+",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " more unfinished items"
+  ],
+  "a41e55a41f24dccf": "Completing...",
   "bd8e87512fd9bdf2": "Não atribuído",
+  "8a64a5cbb3f18acd": "Target {date}",
+  "af4706ab3403ca6c": "Now",
+  "7f8cb8174c6d288f": "Next",
+  "b0d022fe9d78def7": "Depois",
+  "f9d0e869c18aa062": "No Milestone",
+  "27730514450dab72": "Cycle {number}",
+  "370aa80e162adbf6": "Active",
+  "0c423622f8873598": "Upcoming",
+  "2c52750d23ae8559": "Product Backlog",
   "8071312c2df7d57a": "{count, plural, one {{count} scheduled item} other {{count} scheduled items}}",
   "4ee32327a0b88bdb": "{count, plural, one {{count} milestone} other {{count} milestones}}",
+  "a443992162a679cc": "{count, plural, one {{count} target} other {{count} targets}}",
   "8d94d847be325143": "Timeline zoom",
   "96eb8189e8543474": "Group timeline rows",
   "7bed7d3fbf638c3e": "Planning",
@@ -5516,6 +6043,8 @@
   "b02e3ea41235ff6f": "Flat",
   "61dd0421314d866a": "By Stage",
   "0f82b10600af37d9": "By Assignee",
+  "9ccbae13032bf464": "By Milestone",
+  "ae5b97df6fecb406": "By Cycle",
   "db046871e24073f1": "Today",
   "0ce85fa2fbb547fa": "Work Item",
   "633fc328429f28fd": [
@@ -5538,6 +6067,34 @@
       "k": "_gt_value_3",
       "v": "v"
     }
+  ],
+  "ba09470690da055a": [
+    "Milestone · ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " · ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    }
+  ],
+  "713a476820837481": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " done"
   ],
   "055a04db5b6ea584": "Shift -1d",
   "c06263e93c381dc4": [
@@ -5608,6 +6165,7 @@
   "e1d4235d9234707f": "At Risk",
   "16888d382ebacca1": "Overdue",
   "778bc8b8fbd4b53b": "Release Milestone",
+  "4a15aa109b7d4045": "Milestone Target",
   "8d6cb80c696393f2": "Estimated Schedule",
   "4689cd200d9a37e4": "Hover any bar to shift ±1d",
   "da9a6504317439bc": "Teammates",
@@ -5640,7 +6198,6 @@
   "af352babc183d32d": "{count, plural, one {{count} decision} other {{count} decisions}}",
   "cf23b547672aee09": "Memory & Digests sections",
   "62570d4bfe4ab517": "Manual",
-  "9dad6db998848e83": "Scheduled",
   "077ca0a8bb1aea28": "Daily",
   "526889161cc9be28": "Digest history",
   "e2f6572a891945b4": "Disable directive",
@@ -5722,6 +6279,10 @@
   "c25dc7daa1f8d57f": "Issue #{num}",
   "d788a776a5c7a2cf": "Delivery Studio",
   "e7db4d7111d9b355": "Delivery Health",
+  "a88151970a94348d": "Agile Cadence & Roadmap",
+  "a86999d3f782f1cc": "Overcommitted",
+  "9cba77685cbe4174": "At risk",
+  "a7c61af714a2ee0c": "Healthy pace",
   "07d6fa6782df34fc": "Delivery Pipeline",
   "ce50e9f2f3c932aa": "Priority Next Actions",
   "9ba7ae80f789850f": "Active Now",
@@ -6182,14 +6743,6 @@
   ],
   "751da358663431bb": "PR Audit Gate",
   "c558889665db9534": "ready",
-  "473ccbd800c5ea70": [
-    {
-      "i": 1,
-      "k": "_gt_value_1",
-      "v": "v"
-    },
-    " blocked"
-  ],
   "b2e795493f34e90b": "0 blocked",
   "e10ea4dfae8e79b8": "No open pull requests",
   "7103f18089ba390b": {
@@ -6225,6 +6778,112 @@
       "t": "p"
     }
   },
+  "ec472becf14df335": "Open Cycles",
+  "60b1439aaf92aabf": [
+    "Starts ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "579e35d0bb5255e5": "Upcoming",
+  "3f6369f66c6aadc3": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " pt"
+  ],
+  "6ad87cd7b351d53c": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "/",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " items"
+  ],
+  "5e5f7cb35bbdc274": [
+    "Velocity ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " pt"
+  ],
+  "aa4baeae971286cf": [
+    "Capacity ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " pt"
+  ],
+  "5de0bfe3fcbab05b": "Active Sprint Cycle",
+  "c4790db4c0ac94bf": "Start Cycle 1",
+  "2353ced64233fc92": "Plan 2-week delivery cycles with burndown & velocity",
+  "7e12e17de69c49c1": {
+    "t": "Plural",
+    "i": 1,
+    "d": {
+      "b": {
+        "one": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " active item ready to scope"
+          ]
+        },
+        "other": {
+          "t": "C2",
+          "i": 2,
+          "c": [
+            {
+              "i": 3,
+              "k": "_gt_value_3",
+              "v": "v"
+            },
+            " active items ready to scope"
+          ]
+        }
+      },
+      "t": "p"
+    }
+  },
+  "2ca0aca848bc7fd2": "Track sprint scope, capacity pace, and team velocity",
+  "91002f01ff626529": "Roadmap Now & Next",
+  "a660d9f119b40340": "Open Roadmap",
+  "8911d8ef7d695f3f": "Plan Roadmap",
+  "668a4c4cdfedcca4": [
+    "+",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " more on roadmap"
+  ],
+  "92014f44bb1df9aa": "Organize work into Now / Next / Later development phases",
   "91771d5a5ea24daf": "Delivery Pipeline",
   "333b345bef12bd0d": "Priority Next Actions",
   "06cdfb1397a96b2a": "Highest-leverage team decisions",
@@ -6442,18 +7101,30 @@
   "1069e7fe163016f6": "Dual-Branch Bot-Gated",
   "732186ff7a914b1f": "Search work items",
   "e98f7b11783806ee": "Search code, title, branch, #issue...",
-  "701964090d7b3438": "Clear search",
   "b125e6c1a265869f": "Filter by assignee",
   "354be6ceb1c3d693": "All assignees",
   "706e0847946ce114": "My items",
   "d006312f761f5f53": "Coding Agent ({runnerId})",
   "ff1616e0529dec89": "Filter by priority",
   "c06673e7c4380efc": "All priorities",
+  "289504fed8781609": "Filter by cycle",
+  "0460df5fd3eac9ab": "Cycle {number} · {name}",
+  "05738c0b816473d0": "All cycles",
+  "6b654b70f29194f8": "Backlog (No Cycle)",
+  "f7add39bbd36d9ed": "Filter by milestone",
+  "45d1aacf24fc3759": "All milestones",
   "b9832a80cfac58ae": "New work item in {stageLabel}",
   "10f1933ed8a99cb0": "e.g. Idempotent settlement outbox",
   "7438e33a9afa75da": "Pequeno",
   "f4285195dac7acd0": "Grande",
   "f24a869a2c45bdc1": "Cross-repo",
+  "8ef6134485b1e125": "{points}pt",
+  "bbddf4b5024152a5": "Now",
+  "2af46b3ac65d64c8": "Next",
+  "64dcf373f8e9f9c9": "Later",
+  "61f41350fb3c691d": "Roadmap Horizon",
+  "d7bcf7c346708ec6": "Story Points",
+  "5c929345e6da9b1a": "{points} story points",
   "a1af216fb208642a": "Describe user problem, target outcomes, and edge cases",
   "5695bcf364c7f316": "Blocking",
   "edb9bc067fe3638c": "Passed",
@@ -6473,9 +7144,11 @@
   "b21e23bd6421075c": "No server environment connected",
   "61fa83cc913b23f4": "Connect to a U3 Code server environment first to use Team Cockpit.",
   "daee9e8b51384a85": "Checking Team Hub connection...",
-  "2d40dd2539b7e017": "Kanban",
-  "fe6673bc90a3b7c8": "Gantt",
-  "50e69de3abc32870": "Review Triage",
+  "c52aa90725eb6943": "Roadmap",
+  "0a510177c1afaab9": "Cycles",
+  "f1f55521bea76543": "Board",
+  "82f70a50364b9d1d": "Timeline",
+  "814aade7dfdcc32c": "PR Triage",
   "72d72a452aed7f1d": "Releases",
   "013dfe4a2448e211": [
     {
@@ -6485,7 +7158,6 @@
     },
     " repos"
   ],
-  "f1f55521bea76543": "Board",
   "dc6de46021f4f9ec": "List",
   "8b25153390e240fe": "New Item",
   "e18bc1817ce7cafc": "Has PR",
@@ -6494,6 +7166,10 @@
   "4b0f1869c2c46ee8": "My items",
   "d27f13e1e62caffb": "Unassigned",
   "9ca24dd81205ae4f": "All priorities",
+  "d7faab996cbd898b": "All cycles",
+  "7814cbec13005219": "Backlog (No Cycle)",
+  "63844d01a61d8c2e": "All milestones",
+  "4c10546823a58589": "No Milestone",
   "5fc2554f93bda67b": [
     "Showing ",
     {
@@ -6538,6 +7214,10 @@
   "08247dd39b0c85ff": "Responsável",
   "d2aba9ce191d09b7": "Planned Start",
   "25e9479630195fcb": "Due Date",
+  "e5d5500fe14a89a2": "Agile Planning",
+  "5dfbda07ab993d9e": "Cycle (Sprint)",
+  "5535e6671cf50d2f": "Milestone / Phase",
+  "8a94487c75cbb70e": "Roadmap Horizon",
   "7b73ddbaf4662912": "Context & Requirement Brief",
   "1c508fd19da54d0e": "Target Local Repository (for AI PRD)",
   "55faffd674513a7b": "Requirement Brief / Problem Statement",
@@ -6586,7 +7266,6 @@
   "1e6e739652f8deae": "Team prompt template saved",
   "d00091739b68a5fd": "Prompt reset to localized default",
   "4fd01f450f9d39a2": "Failed to save prompt template.",
-  "892bc62763b687b5": "Select a project first",
   "42edf335b8d3d979": "Choose or create a project to customize shared AI workflow prompts for your team.",
   "d01c07822c578e63": [
     "Customize the AI instructions used across this project's delivery stages. Saved templates sync to every teammate in ",
@@ -6627,7 +7306,6 @@
   "23a1fab789f1ee0c": "Hide Preview",
   "fa7abddc6635a0c7": "Preview",
   "97431a3b95c03c29": "Reset Default",
-  "ece5e10bd5b5769d": "Salvando...",
   "f3e853a3b645fd90": "Save Template",
   "7840818b1556a848": "Click a placeholder to insert",
   "fbada9f735c4835a": "Prompt Template",
@@ -6846,6 +7524,163 @@
   "1df3d1fda0846a74": "Auto-fill Snapshots & Notes",
   "ee80efc7441cc041": "Repository Snapshots (repo=ref)",
   "aa17c79a8d5828fa": "Create Release",
+  "9997b55ae5ddd1a1": "{total, plural, one {{done}/{total} item} other {{done}/{total} items}}",
+  "f3a9f43a2a3606df": "Milestone completion {pct}%",
+  "161ad733949dad2d": "Done",
+  "2ac2a2a8f203dc93": "Remove {code} from milestone",
+  "01c7ff2bffb7c676": "Move back to unassigned backlog",
+  "3618886b8c69697b": "Active",
+  "1c48961e589c3c1f": "Planned",
+  "ec315d440ac2bd2b": "Completed",
+  "bb637e6c766bfee9": "Paused",
+  "34901bb929deb832": "Excluir {name}",
+  "58d875127cb2c27a": "Recolher {name}",
+  "ce473b11551ea116": "Expandir {name}",
+  "9a14757a54f6595a": "Now",
+  "e96c00d693fd087a": "Next",
+  "d92542fb9763f667": "Later",
+  "7ac87910d8473f98": "{count, plural, one {{count} linked work item} other {{count} linked work items}}",
+  "928dcd24d84077e3": "{count, plural, one {{count} pt} other {{count} pts}}",
+  "090536bfc704541e": "Assign {code} to a milestone",
+  "fb95e83428025efa": "e.g. Phase 1 · Core Foundation",
+  "3f74567906d6e4fd": "What user outcome or release milestone does this phase unlock?",
+  "2dc971bafecc09a0": "Scoped & actively shipping in cycles",
+  "f0c7287f111a6889": "Discovery, AI PRD & interactive prototyping",
+  "e6226656964e2c38": "Future quarters, R&D & long-term bets",
+  "43bd59c9c7189853": "Primary",
+  "b4e4099470531b51": "Blue",
+  "ef9fdb05f5701c4a": "Green",
+  "08546419950257d8": "Amber",
+  "29ecebe2e922d5d5": "Violet",
+  "b9b930a2db14ffc5": "Failed to update project roadmap.",
+  "ca2918e01a9eda87": "Phase 1 · Core Foundation",
+  "2623c8986c9747d2": "Ship core end-to-end user flows and stabilize baseline quality.",
+  "83979aa9af6ef8ef": "Phase 2 · Workflow & UX Polish",
+  "7acfd495d6fdcee9": "Draft AI PRDs, validate interactive prototypes, and refine workflows.",
+  "56a6bc6e019d8444": "Phase 3 · Scale & Ecosystem",
+  "cee39439ed7f88e8": "Explore platform integrations, performance scale, and long-term bets.",
+  "b015ec2be880575b": "Starter roadmap phases created",
+  "aefc362080fd4e7f": "Milestone updated",
+  "a9b8eaa7bb168573": "Milestone created",
+  "6c5401098ceb9182": "Deleted milestone {name}",
+  "fd98c7473ff137b7": "Moved {name} to {horizon}",
+  "bffdb0dc03131c72": "Assigned {code} to {milestone}",
+  "7ddd5d23cd816f9d": "Failed to assign work item to milestone.",
+  "0cae0d1554470b24": "Moved {code} to unassigned backlog",
+  "488c898a31f658bc": "Failed to unlink work item from milestone.",
+  "66b8eab614b57beb": "{count, plural, one {{count} linked item} other {{count} linked items}}",
+  "9fa94e53ac5d0268": "{count, plural, one {{count} total point} other {{count} total points}}",
+  "b825f9e566deb400": "Roadmap layout",
+  "7b8c55b5ab6a0430": "Filter milestones by status",
+  "546d5fc08d1527fa": "{count, plural, one {{count} item awaiting milestone} other {{count} items awaiting milestone}}",
+  "5ea3612df785efd2": "{count, plural, one {{count} item} other {{count} itens}}",
+  "112afea15a53c05d": "Add milestone to {horizon}",
+  "81480942a032df4a": "No active delivery milestones yet. Add a phase or promote one from Next.",
+  "38943720fafbf644": "No upcoming discovery phases yet. Queue PRD & prototype milestones here.",
+  "5ffd98ec207c1d67": "No future strategic bets yet. Park longer-term initiatives here.",
+  "f3a34c18a76405e1": "No milestones match the active status filter in {horizon}.",
+  "6aa549aa9c06b7c2": "{count, plural, one {Remove {name} from the roadmap? Its {count} linked work item will stay intact and move back to the Unassigned Horizon Backlog.} other {Remove {name} from the roadmap? Its {count} linked work items will stay intact and move back to the Unassigned Horizon Backlog.}}",
+  "ddbe93a80ad701f2": "Dev",
+  "e39a57514be028e9": "Revisar",
+  "ace3070cbeb32e31": "Show fewer",
+  "1e638401629a3688": "No linked work items yet.",
+  "2e2f4f49cb92215a": "Add Work Item",
+  "ad80e6419bc568f9": "Move to Next",
+  "da6fd2970fdea660": "Promote to Now",
+  "0d1c0b33318c6478": "Defer to Later",
+  "b299dada5b3e7f5c": "No milestones match the active filter.",
+  "47562cbf33f18e9a": "Horizon",
+  "297cbfe5b136273d": "Target Date",
+  "bc55fe6538bbc937": "Pipeline",
+  "59f7e2c223e4535e": "Progress",
+  "8fd76fb760f07d7b": "Actions",
+  "5f3ca9ed419ae174": "No date",
+  "b4609a156d099add": [
+    "PRD ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "db2324876c46deac": [
+    "Dev ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "2b41be55ed73ef07": [
+    "Review ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "4efa009ed851c7ea": [
+    "Done ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "922bc95a352a52ab": "Item",
+  "b5024b3dc2a5e8d9": "No work items linked to this milestone yet.",
+  "9d09a11ff4697af5": "Expand",
+  "2418e32afde270c2": "Collapse",
+  "7debc82b90875c36": "Unassigned Horizon Backlog",
+  "6e1e99230b093260": "All project work items are mapped to a roadmap milestone.",
+  "28ca5376973a8fe7": "Capture New Idea",
+  "19db1a9145c82504": "Assigning...",
+  "d5c04f208d3236cf": "Assign milestone...",
+  "ed8a34fb78ee7720": "Create Milestone",
+  "0be719cf909e7944": "Edit Milestone / Phase",
+  "6369cad4fb783289": "New Milestone / Phase",
+  "8bab5ccf1b900b99": "Define a product phase, assign its strategic horizon, and track rolled-up discovery and delivery progress automatically.",
+  "01382c5805f8ed55": "Milestone Name",
+  "623f72ad035a3762": "Outcome Goal / Description",
+  "f21e1d86617a3782": "Strategic Horizon",
+  "cedecdfb840829d4": "Accent Tone",
+  "7e92a9bad69a19dc": "Choose or create a project to plan Now, Next, and Later horizons and track development milestones.",
+  "5c6cf3c3d53b52e3": "Quick Bootstrap Phases",
+  "65b619552e71a5ad": "Coordinate continuous discovery and delivery: Now drives active sprint execution, Next shapes AI PRDs and interactive prototypes, and Later holds future strategic bets.",
+  "86a8c6ab5980deda": "Dual-Track Product Roadmap",
+  "c1209c2389fa4c2b": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "% points done"
+  ],
+  "11d27ef9e5cb623d": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " Roadmap & Milestones"
+  ],
+  "257115de18c3417e": "Now / Next / Later Columns",
+  "83fea1642517f2ab": "Milestone List",
+  "27ca2b5cb29a14f6": "Planned",
+  "6e1cf7870eb5af9c": "Paused",
+  "c07a3b8a0522c291": "Add Phase",
+  "fcf22ec6663431ee": "Delete milestone?",
+  "cfa5c1f53d46c770": [
+    "Remove ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " from the roadmap? You can always create a new phase later."
+  ],
+  "20217495d08d5a3b": "Deleting...",
+  "f1abf1253cd2d294": "Delete Milestone",
   "04ba993d1fb6528e": "Full delivery (Scoping → PRD → Dev → QA → Review → Staging → Done)",
   "5dc0780fddf4bccd": "Lean (Backlog → In Progress → Review → Done)",
   "039befae93b35add": "Dual-Branch Bot-Gated (Scoping → Dev → Review → Staging → Done)",
@@ -7440,7 +8275,6 @@
   "0d3721eb612661c7": "Sync progress pulse to Team Hub",
   "f484cf6b1093f642": "Extract a structured progress pulse from this thread and sync to Team Hub",
   "7acd5fe8d20c5bcd": "On track",
-  "9cba77685cbe4174": "At risk",
   "796dad01602903c5": "e.g. Use transactional outbox instead of pubsub",
   "fa9cce8a49cbf6b7": "e.g. Need owner decision on retention policy",
   "63c0828e7dfb3ae6": "Sync Pulse",
@@ -7602,7 +8436,6 @@
   "f2308757ebc94c9d": "Properties",
   "5692b3d251f7d53a": "Stage",
   "cc7dd8be524fd81e": "Next stage",
-  "63253a4c6c30bbd8": "Start Date",
   "0d150f63d538446b": "PRD Status",
   "9267abc566e65317": "Prototype Status",
   "9b76f13d753e39bf": "Git & Delivery Artifacts",
@@ -7613,7 +8446,6 @@
   "30b696434167411f": "Vinculado",
   "0ee44694148257bb": "Not linked",
   "584466c382b1b1e7": "Prototype & Preview",
-  "532285398002a13b": "Save Changes",
   "a80895f122d7020f": "Não foi possível abrir o link",
   "2a1758375b2701f3": "Não foi possível adicionar o backend",
   "6730fa8ae68fad99": "Falha ao adicionar o backend.",
@@ -10764,8 +11596,6 @@
   "cfa123e9391c196d": "Processo",
   "9f518d021839dbad": "ID do trace copiado",
   "6eec6880354153e1": "Copiar ID completo do trace",
-  "58d875127cb2c27a": "Recolher {name}",
-  "ce473b11551ea116": "Expandir {name}",
   "cb2ccc35b14a076e": "Nenhum processo descendente ativo encontrado.",
   "bdeb796103dee7d9": "Processo raiz {name}",
   "1fd982e6629d63a1": "Processo filho {name}",
@@ -12436,7 +13266,6 @@
   "183b2599d9617750": "Desativado",
   "302410fc09c914ad": "{count, plural, one {{count} dia} other {{count} dias}}",
   "9fec8d8f72a0de4d": "Vazio",
-  "5ea3612df785efd2": "{count, plural, one {{count} item} other {{count} itens}}",
   "7f11b5e6dfa0bc56": "Personalizado",
   "aea25315995268e1": "Herda",
   "c8d6af8aaa94a464": "Padrão",
@@ -12653,7 +13482,6 @@
   "a1f01740fa975542": "Como tratamos seus dados, incluindo os dados de uso anônimos que o U3 Code coleta.",
   "e741b1ab9396053a": "Como tratamos seus dados. {telemetryOff}",
   "e2cc62dee589a031": "Avisos de dependências, recursos e ferramentas opcionais usados pelo U3 Code.",
-  "e39a57514be028e9": "Revisar",
   "7c0512387c3a42ea": "Estável",
   "3476687eaa175b32": "Nightly",
   "cbf6a6bbc17e75e1": "Mostra um aviso quando outra thread termina, falha ou precisa de uma resposta ou aprovação enquanto o app está em foco.",
@@ -13962,7 +14790,6 @@
   "8ee326cccca4ffe0": "{percent}% baixado",
   "f36b40c99b8c221f": "Cancelar o download de {name}",
   "53b05fd56e4de55b": "Parar de usar seu arquivo {name}; o arquivo continua no disco",
-  "34901bb929deb832": "Excluir {name}",
   "58d9cedba566716c": "Adicione palavras separadas por vírgulas",
   "8ce2d4078f890b77": "Adicionar uma palavra ou frase ao {label}",
   "6f40d219fdbe4ae9": "Alias de {term}",
@@ -14516,7 +15343,6 @@
   "c85d558b9b692fd1": "baixando",
   "564073e9d66b0855": "baixando {percent}%",
   "551378d07fcc44a2": "reinicia depois dos servidores",
-  "b0d022fe9d78def7": "Depois",
   "d6a3ce01f1a7330f": "Este app",
   "013b586a2034d312": "Reiniciar para atualizar",
   "a1b70697eafe0049": "Não foi possível baixar a atualização",

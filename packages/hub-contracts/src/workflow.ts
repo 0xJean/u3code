@@ -47,12 +47,52 @@ export const COCKPIT_PROMPT_SLOTS: ReadonlyArray<CockpitPromptSlot> = [
   "repo_governance",
 ];
 
+export const AgileHorizon = Schema.Literals(["now", "next", "later"]);
+export type AgileHorizon = typeof AgileHorizon.Type;
+
+export const MilestoneStatus = Schema.Literals(["planned", "active", "completed", "paused"]);
+export type MilestoneStatus = typeof MilestoneStatus.Type;
+
+export const MilestoneTone = Schema.Literals(["primary", "info", "success", "warning", "violet"]);
+export type MilestoneTone = typeof MilestoneTone.Type;
+
+export const ProjectMilestone = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  horizon: AgileHorizon,
+  status: MilestoneStatus,
+  targetDate: Schema.optional(Schema.NullOr(Schema.String)),
+  colorTone: Schema.optional(MilestoneTone),
+  createdAt: Schema.optional(Schema.String),
+});
+export type ProjectMilestone = typeof ProjectMilestone.Type;
+
+export const CycleStatus = Schema.Literals(["upcoming", "active", "completed"]);
+export type CycleStatus = typeof CycleStatus.Type;
+
+export const ProjectCycle = Schema.Struct({
+  id: Schema.String,
+  number: Schema.Int,
+  name: Schema.String,
+  goal: Schema.optional(Schema.String),
+  startDate: Schema.String,
+  endDate: Schema.String,
+  status: CycleStatus,
+  capacityPoints: Schema.optional(Schema.NullOr(Schema.Int)),
+  completedPoints: Schema.optional(Schema.NullOr(Schema.Int)),
+  completedAt: Schema.optional(Schema.NullOr(Schema.String)),
+});
+export type ProjectCycle = typeof ProjectCycle.Type;
+
 export const WorkflowConfig = Schema.Struct({
   preset: WorkflowPresetKind,
   stages: Schema.Array(WorkflowStage),
   gates: Schema.Array(GateRule),
   progressLedgers: Schema.optional(Schema.Array(ProgressLedgerRef)),
   promptTemplates: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  cycles: Schema.optional(Schema.Array(ProjectCycle)),
+  milestones: Schema.optional(Schema.Array(ProjectMilestone)),
 });
 export type WorkflowConfig = typeof WorkflowConfig.Type;
 
@@ -182,5 +222,15 @@ export function createWorkflowConfigFromPreset(
       ? [...overrides.progressLedgers]
       : [...(base.progressLedgers ?? [])],
     ...(overrides?.promptTemplates ? { promptTemplates: { ...overrides.promptTemplates } } : {}),
+    ...(overrides?.cycles
+      ? { cycles: overrides.cycles.map((c) => ({ ...c })) }
+      : base.cycles
+        ? { cycles: base.cycles.map((c) => ({ ...c })) }
+        : {}),
+    ...(overrides?.milestones
+      ? { milestones: overrides.milestones.map((m) => ({ ...m })) }
+      : base.milestones
+        ? { milestones: base.milestones.map((m) => ({ ...m })) }
+        : {}),
   };
 }

@@ -1008,4 +1008,248 @@ describe("u3code-hub integration (PGlite)", () => {
     expect(board.messages[1]?.mentions).toEqual(["claude-agent"]);
     expect(board.messages[1]?.body).toContain("@claude-agent");
   });
+
+  it("persists project Agile planning (cycles & milestones) while preserving workflowConfig and supports null-clearing work item agile attributes", async () => {
+    const { app, broker, pglite } = await createTestHub();
+    cleanups.push(async () => {
+      broker.close();
+      await pglite.close();
+    });
+
+    const ownerLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "boss", displayName: "Tech Founder" }),
+    });
+    const ownerAuth = (await ownerLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+    const viewerLoginRes = await app.request("/api/v1/auth/local/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "qa_viewer", displayName: "QA Viewer" }),
+    });
+    const viewerAuth = (await viewerLoginRes.json()) as {
+      user: { id: string };
+      tokens: { accessToken: string };
+    };
+
+    const ownerHeaders = {
+      Authorization: `Bearer ${ownerAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+    const viewerHeaders = {
+      Authorization: `Bearer ${viewerAuth.tokens.accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const wsRes = await app.request("/api/v1/workspaces", {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ slug: "agile-org", name: "Agile Org" }),
+    });
+    const { workspace } = (await wsRes.json()) as { workspace: { id: string } };
+
+    await app.request(`/api/v1/workspaces/${workspace.id}/members/${viewerAuth.user.id}`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({ roles: ["qa"] }),
+    });
+
+    const projRes = await app.request(`/api/v1/workspaces/${workspace.id}/projects`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({ key: "AGL", name: "Agile Hub", preset: "full-delivery" }),
+    });
+    const { project } = (await projRes.json()) as { project: { id: string } };
+
+    // Seed promptTemplates first to verify planning updates preserve stages, gates, and prompts
+    const promptsRes = await app.request(`/api/v1/projects/${project.id}/prompts`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({ promptTemplates: { prd: "Keep this PRD template" } }),
+    });
+    expect(promptsRes.status).toBe(200);
+
+    // Non-owner/pm/dev role is rejected with 403
+    const forbiddenRes = await app.request(`/api/v1/projects/${project.id}/planning`, {
+      method: "PUT",
+      headers: viewerHeaders,
+      body: JSON.stringify({ cycles: [] }),
+    });
+    expect(forbiddenRes.status).toBe(403);
+
+    // Invalid date window is rejected with 400
+    const badRangeRes = await app.request(`/api/v1/projects/${project.id}/planning`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        cycles: [
+          {
+            id: "cyc_bad",
+            number: 1,
+            name: "Invalid",
+            startDate: "2026-12-10",
+            endDate: "2026-12-01",
+            status: "upcoming",
+          },
+        ],
+      }),
+    });
+    expect(badRangeRes.status).toBe(400);
+
+    // Save cycles & milestones
+    const planningRes = await app.request(`/api/v1/projects/${project.id}/planning`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        cycles: [
+          {
+            id: " cyc_1 ",
+            number: 1,
+            name: "  Cycle 1  ",
+            goal: "  Launch Agile planning  ",
+            startDate: "2026-11-01",
+            endDate: "2026-11-14",
+            status: "active",
+            capacityPoints: 21,
+            completedPoints: null,
+          },
+        ],
+        milestones: [
+          {
+            id: " mls_1 ",
+            name: "  Q4 Launch  ",
+            description: "  Roadmap epic  ",
+            horizon: "now",
+            status: "active",
+            targetDate: "2026-12-15",
+            colorTone: "violet",
+          },
+        ],
+      }),
+    });
+    expect(planningRes.status).toBe(200);
+    const { project: updatedProject } = (await planningRes.json()) as {
+      project: {
+        workflowConfig: {
+          stages: Array<{ id: string }>;
+          gates: Array<{ key: string }>;
+          promptTemplates?: Record<string, string>;
+          cycles?: Array<Record<string, unknown>>;
+          milestones?: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    expect(updatedProject.workflowConfig.stages).toHaveLength(8);
+    expect(updatedProject.workflowConfig.gates.map((g) => g.key)).toContain("prod_go");
+    expect(updatedProject.workflowConfig.promptTemplates).toEqual({
+      prd: "Keep this PRD template",
+    });
+    expect(updatedProject.workflowConfig.cycles).toEqual([
+      {
+        id: "cyc_1",
+        number: 1,
+        name: "Cycle 1",
+        goal: "Launch Agile planning",
+        startDate: "2026-11-01",
+        endDate: "2026-11-14",
+        status: "active",
+        capacityPoints: 21,
+        completedPoints: null,
+      },
+    ]);
+    expect(updatedProject.workflowConfig.milestones).toEqual([
+      {
+        id: "mls_1",
+        name: "Q4 Launch",
+        description: "Roadmap epic",
+        horizon: "now",
+        status: "active",
+        targetDate: "2026-12-15",
+        colorTone: "violet",
+      },
+    ]);
+
+    // Updating only cycles preserves existing milestones
+    const partialCyclesRes = await app.request(`/api/v1/projects/${project.id}/planning`, {
+      method: "PUT",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        cycles: [
+          {
+            id: "cyc_1",
+            number: 1,
+            name: "Cycle 1",
+            startDate: "2026-11-01",
+            endDate: "2026-11-14",
+            status: "completed",
+            capacityPoints: 21,
+            completedPoints: 18,
+            completedAt: "2026-11-14T18:00:00.000Z",
+          },
+        ],
+      }),
+    });
+    expect(partialCyclesRes.status).toBe(200);
+    const { project: afterPartial } = (await partialCyclesRes.json()) as {
+      project: {
+        workflowConfig: {
+          cycles?: Array<{ status: string; completedPoints?: number | null }>;
+          milestones?: Array<{ id: string }>;
+        };
+      };
+    };
+    expect(afterPartial.workflowConfig.cycles?.[0]?.status).toBe("completed");
+    expect(afterPartial.workflowConfig.cycles?.[0]?.completedPoints).toBe(18);
+    expect(afterPartial.workflowConfig.milestones?.map((m) => m.id)).toEqual(["mls_1"]);
+
+    // Work item agile attributes persist on create and merge/clear cleanly with null via PATCH
+    const wiCreateRes = await app.request(`/api/v1/projects/${project.id}/work-items`, {
+      method: "POST",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        title: "Build burnup chart",
+        attributes: {
+          cycleId: "cyc_1",
+          milestoneId: "mls_1",
+          roadmapHorizon: "now",
+          storyPoints: 5,
+        },
+      }),
+    });
+    expect(wiCreateRes.status).toBe(201);
+    const { workItem: createdWi } = (await wiCreateRes.json()) as {
+      workItem: { id: string; attributes: Record<string, unknown> };
+    };
+    expect(createdWi.attributes).toEqual({
+      cycleId: "cyc_1",
+      milestoneId: "mls_1",
+      roadmapHorizon: "now",
+      storyPoints: 5,
+    });
+
+    const wiClearRes = await app.request(`/api/v1/work-items/${createdWi.id}`, {
+      method: "PATCH",
+      headers: ownerHeaders,
+      body: JSON.stringify({
+        attributes: {
+          cycleId: null,
+          storyPoints: null,
+          roadmapHorizon: "later",
+        },
+      }),
+    });
+    expect(wiClearRes.status).toBe(200);
+    const { workItem: clearedWi } = (await wiClearRes.json()) as {
+      workItem: { attributes: Record<string, unknown> };
+    };
+    expect(clearedWi.attributes).toEqual({
+      cycleId: null,
+      milestoneId: "mls_1",
+      roadmapHorizon: "later",
+      storyPoints: null,
+    });
+  });
 });

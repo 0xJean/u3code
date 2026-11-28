@@ -10,16 +10,20 @@ import type {
   TeamHubStatusResult,
 } from "@t3tools/contracts";
 import {
+  STORY_POINT_SCALE,
   buildLifecycleAttributesPatch,
   readWorkItemLifecycle,
   resolveLatestGateApprovals,
   resolveWorkItemSchedule,
   standardGitHubLabels,
+  type AgileHorizon,
   type AssigneeType,
   type ChangeRequestAudit,
   type CockpitWorkItemCard,
   type DesignTier,
+  type ProjectCycle,
   type ProjectDirective,
+  type ProjectMilestone,
   type ReleaseCard,
   type TeamBoardMessage,
   type WorkItemPriority,
@@ -34,12 +38,15 @@ import {
   ArrowRightIcon,
   BotIcon,
   FileTextIcon,
+  FlagIcon,
   GanttChartIcon,
   KanbanIcon,
   ListIcon,
   LogOutIcon,
+  MapIcon,
   PackageCheckIcon,
   PlusIcon,
+  RepeatIcon,
   RotateCcwIcon,
   SearchIcon,
   ServerIcon,
@@ -99,6 +106,7 @@ import { teamHubEnvironment } from "~/state/teamHub";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { CockpitBoardTab } from "./CockpitBoardTab";
 import { CockpitConnectCard } from "./CockpitConnectCard";
+import { CockpitCyclesView } from "./CockpitCyclesView";
 import { CockpitGanttView } from "./CockpitGanttView";
 import { CockpitMembersTab } from "./CockpitMembersTab";
 import { CockpitMemoryTab } from "./CockpitMemoryTab";
@@ -124,6 +132,7 @@ import {
 } from "./CockpitPrimitives";
 import { CockpitPullRequestPane } from "./CockpitPullRequestPane";
 import { CockpitReleasesTab } from "./CockpitReleasesTab";
+import { CockpitRoadmapView } from "./CockpitRoadmapView";
 import { CockpitSettingsTab, type SetupSection } from "./CockpitSettingsTab";
 import { CockpitSwarmAvatar, deriveTeamRoster, type CockpitTeamMember } from "./CockpitSwarmAvatar";
 import { CockpitTriageTab } from "./CockpitTriageTab";
@@ -132,13 +141,76 @@ import { formatCockpitCommandError } from "./cockpitError";
 import { buildPrdGenerationPrompt, pickMatchingWorkspaceProject } from "./workItemPrompt";
 
 type CockpitTab = "overview" | "board" | "members" | "delivery" | "memory" | "setup";
-type DeliverySubTab = "kanban" | "gantt" | "triage" | "releases";
+type DeliverySubTab = "cycles" | "roadmap" | "kanban" | "gantt" | "triage" | "releases";
 type BoardViewMode = "board" | "list";
 type BoardFilter = "all" | "blocked" | "has_pr";
 type BoardPriorityFilter = "all" | WorkItemPriority;
 type TriageFilter = "all" | "blocked" | "human" | "unlinked";
 
 const DEFAULT_AGENT_RUNNER_ID = "claude-agent";
+const AGILE_HORIZONS: ReadonlyArray<AgileHorizon> = ["now", "next", "later"];
+
+function agileHorizonLabel(horizon: AgileHorizon, gt: ReturnType<typeof useGT>): string {
+  switch (horizon) {
+    case "now":
+      return gt("Now", { $context: "agile roadmap horizon" });
+    case "next":
+      return gt("Next", { $context: "agile roadmap horizon" });
+    case "later":
+      return gt("Later", { $context: "agile roadmap horizon" });
+  }
+}
+
+function agileHorizonActiveClass(horizon: AgileHorizon): string {
+  switch (horizon) {
+    case "now":
+      return "bg-primary/15 text-primary shadow-2xs ring-1 ring-inset ring-primary/30";
+    case "next":
+      return "bg-info/15 text-info-foreground shadow-2xs ring-1 ring-inset ring-info/30";
+    case "later":
+      return "bg-guest/15 text-guest-foreground shadow-2xs ring-1 ring-inset ring-guest/30";
+  }
+}
+
+function cycleStatusTone(status: ProjectCycle["status"]): CockpitTone {
+  switch (status) {
+    case "active":
+      return "success";
+    case "upcoming":
+      return "info";
+    case "completed":
+      return "neutral";
+  }
+}
+
+function milestoneStatusTone(status: ProjectMilestone["status"]): CockpitTone {
+  switch (status) {
+    case "active":
+      return "success";
+    case "completed":
+      return "info";
+    case "paused":
+      return "warning";
+    case "planned":
+      return "neutral";
+  }
+}
+
+function milestoneChipClass(colorTone: ProjectMilestone["colorTone"]): string {
+  switch (colorTone) {
+    case "success":
+      return "border-success/25 bg-success/8 text-success-foreground";
+    case "info":
+      return "border-info/25 bg-info/8 text-info-foreground";
+    case "warning":
+      return "border-warning/25 bg-warning/8 text-warning-foreground";
+    case "violet":
+      return "border-guest/25 bg-guest/10 text-guest-foreground";
+    case "primary":
+    default:
+      return "border-primary/25 bg-primary/8 text-primary";
+  }
+}
 
 function todayLocalIsoDate(): string {
   const now = new Date();
@@ -338,6 +410,8 @@ function matchesDeliveryFilters(
     readonly search: string;
     readonly assigneeFilter: string;
     readonly priorityFilter: BoardPriorityFilter;
+    readonly cycleFilter: string;
+    readonly milestoneFilter: string;
     readonly currentUserId: string | null;
   },
 ): boolean {
@@ -377,9 +451,30 @@ function matchesDeliveryFilters(
     }
   }
 
+  const lifecycle = readWorkItemLifecycle(card.workItem);
+
+  if (params.cycleFilter === "backlog") {
+    if (lifecycle.cycleId !== null) {
+      return false;
+    }
+  } else if (params.cycleFilter !== "all") {
+    if (lifecycle.cycleId !== params.cycleFilter) {
+      return false;
+    }
+  }
+
+  if (params.milestoneFilter === "unassigned") {
+    if (lifecycle.milestoneId !== null) {
+      return false;
+    }
+  } else if (params.milestoneFilter !== "all") {
+    if (lifecycle.milestoneId !== params.milestoneFilter) {
+      return false;
+    }
+  }
+
   const query = params.search.trim().toLowerCase();
   if (query.length > 0) {
-    const lifecycle = readWorkItemLifecycle(card.workItem);
     const matchesCode = card.workItem.code.toLowerCase().includes(query);
     const matchesTitle = card.workItem.title.toLowerCase().includes(query);
     const matchesBranch = lifecycle.branchName?.toLowerCase().includes(query) ?? false;
@@ -410,6 +505,8 @@ export function CockpitPage() {
   const [boardSearch, setBoardSearch] = useState("");
   const [boardAssigneeFilter, setBoardAssigneeFilter] = useState<string>("all");
   const [boardPriorityFilter, setBoardPriorityFilter] = useState<BoardPriorityFilter>("all");
+  const [boardCycleFilter, setBoardCycleFilter] = useState<string>("all");
+  const [boardMilestoneFilter, setBoardMilestoneFilter] = useState<string>("all");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
 
   const [statusLoadedForEnv, setStatusLoadedForEnv] = useState<EnvironmentId | null>(null);
@@ -436,6 +533,10 @@ export function CockpitPage() {
   const [newAssignee, setNewAssignee] = useState<string>("unassigned");
   const [newPlannedStartAt, setNewPlannedStartAt] = useState<string>(() => todayLocalIsoDate());
   const [newDueAt, setNewDueAt] = useState<string>(() => addDaysIsoDate(todayLocalIsoDate(), 5));
+  const [newCycleId, setNewCycleId] = useState<string>("");
+  const [newMilestoneId, setNewMilestoneId] = useState<string>("");
+  const [newHorizon, setNewHorizon] = useState<AgileHorizon | null>(null);
+  const [newStoryPoints, setNewStoryPoints] = useState<number | null>(null);
   const [newSpec, setNewSpec] = useState("");
   const [creatingMode, setCreatingMode] = useState<"create" | "prd" | null>(null);
   const [advancingWorkItemId, setAdvancingWorkItemId] = useState<string | null>(null);
@@ -649,6 +750,8 @@ export function CockpitPage() {
     setBoardSearch("");
     setBoardAssigneeFilter("all");
     setBoardPriorityFilter("all");
+    setBoardCycleFilter("all");
+    setBoardMilestoneFilter("all");
   };
 
   const handleConnected = (nextStatus: TeamHubStatusResult) => {
@@ -753,11 +856,34 @@ export function CockpitPage() {
     }
   };
 
-  const openCreateDialog = (initialStageId?: string | null) => {
+  const openCreateDialog = (opts?: {
+    readonly stageId?: string | null;
+    readonly cycleId?: string | null;
+    readonly milestoneId?: string | null;
+    readonly horizon?: AgileHorizon | null;
+    readonly storyPoints?: number | null;
+  }) => {
     const today = todayLocalIsoDate();
-    setNewPlannedStartAt(today);
-    setNewDueAt(addDaysIsoDate(today, 5));
-    setNewItemInitialStage(initialStageId ?? null);
+    const projectCycles = overview?.project?.workflowConfig.cycles ?? [];
+    const projectMilestones = overview?.project?.workflowConfig.milestones ?? [];
+    const matchedCycle = opts?.cycleId
+      ? (projectCycles.find((cycle) => cycle.id === opts.cycleId) ?? null)
+      : null;
+    const matchedMilestone = opts?.milestoneId
+      ? (projectMilestones.find((milestone) => milestone.id === opts.milestoneId) ?? null)
+      : null;
+    setNewPlannedStartAt(matchedCycle?.startDate ?? today);
+    setNewDueAt(
+      matchedCycle?.endDate ??
+        (matchedMilestone?.targetDate && matchedMilestone.targetDate >= today
+          ? matchedMilestone.targetDate
+          : addDaysIsoDate(today, 5)),
+    );
+    setNewItemInitialStage(opts?.stageId ?? null);
+    setNewCycleId(opts?.cycleId ?? "");
+    setNewMilestoneId(opts?.milestoneId ?? "");
+    setNewHorizon(opts?.horizon ?? matchedMilestone?.horizon ?? null);
+    setNewStoryPoints(opts?.storyPoints ?? null);
     setCreateDialogOpen(true);
   };
 
@@ -806,6 +932,10 @@ export function CockpitPage() {
           dueAt: newDueAt.trim() || null,
           designTier: newDesignTier,
           githubLabels: standardGitHubLabels(newType, newPriority),
+          cycleId: newCycleId.trim() || null,
+          milestoneId: newMilestoneId.trim() || null,
+          roadmapHorizon: newHorizon,
+          storyPoints: newStoryPoints,
         }),
       },
     });
@@ -821,6 +951,10 @@ export function CockpitPage() {
       setNewAssignee("unassigned");
       setNewPlannedStartAt(today);
       setNewDueAt(addDaysIsoDate(today, 5));
+      setNewCycleId("");
+      setNewMilestoneId("");
+      setNewHorizon(null);
+      setNewStoryPoints(null);
       void loadCockpitData(primaryEnvironmentId, selectedWorkspaceId, selectedProjectId);
 
       if (mode === "prd") {
@@ -988,7 +1122,26 @@ export function CockpitPage() {
   const activeProject = overview?.project ?? null;
   const stages = activeProject?.workflowConfig.stages ?? [];
   const gates = activeProject?.workflowConfig.gates ?? [];
+  const cycles = activeProject?.workflowConfig.cycles ?? [];
+  const milestones = activeProject?.workflowConfig.milestones ?? [];
+  const activeCycle = cycles.find((cycle) => cycle.status === "active") ?? null;
   const allCards = overview?.cards ?? [];
+  const activeCycleCardCount = activeCycle
+    ? allCards.filter((card) => readWorkItemLifecycle(card.workItem).cycleId === activeCycle.id)
+        .length
+    : 0;
+  const effectiveCycleFilter =
+    boardCycleFilter === "all" ||
+    boardCycleFilter === "backlog" ||
+    cycles.some((cycle) => cycle.id === boardCycleFilter)
+      ? boardCycleFilter
+      : "all";
+  const effectiveMilestoneFilter =
+    boardMilestoneFilter === "all" ||
+    boardMilestoneFilter === "unassigned" ||
+    milestones.some((milestone) => milestone.id === boardMilestoneFilter)
+      ? boardMilestoneFilter
+      : "all";
   const currentUserId = status?.me?.user.id ?? null;
   const filteredCards = allCards.filter((card) =>
     matchesDeliveryFilters(card, {
@@ -996,6 +1149,8 @@ export function CockpitPage() {
       search: boardSearch,
       assigneeFilter: boardAssigneeFilter,
       priorityFilter: boardPriorityFilter,
+      cycleFilter: effectiveCycleFilter,
+      milestoneFilter: effectiveMilestoneFilter,
       currentUserId,
     }),
   );
@@ -1011,7 +1166,9 @@ export function CockpitPage() {
     boardFilter !== "all" ||
     boardSearch.trim().length > 0 ||
     boardAssigneeFilter !== "all" ||
-    boardPriorityFilter !== "all";
+    boardPriorityFilter !== "all" ||
+    effectiveCycleFilter !== "all" ||
+    effectiveMilestoneFilter !== "all";
   const isMineFilterActive =
     boardAssigneeFilter === "mine" ||
     (currentUserId !== null && boardAssigneeFilter === `human:${currentUserId}`);
@@ -1057,7 +1214,24 @@ export function CockpitPage() {
   );
   const isWideDeliveryView =
     activeTab === "delivery" &&
-    (deliverySubTab === "gantt" || (deliverySubTab === "kanban" && boardView === "board"));
+    (deliverySubTab === "gantt" ||
+      deliverySubTab === "roadmap" ||
+      deliverySubTab === "cycles" ||
+      (deliverySubTab === "kanban" && boardView === "board"));
+  const selectedCycleFilter =
+    effectiveCycleFilter !== "all" && effectiveCycleFilter !== "backlog"
+      ? (cycles.find((cycle) => cycle.id === effectiveCycleFilter) ?? null)
+      : null;
+  const selectedMilestoneFilter =
+    effectiveMilestoneFilter !== "all" && effectiveMilestoneFilter !== "unassigned"
+      ? (milestones.find((milestone) => milestone.id === effectiveMilestoneFilter) ?? null)
+      : null;
+  const selectedNewCycle = newCycleId
+    ? (cycles.find((cycle) => cycle.id === newCycleId) ?? null)
+    : null;
+  const selectedNewMilestone = newMilestoneId
+    ? (milestones.find((milestone) => milestone.id === newMilestoneId) ?? null)
+    : null;
   const matchedIntakeProject = pickMatchingWorkspaceProject(
     localProjects,
     overview?.repos ?? [],
@@ -1308,6 +1482,8 @@ export function CockpitPage() {
                     setBoardSearch("");
                     setBoardAssigneeFilter("all");
                     setBoardPriorityFilter("all");
+                    setBoardCycleFilter("all");
+                    setBoardMilestoneFilter("all");
                   }}
                 />
               ) : null}
@@ -1370,7 +1546,13 @@ export function CockpitPage() {
               className={
                 isPullRequestPaneOpen
                   ? "max-w-none px-5 py-5 sm:px-5"
-                  : cn("py-6 pb-12", isWideDeliveryView && "max-w-[1600px]")
+                  : cn(
+                      "py-6 pb-12",
+                      isWideDeliveryView &&
+                        (deliverySubTab === "roadmap" || deliverySubTab === "cycles"
+                          ? "max-w-6xl"
+                          : "max-w-[1600px]"),
+                    )
               }
               width={isWideDeliveryView ? "expanded" : "readable"}
             >
@@ -1430,6 +1612,8 @@ export function CockpitPage() {
                       onValueChange={(next) => {
                         const value = next[0];
                         if (
+                          value === "roadmap" ||
+                          value === "cycles" ||
                           value === "kanban" ||
                           value === "gantt" ||
                           value === "triage" ||
@@ -1439,9 +1623,32 @@ export function CockpitPage() {
                         }
                       }}
                     >
+                      <Toggle value="roadmap">
+                        <MapIcon />
+                        <T>Roadmap</T>
+                        {milestones.length > 0 ? (
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {milestones.length}
+                          </span>
+                        ) : null}
+                      </Toggle>
+                      <Toggle value="cycles">
+                        <RepeatIcon />
+                        <T>Cycles</T>
+                        {activeCycle ? (
+                          <span className="inline-flex items-center gap-1 font-mono text-2xs tabular-nums opacity-75">
+                            <CockpitStatusDot tone="success" />
+                            <span>{activeCycleCardCount}</span>
+                          </span>
+                        ) : cycles.length > 0 ? (
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {cycles.length}
+                          </span>
+                        ) : null}
+                      </Toggle>
                       <Toggle value="kanban">
                         <KanbanIcon />
-                        <T>Kanban</T>
+                        <T>Board</T>
                         {allCards.length > 0 ? (
                           <span className="font-mono text-2xs tabular-nums opacity-70">
                             {allCards.length}
@@ -1450,11 +1657,11 @@ export function CockpitPage() {
                       </Toggle>
                       <Toggle value="gantt">
                         <GanttChartIcon />
-                        <T>Gantt</T>
+                        <T>Timeline</T>
                       </Toggle>
                       <Toggle value="triage">
                         <PullRequestGlyph.pullRequest />
-                        <T>Review Triage</T>
+                        <T>PR Triage</T>
                         {reviewItems.length > 0 ? (
                           <span className="font-mono text-2xs tabular-nums opacity-70">
                             {reviewItems.length}
@@ -1464,6 +1671,11 @@ export function CockpitPage() {
                       <Toggle value="releases">
                         <PackageCheckIcon />
                         <T>Releases</T>
+                        {releases.length > 0 ? (
+                          <span className="font-mono text-2xs tabular-nums opacity-70">
+                            {releases.length}
+                          </span>
+                        ) : null}
                       </Toggle>
                     </ToggleGroup>
 
@@ -1688,6 +1900,102 @@ export function CockpitPage() {
                         </Select>
                       </div>
 
+                      {cycles.length > 0 ? (
+                        <div className="w-40 shrink-0">
+                          <Select
+                            value={effectiveCycleFilter}
+                            onValueChange={(value) => {
+                              if (value) setBoardCycleFilter(value);
+                            }}
+                          >
+                            <SelectTrigger aria-label={gt("Filter by cycle")} size="compact">
+                              <SelectValue>
+                                {effectiveCycleFilter === "all" ? (
+                                  <T>All cycles</T>
+                                ) : effectiveCycleFilter === "backlog" ? (
+                                  <T>Backlog (No Cycle)</T>
+                                ) : selectedCycleFilter ? (
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot
+                                      tone={cycleStatusTone(selectedCycleFilter.status)}
+                                    />
+                                    <span className="truncate">
+                                      {gt("Cycle {number} · {name}", {
+                                        number: selectedCycleFilter.number,
+                                        name: selectedCycleFilter.name,
+                                      })}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <T>All cycles</T>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup>
+                              <SelectItem value="all">{gt("All cycles")}</SelectItem>
+                              <SelectItem value="backlog">{gt("Backlog (No Cycle)")}</SelectItem>
+                              {cycles.map((cycle) => (
+                                <SelectItem key={cycle.id} value={cycle.id}>
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot tone={cycleStatusTone(cycle.status)} />
+                                    <span className="truncate">
+                                      {gt("Cycle {number} · {name}", {
+                                        number: cycle.number,
+                                        name: cycle.name,
+                                      })}
+                                    </span>
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectPopup>
+                          </Select>
+                        </div>
+                      ) : null}
+
+                      {milestones.length > 0 ? (
+                        <div className="w-44 shrink-0">
+                          <Select
+                            value={effectiveMilestoneFilter}
+                            onValueChange={(value) => {
+                              if (value) setBoardMilestoneFilter(value);
+                            }}
+                          >
+                            <SelectTrigger aria-label={gt("Filter by milestone")} size="compact">
+                              <SelectValue>
+                                {effectiveMilestoneFilter === "all" ? (
+                                  <T>All milestones</T>
+                                ) : effectiveMilestoneFilter === "unassigned" ? (
+                                  <T>No Milestone</T>
+                                ) : selectedMilestoneFilter ? (
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot
+                                      tone={milestoneStatusTone(selectedMilestoneFilter.status)}
+                                    />
+                                    <span className="truncate">{selectedMilestoneFilter.name}</span>
+                                  </span>
+                                ) : (
+                                  <T>All milestones</T>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup>
+                              <SelectItem value="all">{gt("All milestones")}</SelectItem>
+                              <SelectItem value="unassigned">{gt("No Milestone")}</SelectItem>
+                              {milestones.map((milestone) => (
+                                <SelectItem key={milestone.id} value={milestone.id}>
+                                  <span className="inline-flex items-center gap-1.5 truncate">
+                                    <CockpitStatusDot
+                                      tone={milestoneStatusTone(milestone.status)}
+                                    />
+                                    <span className="truncate">{milestone.name}</span>
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectPopup>
+                          </Select>
+                        </div>
+                      ) : null}
+
                       {hasActiveDeliveryFilter ? (
                         <div className="ml-auto flex items-center gap-2">
                           <span className="text-xs text-muted-foreground tabular-nums">
@@ -1707,6 +2015,55 @@ export function CockpitPage() {
                         </div>
                       ) : null}
                     </div>
+                  ) : null}
+
+                  {deliverySubTab === "roadmap" ? (
+                    <CockpitRoadmapView
+                      cards={allCards}
+                      environmentId={primaryEnvironmentId}
+                      project={activeProject}
+                      roster={roster}
+                      stages={stages}
+                      onOpenIntakeForMilestone={(milestoneId, horizon) =>
+                        openCreateDialog({ milestoneId, horizon })
+                      }
+                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                      onRefresh={() => {
+                        if (primaryEnvironmentId && selectedWorkspaceId) {
+                          void loadCockpitData(
+                            primaryEnvironmentId,
+                            selectedWorkspaceId,
+                            selectedProjectId,
+                          );
+                        }
+                      }}
+                    />
+                  ) : null}
+
+                  {deliverySubTab === "cycles" ? (
+                    <CockpitCyclesView
+                      cards={allCards}
+                      environmentId={primaryEnvironmentId}
+                      project={activeProject}
+                      roster={roster}
+                      stages={stages}
+                      onOpenIntakeForCycle={(cycleId) =>
+                        openCreateDialog({
+                          cycleId,
+                          ...(cycleId ? { horizon: "now" as const } : {}),
+                        })
+                      }
+                      onOpenWorkItem={(workItemId) => setSelectedWorkItemId(workItemId)}
+                      onRefresh={() => {
+                        if (primaryEnvironmentId && selectedWorkspaceId) {
+                          void loadCockpitData(
+                            primaryEnvironmentId,
+                            selectedWorkspaceId,
+                            selectedProjectId,
+                          );
+                        }
+                      }}
+                    />
                   ) : null}
 
                   {deliverySubTab === "kanban" ? (
@@ -1849,7 +2206,9 @@ export function CockpitPage() {
                                               })}
                                               size="icon-xs"
                                               variant="ghost-muted"
-                                              onClick={() => openCreateDialog(stage.id)}
+                                              onClick={() =>
+                                                openCreateDialog({ stageId: stage.id })
+                                              }
                                             />
                                           }
                                         >
@@ -1871,6 +2230,7 @@ export function CockpitPage() {
                                         advancing={advancingWorkItemId === card.workItem.id}
                                         card={card}
                                         gates={gates}
+                                        milestones={milestones}
                                         roster={roster}
                                         selectedChangeRequestId={selectedChangeRequestId}
                                         stages={stages}
@@ -1915,7 +2275,9 @@ export function CockpitPage() {
                                                 })}
                                                 size="icon-xs"
                                                 variant="ghost-muted"
-                                                onClick={() => openCreateDialog(stage.id)}
+                                                onClick={() =>
+                                                  openCreateDialog({ stageId: stage.id })
+                                                }
                                               />
                                             }
                                           >
@@ -1952,6 +2314,7 @@ export function CockpitPage() {
                                           advancing={advancingWorkItemId === card.workItem.id}
                                           card={card}
                                           gates={gates}
+                                          milestones={milestones}
                                           roster={roster}
                                           selectedChangeRequestId={selectedChangeRequestId}
                                           stages={stages}
@@ -2014,6 +2377,8 @@ export function CockpitPage() {
                     ) : (
                       <CockpitGanttView
                         cards={filteredCards}
+                        cycles={cycles}
+                        milestones={milestones}
                         releases={releases}
                         roster={roster}
                         stages={stages}
@@ -2135,6 +2500,10 @@ export function CockpitPage() {
           setCreateDialogOpen(open);
           if (!open) {
             setNewItemInitialStage(null);
+            setNewCycleId("");
+            setNewMilestoneId("");
+            setNewHorizon(null);
+            setNewStoryPoints(null);
           }
         }}
       >
@@ -2163,6 +2532,21 @@ export function CockpitPage() {
                       <T>
                         Stage: <Var>{initialStageMeta.label}</Var>
                       </T>
+                    </Badge>
+                  ) : null}
+                  {selectedNewCycle ? (
+                    <Badge size="sm" variant="outline">
+                      <CockpitStatusDot tone={cycleStatusTone(selectedNewCycle.status)} />
+                      {gt("Cycle {number} · {name}", {
+                        number: selectedNewCycle.number,
+                        name: selectedNewCycle.name,
+                      })}
+                    </Badge>
+                  ) : null}
+                  {selectedNewMilestone ? (
+                    <Badge size="sm" variant="outline">
+                      <FlagIcon />
+                      {selectedNewMilestone.name}
                     </Badge>
                   ) : null}
                 </div>
@@ -2421,6 +2805,212 @@ export function CockpitPage() {
                 </div>
               </div>
 
+              <div className="space-y-3.5 rounded-xl border border-border/55 bg-linear-to-b from-muted/25 to-muted/10 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-2xs font-medium tracking-wider text-muted-foreground uppercase">
+                    <T>Agile Planning</T>
+                  </div>
+                  {newStoryPoints !== null ? (
+                    <span className="font-mono text-2xs font-medium tabular-nums text-primary">
+                      {gt("{points}pt", { points: newStoryPoints })}
+                    </span>
+                  ) : null}
+                </div>
+
+                {cycles.length > 0 || milestones.length > 0 ? (
+                  <div
+                    className={cn(
+                      "grid grid-cols-1 gap-3.5",
+                      cycles.length > 0 && milestones.length > 0 ? "sm:grid-cols-2" : undefined,
+                    )}
+                  >
+                    {cycles.length > 0 ? (
+                      <div>
+                        <CockpitFieldLabel htmlFor="wi-cycle">
+                          <T>Cycle (Sprint)</T>
+                        </CockpitFieldLabel>
+                        <Select
+                          value={newCycleId || "__none__"}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            setNewCycleId(value === "__none__" ? "" : value);
+                          }}
+                        >
+                          <SelectTrigger id="wi-cycle" size="sm">
+                            <SelectValue>
+                              {selectedNewCycle ? (
+                                <span className="inline-flex items-center gap-1.5 truncate">
+                                  <CockpitStatusDot
+                                    tone={cycleStatusTone(selectedNewCycle.status)}
+                                  />
+                                  <span className="truncate">
+                                    {gt("Cycle {number} · {name}", {
+                                      number: selectedNewCycle.number,
+                                      name: selectedNewCycle.name,
+                                    })}
+                                  </span>
+                                </span>
+                              ) : (
+                                <T>Backlog (No Cycle)</T>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="__none__">{gt("Backlog (No Cycle)")}</SelectItem>
+                            {cycles.map((cycle) => (
+                              <SelectItem key={cycle.id} value={cycle.id}>
+                                <span className="inline-flex items-center gap-1.5 truncate">
+                                  <CockpitStatusDot tone={cycleStatusTone(cycle.status)} />
+                                  <span className="truncate">
+                                    {gt("Cycle {number} · {name}", {
+                                      number: cycle.number,
+                                      name: cycle.name,
+                                    })}
+                                  </span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+                    ) : null}
+
+                    {milestones.length > 0 ? (
+                      <div>
+                        <CockpitFieldLabel htmlFor="wi-milestone">
+                          <T>Milestone / Phase</T>
+                        </CockpitFieldLabel>
+                        <Select
+                          value={newMilestoneId || "__none__"}
+                          onValueChange={(value) => {
+                            if (!value) return;
+                            const nextId = value === "__none__" ? "" : value;
+                            setNewMilestoneId(nextId);
+                            if (nextId && newHorizon === null) {
+                              const matched = milestones.find((m) => m.id === nextId);
+                              if (matched) {
+                                setNewHorizon(matched.horizon);
+                              }
+                            }
+                          }}
+                        >
+                          <SelectTrigger id="wi-milestone" size="sm">
+                            <SelectValue>
+                              {selectedNewMilestone ? (
+                                <span className="inline-flex items-center gap-1.5 truncate">
+                                  <FlagIcon
+                                    aria-hidden
+                                    className="size-3 shrink-0 text-muted-foreground"
+                                  />
+                                  <span className="truncate">{selectedNewMilestone.name}</span>
+                                </span>
+                              ) : (
+                                <T>No Milestone</T>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectPopup>
+                            <SelectItem value="__none__">{gt("No Milestone")}</SelectItem>
+                            {milestones.map((milestone) => (
+                              <SelectItem key={milestone.id} value={milestone.id}>
+                                <span className="inline-flex items-center gap-1.5 truncate">
+                                  <FlagIcon
+                                    aria-hidden
+                                    className="size-3 shrink-0 text-muted-foreground"
+                                  />
+                                  <span className="truncate">{milestone.name}</span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectPopup>
+                        </Select>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        <T>Roadmap Horizon</T>
+                      </span>
+                      {newHorizon !== null ? (
+                        <span className="text-2xs text-muted-foreground/75">
+                          {agileHorizonLabel(newHorizon, gt)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      aria-label={gt("Roadmap Horizon")}
+                      className="grid grid-cols-3 gap-0.5 rounded-lg border border-border/60 bg-background/60 p-0.5"
+                      role="group"
+                    >
+                      {AGILE_HORIZONS.map((horizon) => {
+                        const isActive = newHorizon === horizon;
+                        return (
+                          <button
+                            key={horizon}
+                            aria-pressed={isActive}
+                            className={cn(
+                              "cursor-pointer rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                              isActive
+                                ? agileHorizonActiveClass(horizon)
+                                : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
+                            )}
+                            type="button"
+                            onClick={() => setNewHorizon(isActive ? null : horizon)}
+                          >
+                            {agileHorizonLabel(horizon, gt)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        <T>Story Points</T>
+                      </span>
+                      <span className="font-mono text-2xs tabular-nums text-muted-foreground/75">
+                        {newStoryPoints !== null ? (
+                          gt("{points}pt", { points: newStoryPoints })
+                        ) : (
+                          <T>Unestimated</T>
+                        )}
+                      </span>
+                    </div>
+                    <div
+                      aria-label={gt("Story Points")}
+                      className="grid grid-cols-6 gap-1"
+                      role="group"
+                    >
+                      {STORY_POINT_SCALE.map((points) => {
+                        const isSelected = newStoryPoints === points;
+                        return (
+                          <button
+                            key={points}
+                            aria-label={gt("{points} story points", { points })}
+                            aria-pressed={isSelected}
+                            className={cn(
+                              "cursor-pointer rounded-md border py-1 font-mono text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                              isSelected
+                                ? "border-primary/45 bg-primary/15 font-semibold text-primary shadow-2xs"
+                                : "border-border/55 bg-background/60 text-muted-foreground hover:border-border hover:bg-accent/40 hover:text-foreground",
+                            )}
+                            type="button"
+                            onClick={() => setNewStoryPoints(isSelected ? null : points)}
+                          >
+                            {points}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-3.5 rounded-xl border border-border/55 bg-linear-to-b from-card/75 to-card/35 p-4">
                 <div className="flex items-center gap-1.5 text-2xs font-medium tracking-wider text-muted-foreground uppercase">
                   <CockpitStageArtworkIcon
@@ -2565,6 +3155,7 @@ interface WorkItemCardViewProps {
     readonly beforeStage: string;
     readonly optional?: boolean | undefined;
   }>;
+  readonly milestones: ReadonlyArray<ProjectMilestone>;
   readonly selectedChangeRequestId: string | null;
   readonly advancing: boolean;
   readonly onAdvanceStage: (nextStageId: string) => void;
@@ -2578,6 +3169,7 @@ function WorkItemCardView({
   roster,
   stages,
   gates,
+  milestones,
   selectedChangeRequestId,
   advancing,
   onAdvanceStage,
@@ -2590,6 +3182,10 @@ function WorkItemCardView({
   const lifecycle = readWorkItemLifecycle(card.workItem);
   const schedule = resolveWorkItemSchedule(card.workItem);
   const assignee = resolveCardAssignee(card, roster);
+  const storyPoints = lifecycle.storyPoints;
+  const milestone = lifecycle.milestoneId
+    ? (milestones.find((entry) => entry.id === lifecycle.milestoneId) ?? null)
+    : null;
   const hasPrd = lifecycle.prdStatus !== "none";
   const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
   const issueNumber = lifecycle.githubIssueNumber;
@@ -2600,7 +3196,12 @@ function WorkItemCardView({
       ? formatShortDueDate(schedule.dueDate)
       : null;
   const hasQuietLifecycleCues =
-    hasPrd || hasProto || issueNumber !== null || branchName !== null || dueDateDisplay !== null;
+    hasPrd ||
+    hasProto ||
+    issueNumber !== null ||
+    branchName !== null ||
+    milestone !== null ||
+    dueDateDisplay !== null;
 
   const currentIdx = stages.findIndex((s) => s.id === card.workItem.stage);
   const nextStage = currentIdx >= 0 ? stages[currentIdx + 1] : undefined;
@@ -2655,6 +3256,18 @@ function WorkItemCardView({
                 <T>At Risk</T>
               </Badge>
             )
+          ) : null}
+          {storyPoints !== null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex shrink-0 items-center rounded-md border border-border/55 bg-muted/35 px-1.5 py-0.5 font-mono text-2xs font-medium tabular-nums text-muted-foreground" />
+                }
+              >
+                {gt("{points}pt", { points: storyPoints })}
+              </TooltipTrigger>
+              <TooltipPopup>{gt("{points} story points", { points: storyPoints })}</TooltipPopup>
+            </Tooltip>
           ) : null}
           {assignee ? (
             <Tooltip>
@@ -2725,6 +3338,24 @@ function WorkItemCardView({
                 <span className="truncate">{branchName}</span>
               </TooltipTrigger>
               <TooltipPopup>{branchName}</TooltipPopup>
+            </Tooltip>
+          ) : null}
+          {milestone ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span
+                    className={cn(
+                      "inline-flex max-w-36 items-center gap-1 rounded-md border px-2 py-0.5 font-sans leading-tight font-medium",
+                      milestoneChipClass(milestone.colorTone),
+                    )}
+                  />
+                }
+              >
+                <FlagIcon aria-hidden className="size-3 shrink-0 opacity-80" />
+                <span className="truncate">{milestone.name}</span>
+              </TooltipTrigger>
+              <TooltipPopup>{milestone.name}</TooltipPopup>
             </Tooltip>
           ) : null}
           {dueDateDisplay ? (
@@ -2891,6 +3522,7 @@ function WorkItemListRowView({
   roster,
   stages,
   gates,
+  milestones,
   selectedChangeRequestId,
   advancing,
   onAdvanceStage,
@@ -2903,6 +3535,10 @@ function WorkItemListRowView({
   const lifecycle = readWorkItemLifecycle(card.workItem);
   const schedule = resolveWorkItemSchedule(card.workItem);
   const assignee = resolveCardAssignee(card, roster);
+  const storyPoints = lifecycle.storyPoints;
+  const milestone = lifecycle.milestoneId
+    ? (milestones.find((entry) => entry.id === lifecycle.milestoneId) ?? null)
+    : null;
   const hasPrd = lifecycle.prdStatus !== "none";
   const hasProto = lifecycle.prototypeStatus !== "none" || lifecycle.prototypeUrl !== null;
   const issueNumber = lifecycle.githubIssueNumber;
@@ -2973,6 +3609,36 @@ function WorkItemListRowView({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {storyPoints !== null ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className="inline-flex shrink-0 items-center rounded-md border border-border/55 bg-muted/35 px-1.5 py-0.5 font-mono text-2xs font-medium tabular-nums text-muted-foreground" />
+              }
+            >
+              {gt("{points}pt", { points: storyPoints })}
+            </TooltipTrigger>
+            <TooltipPopup>{gt("{points} story points", { points: storyPoints })}</TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {milestone ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className={cn(
+                    "inline-flex max-w-32 items-center gap-1 rounded-md border px-2 py-0.5 text-2xs leading-tight font-medium",
+                    milestoneChipClass(milestone.colorTone),
+                  )}
+                />
+              }
+            >
+              <FlagIcon aria-hidden className="size-3 shrink-0 opacity-80" />
+              <span className="truncate">{milestone.name}</span>
+            </TooltipTrigger>
+            <TooltipPopup>{milestone.name}</TooltipPopup>
+          </Tooltip>
+        ) : null}
         {hasPrd ? (
           <span
             className={cn(

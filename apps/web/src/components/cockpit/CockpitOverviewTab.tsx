@@ -1,11 +1,18 @@
 import {
+  computeCycleProgress,
+  computeMilestoneProgress,
+  computeTeamVelocity,
   deriveWorkItemPipelinePhase,
   readWorkItemLifecycle,
   resolveLatestGateApprovals,
   resolveWorkItemSchedule,
+  type AgileHorizon,
   type ChangeRequestAudit,
   type CockpitOverview,
   type CockpitWorkItemCard,
+  type MilestoneTone,
+  type ProjectCycle,
+  type ProjectMilestone,
   type ReleaseCard,
   type ReleaseStatus,
   type TeamBoardMessage,
@@ -20,10 +27,14 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CompassIcon,
   ListChecksIcon,
   MessageSquareIcon,
   PlusIcon,
+  RepeatIcon,
   ShieldCheckIcon,
+  TrendingDownIcon,
+  TrendingUpIcon,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -50,7 +61,13 @@ import {
   type CockpitTeamMember,
 } from "./CockpitSwarmAvatar";
 
-export type OverviewDeliverySubView = "kanban" | "gantt" | "triage" | "releases";
+export type OverviewDeliverySubView =
+  | "cycles"
+  | "roadmap"
+  | "kanban"
+  | "gantt"
+  | "triage"
+  | "releases";
 
 export interface CockpitOverviewTabProps {
   readonly overview: CockpitOverview | null;
@@ -381,6 +398,135 @@ function buildWorkItemCues(
   }
 
   return cues.slice(0, 4);
+}
+
+function selectFeaturedCycle(cycles: readonly ProjectCycle[]): ProjectCycle | null {
+  const active = cycles
+    .filter((cycle) => cycle.status === "active")
+    .toSorted((a, b) => b.number - a.number)[0];
+  if (active) return active;
+
+  const upcoming = cycles
+    .filter((cycle) => cycle.status === "upcoming")
+    .toSorted((a, b) => {
+      const dateCmp = a.startDate.localeCompare(b.startDate);
+      return dateCmp !== 0 ? dateCmp : a.number - b.number;
+    })[0];
+  if (upcoming) return upcoming;
+
+  return cycles.toSorted((a, b) => b.number - a.number)[0] ?? null;
+}
+
+function horizonRank(horizon: AgileHorizon): number {
+  switch (horizon) {
+    case "now":
+      return 0;
+    case "next":
+      return 1;
+    case "later":
+      return 2;
+  }
+}
+
+function milestoneStatusRank(status: ProjectMilestone["status"]): number {
+  switch (status) {
+    case "active":
+      return 0;
+    case "planned":
+      return 1;
+    case "paused":
+      return 2;
+    case "completed":
+      return 3;
+  }
+}
+
+function selectFeaturedMilestones(
+  milestones: readonly ProjectMilestone[],
+): readonly ProjectMilestone[] {
+  return milestones
+    .toSorted((a, b) => {
+      const hDiff = horizonRank(a.horizon) - horizonRank(b.horizon);
+      if (hDiff !== 0) return hDiff;
+      const sDiff = milestoneStatusRank(a.status) - milestoneStatusRank(b.status);
+      if (sDiff !== 0) return sDiff;
+      if (a.targetDate && b.targetDate) {
+        return a.targetDate.localeCompare(b.targetDate);
+      }
+      if (a.targetDate) return -1;
+      if (b.targetDate) return 1;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 3);
+}
+
+function horizonLabel(horizon: AgileHorizon, gt: ReturnType<typeof useGT>): string {
+  switch (horizon) {
+    case "now":
+      return gt("Now");
+    case "next":
+      return gt("Next");
+    case "later":
+      return gt("Later");
+  }
+}
+
+function horizonPillClass(horizon: AgileHorizon): string {
+  switch (horizon) {
+    case "now":
+      return "border-primary/30 bg-primary/10 text-primary";
+    case "next":
+      return "border-info/30 bg-info/10 text-info-foreground";
+    case "later":
+      return "border-guest/30 bg-guest/10 text-guest-foreground";
+  }
+}
+
+function milestoneProgressBarClass(
+  tone: MilestoneTone | undefined,
+  completionPct: number,
+  blockedItems: number,
+): string {
+  if (completionPct >= 100) return "bg-success";
+  if (blockedItems > 0) return "bg-destructive";
+  switch (tone) {
+    case "success":
+      return "bg-success";
+    case "info":
+      return "bg-info";
+    case "warning":
+      return "bg-warning";
+    case "violet":
+      return "bg-guest";
+    case "primary":
+    default:
+      return "bg-primary";
+  }
+}
+
+function cycleScopeHealthTone(health: "healthy" | "at_risk" | "overcommitted"): CockpitTone {
+  switch (health) {
+    case "overcommitted":
+      return "error";
+    case "at_risk":
+      return "warning";
+    case "healthy":
+      return "success";
+  }
+}
+
+function cycleScopeHealthLabel(
+  health: "healthy" | "at_risk" | "overcommitted",
+  gt: ReturnType<typeof useGT>,
+): string {
+  switch (health) {
+    case "overcommitted":
+      return gt("Overcommitted");
+    case "at_risk":
+      return gt("At risk");
+    case "healthy":
+      return gt("Healthy pace");
+  }
 }
 
 export function CockpitOverviewTab({
@@ -793,6 +939,29 @@ export function CockpitOverviewTab({
   const blockerCount = blockedCards.length + botBlockedPrs.length;
   const heroStatusTone: CockpitTone =
     blockerCount > 0 ? "error" : activeCards.length > 0 ? "success" : "info";
+
+  const projectCycles = activeProject?.workflowConfig.cycles ?? [];
+  const projectMilestones = activeProject?.workflowConfig.milestones ?? [];
+  const featuredCycle = selectFeaturedCycle(projectCycles);
+  const featuredCycleProgress = featuredCycle ? computeCycleProgress(featuredCycle, cards) : null;
+  const teamVelocity = computeTeamVelocity(projectCycles, cards);
+  const featuredMilestones = selectFeaturedMilestones(projectMilestones).map((milestone) => ({
+    milestone,
+    progress: computeMilestoneProgress(milestone, cards),
+  }));
+  const cycleDisplayPct = featuredCycleProgress
+    ? featuredCycleProgress.totalPoints > 0
+      ? featuredCycleProgress.pointsCompletionPct
+      : featuredCycleProgress.itemCompletionPct
+    : 0;
+  const featuredCycleStartLabel = featuredCycle
+    ? formatShortIsoDate(featuredCycle.startDate)
+    : null;
+  const featuredCycleEndLabel = featuredCycle ? formatShortIsoDate(featuredCycle.endDate) : null;
+  const cycleDateSpanLabel =
+    featuredCycleStartLabel && featuredCycleEndLabel
+      ? `${featuredCycleStartLabel} – ${featuredCycleEndLabel}`
+      : null;
 
   return (
     <div className="space-y-6">
@@ -1370,6 +1539,406 @@ export function CockpitOverviewTab({
                 </div>
               </div>
             </button>
+          </div>
+        </section>
+      ) : null}
+
+      {activeProject ? (
+        <section aria-label={gt("Agile Cadence & Roadmap")}>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <div className="flex min-w-0 flex-col justify-between gap-3.5 rounded-2xl border border-border/60 bg-linear-to-b from-card/85 to-card/45 p-4 shadow-xs ring-1 ring-inset ring-foreground/5">
+              {featuredCycle && featuredCycleProgress ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <CockpitIconBadge
+                        size="sm"
+                        tone={
+                          featuredCycle.status === "active"
+                            ? "primary"
+                            : featuredCycle.status === "completed"
+                              ? "success"
+                              : "info"
+                        }
+                      >
+                        <RepeatIcon />
+                      </CockpitIconBadge>
+                      <span className="inline-flex shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-3xs font-semibold text-foreground tabular-nums">
+                        <T>
+                          Cycle <Var>{featuredCycle.number}</Var>
+                        </T>
+                      </span>
+                      <span className="inline-flex min-w-0 items-center gap-1.5 truncate text-xs font-medium text-muted-foreground">
+                        <CockpitStatusDot
+                          ring={featuredCycle.status === "active"}
+                          tone={
+                            featuredCycle.status === "active"
+                              ? "success"
+                              : featuredCycle.status === "completed"
+                                ? "neutral"
+                                : "info"
+                          }
+                        />
+                        {featuredCycle.status === "active" ? (
+                          <T>Active Cycle</T>
+                        ) : featuredCycle.status === "upcoming" ? (
+                          <T>Upcoming Cycle</T>
+                        ) : (
+                          <T>Completed Cycle</T>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="shrink-0">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onNavigateDelivery("cycles")}
+                      >
+                        <T>Open Cycles</T>
+                        <ArrowRightIcon />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+                        {featuredCycle.name}
+                      </h3>
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium tabular-nums",
+                          featuredCycle.status === "completed"
+                            ? "border-success/30 bg-success/10 text-success-foreground"
+                            : featuredCycle.status === "upcoming"
+                              ? "border-info/30 bg-info/10 text-info-foreground"
+                              : featuredCycleProgress.daysRemaining <= 2
+                                ? "border-warning/35 bg-warning/12 text-warning-foreground"
+                                : "border-border/55 bg-muted/35 text-muted-foreground",
+                        )}
+                      >
+                        {featuredCycle.status === "completed" ? (
+                          <T>Completed</T>
+                        ) : featuredCycle.status === "upcoming" ? (
+                          featuredCycleStartLabel ? (
+                            <T>
+                              Starts <Var>{featuredCycleStartLabel}</Var>
+                            </T>
+                          ) : (
+                            <T>Upcoming</T>
+                          )
+                        ) : featuredCycleProgress.daysRemaining === 0 ? (
+                          <T>Ends today</T>
+                        ) : (
+                          <T>
+                            <Plural
+                              n={featuredCycleProgress.daysRemaining}
+                              one={
+                                <>
+                                  <Var>{featuredCycleProgress.daysRemaining}</Var> day left
+                                </>
+                              }
+                              other={
+                                <>
+                                  <Var>{featuredCycleProgress.daysRemaining}</Var> days left
+                                </>
+                              }
+                            />
+                          </T>
+                        )}
+                      </span>
+                    </div>
+
+                    {featuredCycle.goal?.trim() ? (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {featuredCycle.goal.trim()}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="font-mono font-semibold text-foreground">
+                          {featuredCycleProgress.totalPoints > 0 ? (
+                            <T>
+                              <Var>{featuredCycleProgress.donePoints}</Var>/
+                              <Var>{featuredCycleProgress.totalPoints}</Var> pt
+                            </T>
+                          ) : (
+                            <T>
+                              <Var>{featuredCycleProgress.doneItems}</Var>/
+                              <Var>{featuredCycleProgress.totalItems}</Var> items
+                            </T>
+                          )}
+                        </span>
+                        {featuredCycleProgress.totalPoints > 0 ? (
+                          <span className="font-mono text-2xs text-muted-foreground">
+                            <T>
+                              <Var>{featuredCycleProgress.doneItems}</Var>/
+                              <Var>{featuredCycleProgress.totalItems}</Var> items
+                            </T>
+                          </span>
+                        ) : null}
+                      </div>
+                      <span
+                        className={cn(
+                          "shrink-0 font-mono text-xs font-semibold",
+                          cycleDisplayPct >= 100 ? "text-success-foreground" : "text-foreground/80",
+                        )}
+                      >
+                        {cycleDisplayPct}%
+                      </span>
+                    </div>
+
+                    <div
+                      aria-hidden
+                      className="h-1.5 w-full overflow-hidden rounded-full bg-muted/55"
+                    >
+                      {cycleDisplayPct > 0 ? (
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-[width]",
+                            cycleDisplayPct >= 100
+                              ? "bg-success"
+                              : featuredCycleProgress.scopeHealth === "overcommitted"
+                                ? "bg-destructive"
+                                : featuredCycleProgress.scopeHealth === "at_risk"
+                                  ? "bg-warning"
+                                  : "bg-primary",
+                          )}
+                          style={{ width: `${Math.min(100, cycleDisplayPct)}%` }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-2xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground/85">
+                        <CockpitStatusDot
+                          tone={cycleScopeHealthTone(featuredCycleProgress.scopeHealth)}
+                        />
+                        {cycleScopeHealthLabel(featuredCycleProgress.scopeHealth, gt)}
+                      </span>
+                      {cycleDateSpanLabel ? (
+                        <span className="font-mono text-3xs tabular-nums text-muted-foreground/85">
+                          {cycleDateSpanLabel}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {teamVelocity.completedCycles > 0 ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-border/50 bg-muted/25 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-foreground/85">
+                        {teamVelocity.trend === "up" ? (
+                          <TrendingUpIcon
+                            aria-hidden
+                            className="size-3 shrink-0 text-success-foreground"
+                          />
+                        ) : teamVelocity.trend === "down" ? (
+                          <TrendingDownIcon
+                            aria-hidden
+                            className="size-3 shrink-0 text-warning-foreground"
+                          />
+                        ) : null}
+                        <T>
+                          Velocity <Var>{teamVelocity.averagePoints}</Var> pt
+                        </T>
+                      </span>
+                    ) : featuredCycleProgress.capacityPoints !== null ? (
+                      <span className="inline-flex shrink-0 items-center rounded-sm border border-border/50 bg-muted/25 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground">
+                        <T>
+                          Capacity <Var>{featuredCycleProgress.capacityPoints}</Var> pt
+                        </T>
+                      </span>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <CockpitIconBadge size="sm" tone="primary">
+                        <RepeatIcon />
+                      </CockpitIconBadge>
+                      <span className="truncate text-xs font-medium text-foreground">
+                        <T>Active Sprint Cycle</T>
+                      </span>
+                    </div>
+                    <div className="shrink-0">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => onNavigateDelivery("cycles")}
+                      >
+                        <T>Start Cycle 1</T>
+                        <ArrowRightIcon />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <T>Plan 2-week delivery cycles with burndown &amp; velocity</T>
+                  </p>
+
+                  <div className="flex items-center gap-2 text-2xs text-muted-foreground tabular-nums">
+                    <CockpitStatusDot tone={activeCards.length > 0 ? "info" : "neutral"} />
+                    {activeCards.length > 0 ? (
+                      <T>
+                        <Plural
+                          n={activeCards.length}
+                          one={
+                            <>
+                              <Var>{activeCards.length}</Var> active item ready to scope
+                            </>
+                          }
+                          other={
+                            <>
+                              <Var>{activeCards.length}</Var> active items ready to scope
+                            </>
+                          }
+                        />
+                      </T>
+                    ) : (
+                      <T>Track sprint scope, capacity pace, and team velocity</T>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex min-w-0 flex-col justify-between gap-3.5 rounded-2xl border border-border/60 bg-linear-to-b from-card/85 to-card/45 p-4 shadow-xs ring-1 ring-inset ring-foreground/5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CockpitIconBadge
+                    size="sm"
+                    tone={featuredMilestones.length > 0 ? "info" : "neutral"}
+                  >
+                    <CompassIcon />
+                  </CockpitIconBadge>
+                  <span className="truncate text-xs font-medium text-foreground">
+                    <T>Roadmap Now &amp; Next</T>
+                  </span>
+                  {projectMilestones.length > 0 ? (
+                    <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                      {projectMilestones.length}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="shrink-0">
+                  <Button size="xs" variant="outline" onClick={() => onNavigateDelivery("roadmap")}>
+                    {featuredMilestones.length > 0 ? <T>Open Roadmap</T> : <T>Plan Roadmap</T>}
+                    <ArrowRightIcon />
+                  </Button>
+                </div>
+              </div>
+
+              {featuredMilestones.length > 0 ? (
+                <div className="space-y-2.5">
+                  {featuredMilestones.map(({ milestone, progress }) => {
+                    const targetLabel = formatShortIsoDate(milestone.targetDate);
+                    return (
+                      <div key={milestone.id} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className={cn(
+                                "inline-flex shrink-0 items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                                horizonPillClass(milestone.horizon),
+                              )}
+                            >
+                              {horizonLabel(milestone.horizon, gt)}
+                            </span>
+                            <span className="min-w-0 truncate text-xs font-medium text-foreground">
+                              {milestone.name}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 font-mono text-3xs tabular-nums">
+                            {targetLabel ? (
+                              <span className="text-muted-foreground">{targetLabel}</span>
+                            ) : null}
+                            <span
+                              className={cn(
+                                "font-semibold",
+                                progress.completionPct >= 100
+                                  ? "text-success-foreground"
+                                  : progress.blockedItems > 0
+                                    ? "text-destructive"
+                                    : "text-foreground/85",
+                              )}
+                            >
+                              {progress.completionPct}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div
+                          aria-hidden
+                          className="h-1 w-full overflow-hidden rounded-full bg-muted/55"
+                        >
+                          {progress.completionPct > 0 ? (
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-[width]",
+                                milestoneProgressBarClass(
+                                  milestone.colorTone,
+                                  progress.completionPct,
+                                  progress.blockedItems,
+                                ),
+                              )}
+                              style={{ width: `${Math.min(100, progress.completionPct)}%` }}
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {projectMilestones.length > 3 ? (
+                    <div className="pt-0.5 text-2xs text-muted-foreground tabular-nums">
+                      <T>
+                        +<Var>{projectMilestones.length - 3}</Var> more on roadmap
+                      </T>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <T>Organize work into Now / Next / Later development phases</T>
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                        horizonPillClass("now"),
+                      )}
+                    >
+                      {horizonLabel("now", gt)}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                        horizonPillClass("next"),
+                      )}
+                    >
+                      {horizonLabel("next", gt)}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-sm border px-1.5 py-px font-mono text-3xs font-medium",
+                        horizonPillClass("later"),
+                      )}
+                    >
+                      {horizonLabel("later", gt)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </section>
       ) : null}

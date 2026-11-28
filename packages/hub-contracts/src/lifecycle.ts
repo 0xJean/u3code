@@ -2,6 +2,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { CockpitWorkItemCard, WorkItem, WorkItemPriority, WorkItemType } from "./cockpit.ts";
+import { AgileHorizon } from "./workflow.ts";
 
 export const DesignTier = Schema.Literals(["small", "medium", "large", "cross_repo"]);
 export type DesignTier = typeof DesignTier.Type;
@@ -37,6 +38,10 @@ export const WorkItemLifecycleMeta = Schema.Struct({
   branchTopology: BranchTopology,
   branchName: Schema.NullOr(Schema.String),
   targetBranch: Schema.NullOr(Schema.String),
+  cycleId: Schema.NullOr(Schema.String),
+  milestoneId: Schema.NullOr(Schema.String),
+  roadmapHorizon: Schema.NullOr(AgileHorizon),
+  storyPoints: Schema.NullOr(Schema.Int),
 });
 export type WorkItemLifecycleMeta = typeof WorkItemLifecycleMeta.Type;
 
@@ -57,6 +62,7 @@ export interface WorkItemSchedule {
 const DESIGN_TIERS = new Set<DesignTier>(["small", "medium", "large", "cross_repo"]);
 const BRANCH_TOPOLOGIES = new Set<BranchTopology>(["dual_trunk", "single_trunk"]);
 const ARTIFACT_STATUSES = new Set<ArtifactStatus>(["none", "draft", "approved"]);
+const AGILE_HORIZONS = new Set<AgileHorizon>(["now", "next", "later"]);
 
 const DONE_STAGES = new Set(["done", "released", "closed", "shipped", "cancelled"]);
 const RELEASE_STAGES = new Set(["staging", "release", "ready_to_release", "deploy"]);
@@ -87,6 +93,10 @@ function isArtifactStatus(value: unknown): value is ArtifactStatus {
   return typeof value === "string" && ARTIFACT_STATUSES.has(value as ArtifactStatus);
 }
 
+function isAgileHorizon(value: unknown): value is AgileHorizon {
+  return typeof value === "string" && AGILE_HORIZONS.has(value as AgileHorizon);
+}
+
 function readTrimmedStringOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -104,6 +114,11 @@ function readPositiveIntOrNull(value: unknown): number | null {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
   return null;
+}
+
+function readStoryPointsOrNull(value: unknown): number | null {
+  const parsed = readPositiveIntOrNull(value);
+  return parsed !== null && parsed <= 100 ? parsed : null;
 }
 
 function cleanStringList(values: readonly unknown[]): string[] {
@@ -218,6 +233,12 @@ export function readWorkItemLifecycle(
     : "dual_trunk";
   const branchName = readTrimmedStringOrNull(attrs.branchName);
   const targetBranch = readTrimmedStringOrNull(attrs.targetBranch);
+  const cycleId = readTrimmedStringOrNull(attrs.cycleId);
+  const milestoneId = readTrimmedStringOrNull(attrs.milestoneId);
+  const roadmapHorizon: AgileHorizon | null = isAgileHorizon(attrs.roadmapHorizon)
+    ? attrs.roadmapHorizon
+    : null;
+  const storyPoints = readStoryPointsOrNull(attrs.storyPoints);
 
   return {
     plannedStartAt,
@@ -233,6 +254,10 @@ export function readWorkItemLifecycle(
     branchTopology,
     branchName,
     targetBranch,
+    cycleId,
+    milestoneId,
+    roadmapHorizon,
+    storyPoints,
   };
 }
 
@@ -286,6 +311,25 @@ export function buildLifecycleAttributesPatch(
   if (patch.targetBranch !== undefined) {
     result.targetBranch =
       patch.targetBranch === null ? null : readTrimmedStringOrNull(patch.targetBranch);
+  }
+  if (patch.cycleId !== undefined) {
+    result.cycleId = patch.cycleId === null ? null : readTrimmedStringOrNull(patch.cycleId);
+  }
+  if (patch.milestoneId !== undefined) {
+    result.milestoneId =
+      patch.milestoneId === null ? null : readTrimmedStringOrNull(patch.milestoneId);
+  }
+  if (patch.roadmapHorizon !== undefined) {
+    result.roadmapHorizon =
+      patch.roadmapHorizon === null
+        ? null
+        : isAgileHorizon(patch.roadmapHorizon)
+          ? patch.roadmapHorizon
+          : null;
+  }
+  if (patch.storyPoints !== undefined) {
+    result.storyPoints =
+      patch.storyPoints === null ? null : readStoryPointsOrNull(patch.storyPoints);
   }
 
   return result;
